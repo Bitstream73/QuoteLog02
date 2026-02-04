@@ -56,11 +56,11 @@ describe('Frontend Routes', () => {
       expect(Array.isArray(response.body.quotes)).toBe(true);
     });
 
-    it('should get single quote with sources', async () => {
-      const response = await request(app).get('/api/quotes/1');
+    it('should return 404 for non-existent quote', async () => {
+      const response = await request(app).get('/api/quotes/99999');
 
-      expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('quote');
+      expect(response.status).toBe(404);
+      expect(response.body).toHaveProperty('error');
     });
   });
 
