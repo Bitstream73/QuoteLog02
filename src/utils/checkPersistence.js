@@ -11,6 +11,7 @@ export function checkPersistence() {
       fs.mkdirSync(dbDir, { recursive: true });
     }
 
+    // Write a test file to check persistence
     const testFile = path.join(dbDir, '.persistence-check');
     fs.writeFileSync(testFile, new Date().toISOString());
 
