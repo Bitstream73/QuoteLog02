@@ -1,0 +1,406 @@
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import config from '../config/index.js';
+import { getDb } from '../config/database.js';
+import { embedQuote, queryQuotes } from './vectorDb.js';
+import logger from './logger.js';
+
+/**
+ * Normalize text for comparison
+ */
+function normalizeForComparison(text) {
+  return text
+    .toLowerCase()
+    .replace(/[\u2018\u2019\u201C\u201D]/g, "'")
+    .replace(/\.{3}|\u2026/g, ' ')
+    .replace(/[^\w\s']/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Get words from text
+ */
+function getWords(text) {
+  return normalizeForComparison(text).split(' ').filter(Boolean);
+}
+
+/**
+ * Word-level containment: what fraction of shorter's words appear in order in longer
+ */
+function wordContainment(shorter, longer) {
+  const wordsShort = getWords(shorter);
+  const wordsLong = getWords(longer);
+  if (wordsShort.length === 0) return 0;
+  if (wordsShort.length > wordsLong.length) return 0;
+
+  let i = 0;
+  for (let j = 0; j < wordsLong.length && i < wordsShort.length; j++) {
+    if (wordsShort[i] === wordsLong[j]) i++;
+  }
+  return i / wordsShort.length;
+}
+
+/**
+ * Ellipsis-aware fragment matching
+ */
+function ellipsisFragmentMatch(fragment, candidateFull) {
+  if (!/\.{3}|\u2026/.test(fragment)) return null;
+
+  const anchors = fragment
+    .split(/\.{3}|\u2026/)
+    .map(s => s.trim())
+    .filter(s => s.length > 0);
+
+  if (anchors.length === 0) return 0;
+  const normalizedFull = normalizeForComparison(candidateFull);
+
+  let matched = 0;
+  let lastIndex = 0;
+  for (const anchor of anchors) {
+    const normalized = normalizeForComparison(anchor);
+    const idx = normalizedFull.indexOf(normalized, lastIndex);
+    if (idx >= 0) {
+      matched++;
+      lastIndex = idx + normalized.length;
+    }
+  }
+  return matched / anchors.length;
+}
+
+/**
+ * Bigram containment (asymmetric)
+ */
+function bigramContainment(shorter, longer) {
+  const bigrams = (text) => {
+    const words = getWords(text);
+    const grams = new Set();
+    for (let i = 0; i < words.length - 1; i++) {
+      grams.add(words[i] + ' ' + words[i + 1]);
+    }
+    return grams;
+  };
+
+  const gramsA = bigrams(shorter);
+  const gramsB = bigrams(longer);
+  if (gramsA.size === 0) return 0;
+
+  let overlap = 0;
+  for (const g of gramsA) {
+    if (gramsB.has(g)) overlap++;
+  }
+  return overlap / gramsA.size;
+}
+
+/**
+ * Analyze relationship between two quotes
+ */
+function analyzeQuotePair(newQuote, candidateQuote) {
+  const [shorter, longer] = newQuote.length <= candidateQuote.length
+    ? [newQuote, candidateQuote]
+    : [candidateQuote, newQuote];
+
+  const containment = wordContainment(shorter, longer);
+  const ellipsis = ellipsisFragmentMatch(shorter, longer);
+  const bigrams = bigramContainment(shorter, longer);
+
+  if (containment > 0.90) return { action: 'auto_merge', score: containment };
+  if (ellipsis !== null && ellipsis > 0.80) return { action: 'auto_merge', score: ellipsis };
+  if (containment > 0.75 || bigrams > 0.70) return { action: 'llm_verify', score: containment };
+  return { action: 'no_match', score: containment };
+}
+
+/**
+ * LLM verification for ambiguous dedup cases
+ */
+async function llmVerifyDuplicate(quoteA, quoteB, speaker) {
+  if (!config.geminiApiKey) {
+    return { relationship: 'UNRELATED', confidence: 0.5 };
+  }
+
+  const genAI = new GoogleGenerativeAI(config.geminiApiKey);
+  const model = genAI.getGenerativeModel({
+    model: 'gemini-2.5-flash',
+    generationConfig: {
+      responseMimeType: 'application/json',
+      temperature: 0.1,
+    },
+  });
+
+  const prompt = `You are a quote deduplication system. Analyze these two quotes from the same speaker.
+
+Quote A: "${quoteA}"
+Quote B: "${quoteB}"
+Speaker: ${speaker}
+
+Classify the relationship as EXACTLY ONE of:
+- IDENTICAL: Same quote, minor formatting differences only
+- SUBSET: One is a fragment/excerpt of the other (with omitted portions)
+- PARAPHRASE: Same statement expressed differently
+- SAME_TOPIC: About the same subject but different statements
+- UNRELATED: Different topics
+
+Return JSON:
+{
+  "relationship": "IDENTICAL|SUBSET|PARAPHRASE|SAME_TOPIC|UNRELATED",
+  "confidence": 0.0 to 1.0,
+  "canonical": "A or B (which is more complete)",
+  "explanation": "brief reason"
+}`;
+
+  try {
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text();
+    return JSON.parse(text);
+  } catch (err) {
+    logger.error('deduplicator', 'llm_verify_failed', { error: err.message });
+    return { relationship: 'UNRELATED', confidence: 0.5 };
+  }
+}
+
+/**
+ * Select the canonical (best) quote from a set
+ */
+function selectCanonicalQuote(quotes) {
+  return quotes.sort((a, b) => {
+    // Prefer longer (more complete)
+    const lenDiff = b.text.length - a.text.length;
+    if (Math.abs(lenDiff) > 20) return lenDiff > 0 ? 1 : -1;
+    // Prefer no ellipsis
+    const aE = /\.{3}|\u2026/.test(a.text) ? 1 : 0;
+    const bE = /\.{3}|\u2026/.test(b.text) ? 1 : 0;
+    if (aE !== bE) return aE - bE;
+    // Prefer earlier (first seen)
+    return new Date(a.first_seen_at) - new Date(b.first_seen_at);
+  })[0];
+}
+
+/**
+ * Find duplicate candidates using vector similarity
+ */
+async function findDuplicateCandidates(quoteText, personId, db) {
+  try {
+    // Try vector search if Pinecone is configured
+    if (config.pineconeApiKey && config.pineconeIndexHost) {
+      const results = await queryQuotes(quoteText, personId, 10);
+      return results
+        .filter(m => m.score > 0.78)
+        .map(m => ({
+          id: m.id,
+          score: m.score,
+          text: m.metadata?.text,
+          quoteId: m.metadata?.quote_id,
+        }));
+    }
+  } catch (err) {
+    logger.debug('deduplicator', 'vector_search_failed', { error: err.message });
+  }
+
+  // Fallback to SQLite text search
+  const candidates = db.prepare(`
+    SELECT id, text, first_seen_at
+    FROM quotes
+    WHERE person_id = ? AND canonical_quote_id IS NULL
+    ORDER BY created_at DESC
+    LIMIT 50
+  `).all(personId);
+
+  // Simple similarity check
+  const newNormalized = normalizeForComparison(quoteText);
+  return candidates
+    .map(c => ({
+      quoteId: c.id,
+      text: c.text,
+      score: wordContainment(
+        newNormalized.length < normalizeForComparison(c.text).length ? newNormalized : normalizeForComparison(c.text),
+        newNormalized.length >= normalizeForComparison(c.text).length ? newNormalized : normalizeForComparison(c.text)
+      ),
+    }))
+    .filter(c => c.score > 0.5)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 10);
+}
+
+/**
+ * Merge quotes - mark variant and update canonical
+ */
+function mergeQuotes(canonicalId, variantIds, db) {
+  db.transaction(() => {
+    // Collect all source URLs
+    const canonical = db.prepare('SELECT * FROM quotes WHERE id = ?').get(canonicalId);
+    const allUrls = new Set(JSON.parse(canonical.source_urls || '[]'));
+
+    for (const variantId of variantIds) {
+      const variant = db.prepare('SELECT * FROM quotes WHERE id = ?').get(variantId);
+      JSON.parse(variant.source_urls || '[]').forEach(u => allUrls.add(u));
+
+      // Point variant to canonical
+      db.prepare('UPDATE quotes SET canonical_quote_id = ? WHERE id = ?')
+        .run(canonicalId, variantId);
+
+      // Record relationship
+      db.prepare(`INSERT OR IGNORE INTO quote_relationships
+        (quote_id_a, quote_id_b, relationship, confidence, canonical_quote_id)
+        VALUES (?, ?, 'subset', 1.0, ?)`)
+        .run(canonicalId, variantId, canonicalId);
+    }
+
+    // Update canonical with merged source URLs
+    db.prepare('UPDATE quotes SET source_urls = ? WHERE id = ?')
+      .run(JSON.stringify([...allUrls]), canonicalId);
+
+    // Update person quote count
+    db.prepare(`UPDATE persons SET quote_count = (
+      SELECT COUNT(*) FROM quotes WHERE person_id = ? AND canonical_quote_id IS NULL
+    ) WHERE id = ?`).run(canonical.person_id, canonical.person_id);
+  })();
+}
+
+/**
+ * Main deduplication and insert function
+ */
+export async function insertAndDeduplicateQuote(quoteData, personId, article, db) {
+  const { text, quoteType, context, sourceUrl } = quoteData;
+
+  // Find duplicate candidates
+  const candidates = await findDuplicateCandidates(text, personId, db);
+
+  if (candidates.length === 0) {
+    // No duplicates - insert new quote
+    return insertNewQuote(text, quoteType, context, sourceUrl, personId, article.id, db);
+  }
+
+  // Check each candidate
+  for (const candidate of candidates) {
+    const analysis = analyzeQuotePair(text, candidate.text);
+
+    if (analysis.action === 'auto_merge') {
+      // This is a duplicate - add source URL to existing quote
+      const existing = db.prepare('SELECT * FROM quotes WHERE id = ?').get(candidate.quoteId);
+      const urls = new Set(JSON.parse(existing.source_urls || '[]'));
+      urls.add(sourceUrl);
+
+      db.prepare('UPDATE quotes SET source_urls = ? WHERE id = ?')
+        .run(JSON.stringify([...urls]), candidate.quoteId);
+
+      // Link to article
+      db.prepare('INSERT OR IGNORE INTO quote_articles (quote_id, article_id) VALUES (?, ?)')
+        .run(candidate.quoteId, article.id);
+
+      logger.debug('deduplicator', 'merged_duplicate', {
+        quoteId: candidate.quoteId,
+        score: analysis.score,
+      });
+
+      // Return the existing quote data
+      const person = db.prepare('SELECT canonical_name FROM persons WHERE id = ?').get(personId);
+      return {
+        id: candidate.quoteId,
+        text: existing.text,
+        personId,
+        personName: person?.canonical_name,
+        sourceUrls: [...urls],
+        createdAt: existing.created_at,
+        isDuplicate: true,
+      };
+    }
+
+    if (analysis.action === 'llm_verify') {
+      // Use LLM to verify
+      const person = db.prepare('SELECT canonical_name FROM persons WHERE id = ?').get(personId);
+      const llmResult = await llmVerifyDuplicate(text, candidate.text, person?.canonical_name || 'Unknown');
+
+      if (['IDENTICAL', 'SUBSET'].includes(llmResult.relationship) && llmResult.confidence > 0.7) {
+        // Treat as duplicate
+        const existing = db.prepare('SELECT * FROM quotes WHERE id = ?').get(candidate.quoteId);
+        const urls = new Set(JSON.parse(existing.source_urls || '[]'));
+        urls.add(sourceUrl);
+
+        db.prepare('UPDATE quotes SET source_urls = ? WHERE id = ?')
+          .run(JSON.stringify([...urls]), candidate.quoteId);
+
+        db.prepare('INSERT OR IGNORE INTO quote_articles (quote_id, article_id) VALUES (?, ?)')
+          .run(candidate.quoteId, article.id);
+
+        // Record the relationship
+        db.prepare(`INSERT OR IGNORE INTO quote_relationships
+          (quote_id_a, quote_id_b, relationship, confidence, canonical_quote_id)
+          VALUES (?, ?, ?, ?, ?)`)
+          .run(
+            candidate.quoteId,
+            candidate.quoteId, // Placeholder - will be updated if new quote inserted
+            llmResult.relationship.toLowerCase(),
+            llmResult.confidence,
+            candidate.quoteId
+          );
+
+        logger.debug('deduplicator', 'llm_merged_duplicate', {
+          quoteId: candidate.quoteId,
+          relationship: llmResult.relationship,
+          confidence: llmResult.confidence,
+        });
+
+        return {
+          id: candidate.quoteId,
+          text: existing.text,
+          personId,
+          personName: person?.canonical_name,
+          sourceUrls: [...urls],
+          createdAt: existing.created_at,
+          isDuplicate: true,
+        };
+      }
+    }
+  }
+
+  // No strong duplicate found - insert as new
+  return insertNewQuote(text, quoteType, context, sourceUrl, personId, article.id, db);
+}
+
+/**
+ * Insert a new quote
+ */
+function insertNewQuote(text, quoteType, context, sourceUrl, personId, articleId, db) {
+  const sourceUrls = JSON.stringify([sourceUrl]);
+
+  const result = db.prepare(`INSERT INTO quotes
+    (person_id, text, quote_type, context, source_urls)
+    VALUES (?, ?, ?, ?, ?)`)
+    .run(personId, text, quoteType || 'direct', context, sourceUrls);
+
+  const quoteId = result.lastInsertRowid;
+
+  // Link to article
+  db.prepare('INSERT OR IGNORE INTO quote_articles (quote_id, article_id) VALUES (?, ?)')
+    .run(quoteId, articleId);
+
+  // Update person quote count and last seen
+  db.prepare(`UPDATE persons SET
+    quote_count = quote_count + 1,
+    last_seen_at = datetime('now')
+    WHERE id = ?`).run(personId);
+
+  // Get person name for response
+  const person = db.prepare('SELECT canonical_name FROM persons WHERE id = ?').get(personId);
+
+  logger.debug('deduplicator', 'new_quote_inserted', { quoteId, personId });
+
+  // Try to index in Pinecone (async, don't await)
+  if (config.pineconeApiKey && config.pineconeIndexHost) {
+    embedQuote(quoteId, text, personId).catch(err => {
+      logger.debug('deduplicator', 'pinecone_index_failed', { error: err.message });
+    });
+  }
+
+  return {
+    id: quoteId,
+    text,
+    personId,
+    personName: person?.canonical_name,
+    sourceUrls: [sourceUrl],
+    createdAt: new Date().toISOString(),
+    isDuplicate: false,
+  };
+}
+
+export default { insertAndDeduplicateQuote };
