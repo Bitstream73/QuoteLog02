@@ -86,6 +86,10 @@ router.patch('/', (req, res) => {
 
   // Restart scheduler if fetch_interval_minutes changed
   if (req.body.fetch_interval_minutes !== undefined) {
+    // Lazy import to avoid loading the entire pipeline at startup
+    import('../services/scheduler.js').then(({ restartFetchScheduler }) => {
+      restartFetchScheduler(req.app);
+    }).catch(() => {});
     const io = req.app.get('io');
     if (io) {
       io.emit('settings_changed', { fetch_interval_minutes: req.body.fetch_interval_minutes });

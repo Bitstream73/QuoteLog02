@@ -1,1 +1,50 @@
-ewogICJuYW1lIjogInF1b3RlbG9nIiwKICAidmVyc2lvbiI6ICIxLjAuMSIsCiAgImRlc2NyaXB0aW9uIjogIlF1b3RlIExvZyAtIEFJLXBvd2VyZWQgcXVvdGUgZXh0cmFjdGlvbiBmcm9tIG5ld3MgYXJ0aWNsZXMiLAogICJtYWluIjogInNyYy9pbmRleC5qcyIsCiAgInR5cGUiOiAibW9kdWxlIiwKICAic2NyaXB0cyI6IHsKICAgICJzdGFydCI6ICJub2RlIHNyYy9pbmRleC5qcyIsCiAgICAiZGV2IjogIm5vZGUgLS13YXRjaCBzcmMvaW5kZXguanMiLAogICAgInRlc3QiOiAidml0ZXN0IHJ1biIsCiAgICAidGVzdDp3YXRjaCI6ICJ2aXRlc3QiLAogICAgInRlc3Q6Y292ZXJhZ2UiOiAidml0ZXN0IHJ1biAtLWNvdmVyYWdlIiwKICAgICJidWlsZCI6ICJlY2hvICdObyBidWlsZCBzdGVwIHJlcXVpcmVkIGZvciBwbGFpbiBKUyciCiAgfSwKICAia2V5d29yZHMiOiBbCiAgICAicXVvdGVzIiwKICAgICJuZXdzIiwKICAgICJhaSIsCiAgICAiZ2VtaW5pIgogIF0sCiAgImF1dGhvciI6ICIiLAogICJsaWNlbnNlIjogIklTQyIsCiAgImRlcGVuZGVuY2llcyI6IHsKICAgICJAZXh0cmFjdHVzL2FydGljbGUtZXh0cmFjdG9yIjogIl44LjAuMjAiLAogICAgIkBnb29nbGUvZ2VuZXJhdGl2ZS1haSI6ICJsYXRlc3QiLAogICAgIkBtb3ppbGxhL3JlYWRhYmlsaXR5IjogIl4wLjYuMCIsCiAgICAiQHBpbmVjb25lLWRhdGFiYXNlL3BpbmVjb25lIjogIl4yLjIuMiIsCiAgICAiYmV0dGVyLXNxbGl0ZTMiOiAiXjkuNi4wIiwKICAgICJjb3JzIjogIl4yLjguNSIsCiAgICAiZG90ZW52IjogIl4xNi40LjUiLAogICAgImRvdWJsZS1tZXRhcGhvbmUiOiAiXjIuMC4xIiwKICAgICJleHByZXNzIjogIl40LjE4LjIiLAogICAgImV4cHJlc3MtcmF0ZS1saW1pdCI6ICJeNy4yLjAiLAogICAgImhlbG1ldCI6ICJeNy4xLjAiLAogICAgImphcm8td2lua2xlciI6ICJeMC4yLjgiLAogICAgImpzZG9tIjogIl4yOC4wLjAiLAogICAgIm11bHRlciI6ICJeMS40LjUtbHRzLjEiLAogICAgIm5hdHVyYWwiOiAiXjguMS4wIiwKICAgICJwLWxpbWl0IjogIl43LjMuMCIsCiAgICAicnNzLXBhcnNlciI6ICJeMy4xMy4wIiwKICAgICJzaGFycCI6ICJeMC4zMy4yIiwKICAgICJzb2NrZXQuaW8iOiAiXjQuNy41IiwKICAgICJ1dWlkIjogIl45LjAuMSIKICB9LAogICJkZXZEZXBlbmRlbmNpZXMiOiB7CiAgICAiQHZpdGVzdC9jb3ZlcmFnZS12OCI6ICJeMS42LjAiLAogICAgInN1cGVydGVzdCI6ICJeNi4zLjQiLAogICAgInZpdGVzdCI6ICJeMS42LjAiCiAgfQp9Cg==
+{
+  "name": "quotelog",
+  "version": "1.0.1",
+  "description": "Quote Log - AI-powered quote extraction from news articles",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "build": "echo 'No build step required for plain JS'"
+  },
+  "keywords": [
+    "quotes",
+    "news",
+    "ai",
+    "gemini"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@extractus/article-extractor": "^8.0.20",
+    "@google/generative-ai": "latest",
+    "@mozilla/readability": "^0.6.0",
+    "@pinecone-database/pinecone": "^2.2.2",
+    "better-sqlite3": "^9.6.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "double-metaphone": "^2.0.1",
+    "express": "^4.18.2",
+    "express-rate-limit": "^7.2.0",
+    "helmet": "^7.1.0",
+    "jaro-winkler": "^0.2.8",
+    "jsdom": "^28.0.0",
+    "multer": "^1.4.5-lts.1",
+    "natural": "^8.1.0",
+    "p-limit": "^7.3.0",
+    "rss-parser": "^3.13.0",
+    "sharp": "^0.33.2",
+    "socket.io": "^4.7.5",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^1.6.0",
+    "supertest": "^6.3.4",
+    "vitest": "^1.6.0"
+  }
+}
