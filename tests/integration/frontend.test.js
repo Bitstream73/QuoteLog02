@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import request from 'supertest';
+import { getAuthCookie } from '../helpers/auth.js';
 
 // Set test environment before importing app
 process.env.NODE_ENV = 'test';
@@ -8,10 +9,12 @@ process.env.DATABASE_PATH = './tests/integration-test.db';
 
 describe('Frontend Routes', () => {
   let app;
+  let authCookie;
 
   beforeAll(async () => {
     const { createApp } = await import('../../src/index.js');
     app = createApp();
+    authCookie = getAuthCookie();
   });
 
   afterAll(async () => {
@@ -76,7 +79,9 @@ describe('Frontend Routes', () => {
 
   describe('Settings API', () => {
     it('should get app settings', async () => {
-      const response = await request(app).get('/api/settings');
+      const response = await request(app)
+        .get('/api/settings')
+        .set('Cookie', authCookie);
 
       expect(response.status).toBe(200);
       expect(response.body).toHaveProperty('theme');
@@ -85,6 +90,7 @@ describe('Frontend Routes', () => {
     it('should update settings', async () => {
       const response = await request(app)
         .put('/api/settings')
+        .set('Cookie', authCookie)
         .send({ theme: 'dark' });
 
       expect(response.status).toBe(200);
@@ -95,7 +101,8 @@ describe('Frontend Routes', () => {
   describe('Logs API', () => {
     it('should return paginated logs', async () => {
       const response = await request(app)
-        .get('/api/logs?page=1&limit=20');
+        .get('/api/logs?page=1&limit=20')
+        .set('Cookie', authCookie);
 
       expect(response.status).toBe(200);
       expect(response.body).toHaveProperty('logs');
@@ -107,7 +114,8 @@ describe('Frontend Routes', () => {
 
     it('should filter logs by level', async () => {
       const response = await request(app)
-        .get('/api/logs?level=error');
+        .get('/api/logs?level=error')
+        .set('Cookie', authCookie);
 
       expect(response.status).toBe(200);
       response.body.logs.forEach(log => {
@@ -117,7 +125,8 @@ describe('Frontend Routes', () => {
 
     it('should filter logs by category', async () => {
       const response = await request(app)
-        .get('/api/logs?category=api');
+        .get('/api/logs?category=api')
+        .set('Cookie', authCookie);
 
       expect(response.status).toBe(200);
       response.body.logs.forEach(log => {
@@ -127,7 +136,8 @@ describe('Frontend Routes', () => {
 
     it('should return log statistics', async () => {
       const response = await request(app)
-        .get('/api/logs/stats');
+        .get('/api/logs/stats')
+        .set('Cookie', authCookie);
 
       expect(response.status).toBe(200);
       expect(response.body).toHaveProperty('errorCount24h');
@@ -138,7 +148,8 @@ describe('Frontend Routes', () => {
 
     it('should export logs as CSV', async () => {
       const response = await request(app)
-        .get('/api/logs/export');
+        .get('/api/logs/export')
+        .set('Cookie', authCookie);
 
       expect(response.status).toBe(200);
       expect(response.headers['content-type']).toContain('text/csv');
