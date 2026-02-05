@@ -62,8 +62,8 @@ async function renderHome() {
     updateReviewBadge(reviewStats.pending);
 
     let html = `
-      <h1 class="page-title">Quote Log</h1>
-      <p class="page-subtitle">AI-powered quote extraction from news articles</p>
+      <h1 class="page-title">Latest Quotes</h1>
+      <p class="page-subtitle">Noteworthy quotes extracted from today's news</p>
     `;
 
     if (quotesData.quotes.length === 0) {
@@ -71,11 +71,11 @@ async function renderHome() {
         <div class="empty-state">
           <h3>No quotes yet</h3>
           <p>Quotes will appear here as they are extracted from news articles.</p>
-          <p>Add news sources in <a href="/settings" onclick="navigate(event, '/settings')">Settings</a> to start extracting quotes.</p>
+          <p>Add news sources in <a href="/settings" onclick="navigate(event, '/settings')" style="color:var(--accent)">Settings</a> to start extracting quotes.</p>
         </div>
       `;
     } else {
-      html += `<p class="quote-count">Showing ${quotesData.quotes.length} of ${quotesData.total} quotes</p>`;
+      html += `<p class="quote-count">${quotesData.total} quotes collected</p>`;
 
       for (const q of quotesData.quotes) {
         html += buildQuoteEntryHtml(q);
@@ -110,9 +110,9 @@ async function loadQuotesPage(page) {
     const quotesData = await API.get(`/quotes?page=${page}&limit=50`);
 
     let html = `
-      <h1 class="page-title">Quote Log</h1>
-      <p class="page-subtitle">AI-powered quote extraction from news articles</p>
-      <p class="quote-count">Showing page ${page} of ${quotesData.totalPages} (${quotesData.total} total quotes)</p>
+      <h1 class="page-title">Latest Quotes</h1>
+      <p class="page-subtitle">Noteworthy quotes extracted from today's news</p>
+      <p class="quote-count">Page ${page} of ${quotesData.totalPages} &middot; ${quotesData.total} quotes collected</p>
     `;
 
     for (const q of quotesData.quotes) {
