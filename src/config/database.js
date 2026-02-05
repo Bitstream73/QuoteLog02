@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
+import bcryptjs from 'bcryptjs';
 import config from './index.js';
 
 let db;
@@ -209,6 +210,35 @@ function initializeTables(db) {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON application_logs(timestamp)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_logs_level ON application_logs(level)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_logs_category ON application_logs(category)`);
+
+  // Admin users
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS admin_users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+
+  // Password reset tokens
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT NOT NULL,
+      token TEXT NOT NULL UNIQUE,
+      expires_at TEXT NOT NULL,
+      used INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+
+  // Seed admin user (upsert to ensure password hash is always current)
+  const adminHash = bcryptjs.hashSync('Ferret@00', 12);
+  db.prepare(`INSERT INTO admin_users (email, password_hash) VALUES (?, ?)
+    ON CONFLICT(email) DO UPDATE SET password_hash = excluded.password_hash, updated_at = datetime('now')`)
+    .run('jakob@karlsmark.com', adminHash);
 
   // Insert default settings
   const insertSetting = db.prepare(`INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)`);
