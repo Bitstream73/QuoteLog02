@@ -3,6 +3,7 @@ import { createServer } from 'http';
 import { Server as SocketServer } from 'socket.io';
 import helmet from 'helmet';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -14,6 +15,7 @@ import { createRateLimiter } from './middleware/rateLimiter.js';
 import { requestLogger } from './middleware/requestLogger.js';
 import { logContext } from './middleware/logContext.js';
 
+import authRouter from './routes/auth.js';
 import quotesRouter from './routes/quotes.js';
 import authorsRouter from './routes/authors.js';
 import settingsRouter from './routes/settings.js';
@@ -39,6 +41,9 @@ export function createApp() {
   // Body parsing
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
+
+  // Cookie parsing (for auth)
+  app.use(cookieParser());
 
   // Request logging & context
   app.use(requestLogger);
@@ -73,6 +78,7 @@ export function createApp() {
   });
 
   // API routes
+  app.use('/api/auth', authRouter);
   app.use('/api/quotes', quotesRouter);
   app.use('/api/authors', authorsRouter);
   app.use('/api/settings', settingsRouter);
