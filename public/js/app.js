@@ -1,5 +1,8 @@
 // Simple SPA router
 
+// Auth state
+let isAdmin = false;
+
 // Socket.IO connection
 let socket = null;
 
@@ -37,6 +40,39 @@ function initSocket() {
   }
 }
 
+async function checkAuth() {
+  try {
+    const result = await API.get('/auth/me');
+    isAdmin = result.authenticated;
+  } catch {
+    isAdmin = false;
+  }
+}
+
+function updateNav() {
+  const reviewLink = document.getElementById('nav-review');
+  const settingsLink = document.getElementById('nav-settings');
+  const loginLink = document.getElementById('nav-login');
+  const logoutLink = document.getElementById('nav-logout');
+
+  if (reviewLink) reviewLink.style.display = isAdmin ? '' : 'none';
+  if (settingsLink) settingsLink.style.display = isAdmin ? '' : 'none';
+  if (loginLink) loginLink.style.display = isAdmin ? 'none' : '';
+  if (logoutLink) logoutLink.style.display = isAdmin ? '' : 'none';
+}
+
+async function logout(event) {
+  if (event) event.preventDefault();
+  try {
+    await API.post('/auth/logout', {});
+  } catch {
+    // Ignore errors
+  }
+  isAdmin = false;
+  updateNav();
+  navigate(null, '/');
+}
+
 function navigate(event, path) {
   if (event) event.preventDefault();
   window.history.pushState({}, '', path);
@@ -45,6 +81,7 @@ function navigate(event, path) {
 
 function route() {
   const path = window.location.pathname;
+  const params = new URLSearchParams(window.location.search);
 
   if (path === '/' || path === '') {
     renderHome();
@@ -54,19 +91,31 @@ function route() {
   } else if (path.startsWith('/author/')) {
     const id = path.split('/')[2];
     renderAuthor(id);
+  } else if (path === '/login') {
+    if (isAdmin) { navigate(null, '/'); return; }
+    renderLogin();
+  } else if (path === '/forgot-password') {
+    renderForgotPassword();
+  } else if (path === '/reset-password') {
+    renderResetPassword(params.get('token'));
   } else if (path === '/settings') {
+    if (!isAdmin) { navigate(null, '/login'); return; }
     renderSettings();
   } else if (path === '/review') {
+    if (!isAdmin) { navigate(null, '/login'); return; }
     renderReview();
   } else {
     renderHome();
   }
 
-  // Update review badge on every route change
-  updateReviewBadgeAsync();
+  // Only update review badge if admin
+  if (isAdmin) {
+    updateReviewBadgeAsync();
+  }
 }
 
 async function updateReviewBadgeAsync() {
+  if (!isAdmin) return;
   try {
     const stats = await API.get('/review/stats');
     if (typeof updateReviewBadge === 'function') {
@@ -91,13 +140,19 @@ function closeModal() {
 }
 
 // Initialize
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+  await checkAuth();
+  updateNav();
   initSocket();
   route();
 });
 
 // Also run immediately in case DOMContentLoaded already fired
 if (document.readyState !== 'loading') {
-  initSocket();
-  route();
+  (async () => {
+    await checkAuth();
+    updateNav();
+    initSocket();
+    route();
+  })();
 }

@@ -2,6 +2,11 @@ const API = {
   async get(path) {
     const res = await fetch(`/api${path}`);
     if (!res.ok) {
+      if (res.status === 401 && !path.startsWith('/auth/')) {
+        isAdmin = false;
+        if (typeof updateNav === 'function') updateNav();
+        if (typeof navigate === 'function') navigate(null, '/login');
+      }
       const error = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
       throw new Error(error.error || `API error: ${res.status}`);
     }
@@ -15,6 +20,11 @@ const API = {
       body: JSON.stringify(data),
     });
     if (!res.ok) {
+      if (res.status === 401 && !path.startsWith('/auth/')) {
+        isAdmin = false;
+        if (typeof updateNav === 'function') updateNav();
+        if (typeof navigate === 'function') navigate(null, '/login');
+      }
       const error = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
       throw new Error(error.error || `API error: ${res.status}`);
     }
@@ -28,6 +38,11 @@ const API = {
       body: JSON.stringify(data),
     });
     if (!res.ok) {
+      if (res.status === 401 && !path.startsWith('/auth/')) {
+        isAdmin = false;
+        if (typeof updateNav === 'function') updateNav();
+        if (typeof navigate === 'function') navigate(null, '/login');
+      }
       const error = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
       throw new Error(error.error || `API error: ${res.status}`);
     }
@@ -41,6 +56,11 @@ const API = {
       body: JSON.stringify(data),
     });
     if (!res.ok) {
+      if (res.status === 401 && !path.startsWith('/auth/')) {
+        isAdmin = false;
+        if (typeof updateNav === 'function') updateNav();
+        if (typeof navigate === 'function') navigate(null, '/login');
+      }
       const error = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
       throw new Error(error.error || `API error: ${res.status}`);
     }
@@ -50,6 +70,11 @@ const API = {
   async delete(path) {
     const res = await fetch(`/api${path}`, { method: 'DELETE' });
     if (!res.ok) {
+      if (res.status === 401 && !path.startsWith('/auth/')) {
+        isAdmin = false;
+        if (typeof updateNav === 'function') updateNav();
+        if (typeof navigate === 'function') navigate(null, '/login');
+      }
       const error = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
       throw new Error(error.error || `API error: ${res.status}`);
     }
