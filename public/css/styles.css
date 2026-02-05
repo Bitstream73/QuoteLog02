@@ -521,6 +521,18 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   }
 }
 
+.show-more-toggle {
+  font-size: 0.85rem;
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: none;
+  margin-left: 0.5rem;
+}
+
+.show-more-toggle:hover {
+  text-decoration: underline;
+}
+
 .quote-count {
   color: var(--text-muted);
   margin-bottom: 1.5rem;
