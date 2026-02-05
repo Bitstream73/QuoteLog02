@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { getDb } from '../config/database.js';
 import { discoverRssFeed } from '../services/rssFeedDiscovery.js';
+import { requireAdmin } from '../middleware/auth.js';
 
 const router = Router();
 
@@ -12,7 +13,7 @@ router.get('/', (req, res) => {
 });
 
 // Add a new source
-router.post('/', async (req, res) => {
+router.post('/', requireAdmin, async (req, res) => {
   const db = getDb();
   let { domain, name, rss_url } = req.body;
 
@@ -68,7 +69,7 @@ router.post('/', async (req, res) => {
 });
 
 // Update a source
-router.patch('/:id', (req, res) => {
+router.patch('/:id', requireAdmin, (req, res) => {
   const db = getDb();
   const { id } = req.params;
   const { name, rss_url, enabled } = req.body;
@@ -108,7 +109,7 @@ router.patch('/:id', (req, res) => {
 });
 
 // Delete a source
-router.delete('/:id', (req, res) => {
+router.delete('/:id', requireAdmin, (req, res) => {
   const db = getDb();
   const { id } = req.params;
 

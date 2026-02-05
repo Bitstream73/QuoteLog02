@@ -1,9 +1,10 @@
 import { Router } from 'express';
 import { getDb } from '../config/database.js';
+import { requireAdmin } from '../middleware/auth.js';
 
 const router = Router();
 
-router.get('/', (req, res) => {
+router.get('/', requireAdmin, (req, res) => {
   const db = getDb();
   const page = parseInt(req.query.page) || 1;
   const limit = Math.min(parseInt(req.query.limit) || 50, 200);
@@ -23,7 +24,7 @@ router.get('/', (req, res) => {
   res.json({ logs: maskedLogs, total, page, totalPages: Math.ceil(total / limit) });
 });
 
-router.get('/stats', (req, res) => {
+router.get('/stats', requireAdmin, (req, res) => {
   const db = getDb();
   const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const errorCount24h = db.prepare("SELECT COUNT(*) as count FROM application_logs WHERE level = 'error' AND timestamp >= ?").get(oneDayAgo).count;
@@ -33,7 +34,7 @@ router.get('/stats', (req, res) => {
   res.json({ errorCount24h, warningCount24h, requestsPerHour, topCategories });
 });
 
-router.get('/export', (req, res) => {
+router.get('/export', requireAdmin, (req, res) => {
   const db = getDb();
   let whereClause = '1=1';
   const params = [];
@@ -53,7 +54,7 @@ router.get('/export', (req, res) => {
   res.send(csvRows.join('\n'));
 });
 
-router.delete('/', (req, res) => {
+router.delete('/', requireAdmin, (req, res) => {
   const db = getDb();
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
   const result = db.prepare('DELETE FROM application_logs WHERE timestamp < ?').run(sevenDaysAgo);

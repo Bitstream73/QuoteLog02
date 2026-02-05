@@ -1,10 +1,11 @@
 import { Router } from 'express';
 import { getDb, getSettingValue, setSettingValue } from '../config/database.js';
+import { requireAdmin } from '../middleware/auth.js';
 
 const router = Router();
 
 // Get all settings
-router.get('/', (req, res) => {
+router.get('/', requireAdmin, (req, res) => {
   const db = getDb();
   const rows = db.prepare('SELECT key, value FROM settings').all();
   const settings = {};
@@ -15,7 +16,7 @@ router.get('/', (req, res) => {
 });
 
 // Update settings (PUT - replace all)
-router.put('/', (req, res) => {
+router.put('/', requireAdmin, (req, res) => {
   const db = getDb();
   const update = db.prepare(
     `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
@@ -36,7 +37,7 @@ router.put('/', (req, res) => {
 });
 
 // Update settings (PATCH - partial update)
-router.patch('/', (req, res) => {
+router.patch('/', requireAdmin, (req, res) => {
   const db = getDb();
   const update = db.prepare(
     `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))

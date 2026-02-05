@@ -1,10 +1,11 @@
 import { Router } from 'express';
 import { getDb } from '../config/database.js';
+import { requireAdmin } from '../middleware/auth.js';
 
 const router = Router();
 
 // Get review queue stats
-router.get('/stats', (req, res) => {
+router.get('/stats', requireAdmin, (req, res) => {
   const db = getDb();
 
   const pending = db.prepare(
@@ -21,7 +22,7 @@ router.get('/stats', (req, res) => {
 });
 
 // List pending review items
-router.get('/', (req, res) => {
+router.get('/', requireAdmin, (req, res) => {
   const db = getDb();
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 20;
@@ -82,7 +83,7 @@ router.get('/', (req, res) => {
 });
 
 // Merge new name into existing person
-router.post('/:id/merge', (req, res) => {
+router.post('/:id/merge', requireAdmin, (req, res) => {
   const db = getDb();
   const { id } = req.params;
 
@@ -132,7 +133,7 @@ router.post('/:id/merge', (req, res) => {
 });
 
 // Reject - create new person
-router.post('/:id/reject', (req, res) => {
+router.post('/:id/reject', requireAdmin, (req, res) => {
   const db = getDb();
   const { id } = req.params;
 
@@ -174,7 +175,7 @@ router.post('/:id/reject', (req, res) => {
 });
 
 // Skip for later
-router.post('/:id/skip', (req, res) => {
+router.post('/:id/skip', requireAdmin, (req, res) => {
   const db = getDb();
   const { id } = req.params;
 
@@ -190,7 +191,7 @@ router.post('/:id/skip', (req, res) => {
 });
 
 // Batch operations
-router.post('/batch', (req, res) => {
+router.post('/batch', requireAdmin, (req, res) => {
   const db = getDb();
   const { action, ids } = req.body;
 
