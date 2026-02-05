@@ -24,7 +24,7 @@
     "@extractus/article-extractor": "^8.0.20",
     "@google/generative-ai": "latest",
     "@mozilla/readability": "^0.6.0",
-    "@pinecone-database/pinecone": "^2.2.2",
+    "@pinecone-database/pinecone": "^7.0.0",
     "better-sqlite3": "^9.6.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",

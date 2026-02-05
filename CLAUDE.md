@@ -9,8 +9,8 @@ QuoteLog02 is an AI-powered news quote extraction app. Node.js/Express backend, 
 - **Runtime**: Node.js 20 (ESM modules - `"type": "module"`)
 - **Backend**: Express, better-sqlite3 (WAL mode), Socket.IO
 - **AI**: Gemini 2.5 Flash (text extraction), text-embedding-004 (embeddings)
-- **Vector DB**: Pinecone (sparse vectors, pinecone-sparse-english-v0)
-- **Testing**: Vitest (57 tests across 10 test files)
+- **Vector DB**: Pinecone (sparse vectors, pinecone-sparse-english-v0, integrated embedding)
+- **Testing**: Vitest (59 tests across 10 test files)
 - **Deploy**: Railway (Dockerfile multi-stage build with node:20-alpine)
 
 ## Pre-Deploy Checklist (CRITICAL)
@@ -75,5 +75,18 @@ Use conventional commits: `feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `style
 ## AI Models
 
 - Always use the latest model versions
-- Gemini model: `gemini-2.5-flash` (text), `text-embedding-004` (embeddings)
+- Gemini model: `gemini-2.5-flash` (text extraction only)
 - Never fall back to older model versions as a fix
+
+## Pinecone Vector DB (CRITICAL)
+
+The "quotelog" index uses **sparse vectors** with Pinecone's **integrated embedding model** (`pinecone-sparse-english-v0`). This means:
+
+- **Do NOT generate embeddings client-side** (no Gemini `text-embedding-004` for Pinecone operations)
+- **Pinecone generates sparse vectors automatically** from the `text` field via the integrated model
+- **Upserts**: Use `ns.upsertRecords([{ _id, text, ...metadata }])` — NOT `ns.upsert([{ id, values, metadata }])`
+- **Queries**: Use `ns.searchRecords({ query: { topK, inputs: { text }, filter } })` — NOT `ns.query({ vector, topK })`
+- **Response format**: `searchRecords` returns `result.hits[]` with `_id`, `_score`, `fields` (not `matches[]` with `id`, `score`, `metadata`)
+- **SDK version**: Requires `@pinecone-database/pinecone` v4+ (currently v7.0.0) for `upsertRecords`/`searchRecords` methods
+- **Filter syntax**: Uses MongoDB-style operators (e.g., `{ person_id: { $eq: value } }`)
+- **fieldMap**: Index configured with `text` → `text`, so records MUST have a `text` field for auto-embedding

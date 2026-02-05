@@ -25,19 +25,20 @@ vi.mock('../../src/services/logger.js', () => ({
   }
 }));
 
-// Mock Pinecone client
+// Mock Pinecone client with integrated model methods
 vi.mock('@pinecone-database/pinecone', () => ({
   Pinecone: vi.fn().mockImplementation(() => ({
     index: vi.fn().mockReturnValue({
       namespace: vi.fn().mockReturnValue({
-        upsert: vi.fn().mockResolvedValue({ upsertedCount: 1 }),
-        query: vi.fn().mockResolvedValue({
-          matches: [{ id: 'test-1', score: 0.9, metadata: { text: 'test' } }]
+        upsertRecords: vi.fn().mockResolvedValue(undefined),
+        searchRecords: vi.fn().mockResolvedValue({
+          result: {
+            hits: [{ _id: 'test-1', _score: 0.9, fields: { text: 'test', quote_id: 1 } }]
+          }
         }),
         deleteOne: vi.fn().mockResolvedValue({}),
       }),
       describeIndexStats: vi.fn().mockResolvedValue({
-        dimension: 768,
         indexFullness: 0.1,
         totalRecordCount: 100
       })
@@ -75,14 +76,15 @@ describe('Vector Database Service', () => {
       Pinecone: vi.fn().mockImplementation(() => ({
         index: vi.fn().mockReturnValue({
           namespace: vi.fn().mockReturnValue({
-            upsert: vi.fn().mockResolvedValue({ upsertedCount: 1 }),
-            query: vi.fn().mockResolvedValue({
-              matches: [{ id: 'test-1', score: 0.9, metadata: { text: 'test' } }]
+            upsertRecords: vi.fn().mockResolvedValue(undefined),
+            searchRecords: vi.fn().mockResolvedValue({
+              result: {
+                hits: [{ _id: 'test-1', _score: 0.9, fields: { text: 'test', quote_id: 1 } }]
+              }
             }),
             deleteOne: vi.fn().mockResolvedValue({}),
           }),
           describeIndexStats: vi.fn().mockResolvedValue({
-            dimension: 768,
             indexFullness: 0.1,
             totalRecordCount: 100
           })
@@ -94,27 +96,42 @@ describe('Vector Database Service', () => {
     vectorDb = module.default;
   });
 
-  it('should upsert embeddings successfully', async () => {
-    const vectors = [
-      { id: 'test-1', values: new Array(768).fill(0.1), metadata: { text: 'hello' } }
+  it('should upsert records successfully', async () => {
+    const records = [
+      { _id: 'test-1', text: 'hello world', category: 'test' }
     ];
 
-    const result = await vectorDb.upsertEmbeddings(vectors);
-    expect(result.upsertedCount).toBe(1);
+    await vectorDb.upsertRecords(records);
+    // upsertRecords returns void on success
   });
 
-  it('should query vectors by similarity', async () => {
-    const queryVector = new Array(768).fill(0.1);
-    const results = await vectorDb.queryByVector(queryVector, 5);
+  it('should search records by text', async () => {
+    const result = await vectorDb.searchRecords('test query', 5);
 
-    expect(results.matches).toHaveLength(1);
-    expect(results.matches[0].score).toBeGreaterThan(0);
+    expect(result.result.hits).toHaveLength(1);
+    expect(result.result.hits[0]._score).toBeGreaterThan(0);
   });
 
   it('should return index statistics', async () => {
     const stats = await vectorDb.getIndexStats();
 
-    expect(stats).toHaveProperty('dimension');
     expect(stats).toHaveProperty('totalRecordCount');
+  });
+
+  it('should embed a quote using integrated model', async () => {
+    const { embedQuote } = await import('../../src/services/vectorDb.js');
+    await embedQuote(1, 'This is a test quote', 42);
+    // Should not throw - upsertRecords called with text field
+  });
+
+  it('should query quotes and return mapped results', async () => {
+    const { queryQuotes } = await import('../../src/services/vectorDb.js');
+    const results = await queryQuotes('test quote', 42, 5);
+
+    expect(results).toHaveLength(1);
+    expect(results[0]).toHaveProperty('id', 'test-1');
+    expect(results[0]).toHaveProperty('score', 0.9);
+    expect(results[0]).toHaveProperty('metadata');
+    expect(results[0].metadata).toHaveProperty('text', 'test');
   });
 });

@@ -1,5 +1,4 @@
 import { Pinecone } from '@pinecone-database/pinecone';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import config from '../config/index.js';
 import logger from './logger.js';
 
@@ -24,22 +23,9 @@ function getIndex() {
 }
 
 /**
- * Generate embeddings using Gemini text-embedding-004
- */
-async function generateEmbedding(text) {
-  if (!config.geminiApiKey) {
-    throw new Error('Gemini API key not configured');
-  }
-
-  const genAI = new GoogleGenerativeAI(config.geminiApiKey);
-  const model = genAI.getGenerativeModel({ model: 'text-embedding-004' });
-
-  const result = await model.embedContent(text);
-  return result.embedding.values;
-}
-
-/**
- * Embed and store a quote in Pinecone
+ * Embed and store a quote in Pinecone using integrated sparse embedding.
+ * The "quotelog" index uses pinecone-sparse-english-v0 with fieldMap text->text,
+ * so we pass raw text and Pinecone generates sparse vectors automatically.
  */
 export async function embedQuote(quoteId, text, personId) {
   const idx = getIndex();
@@ -49,17 +35,13 @@ export async function embedQuote(quoteId, text, personId) {
   }
 
   try {
-    const embedding = await generateEmbedding(text);
     const ns = idx.namespace('quotes');
 
-    await ns.upsert([{
-      id: `quote_${quoteId}`,
-      values: embedding,
-      metadata: {
-        quote_id: quoteId,
-        person_id: personId,
-        text: text.substring(0, 1000), // Truncate for metadata storage
-      },
+    await ns.upsertRecords([{
+      _id: `quote_${quoteId}`,
+      text: text.substring(0, 1000),
+      quote_id: quoteId,
+      person_id: personId,
     }]);
 
     logger.debug('vectordb', 'quote_embedded', { quoteId, personId });
@@ -70,7 +52,8 @@ export async function embedQuote(quoteId, text, personId) {
 }
 
 /**
- * Query for similar quotes from the same person
+ * Query for similar quotes from the same person using integrated sparse search.
+ * Returns results in the same format as the old query() method for backward compatibility.
  */
 export async function queryQuotes(text, personId, topK = 10) {
   const idx = getIndex();
@@ -79,17 +62,25 @@ export async function queryQuotes(text, personId, topK = 10) {
   }
 
   try {
-    const embedding = await generateEmbedding(text);
     const ns = idx.namespace('quotes');
 
-    const result = await ns.query({
-      vector: embedding,
-      topK,
-      includeMetadata: true,
-      filter: { person_id: personId },
+    const response = await ns.searchRecords({
+      query: {
+        topK,
+        inputs: { text },
+        filter: { person_id: { $eq: personId } },
+      },
+      fields: ['text', 'quote_id', 'person_id'],
     });
 
-    return result.matches || [];
+    // Map searchRecords response to match the old query() format
+    // so callers (quoteDeduplicator) don't need changes
+    const hits = response?.result?.hits || [];
+    return hits.map(hit => ({
+      id: hit._id,
+      score: hit._score,
+      metadata: hit.fields || {},
+    }));
   } catch (err) {
     logger.error('vectordb', 'query_failed', { error: err.message });
     return [];
@@ -97,27 +88,29 @@ export async function queryQuotes(text, personId, topK = 10) {
 }
 
 const vectorDb = {
-  async upsertEmbeddings(vectors, namespace = 'default') {
+  async upsertRecords(records, namespace = 'default') {
     const start = Date.now();
     const idx = getIndex();
     if (!idx) throw new Error('Pinecone not configured');
 
     const ns = idx.namespace(namespace);
-    const result = await ns.upsert(vectors);
+    await ns.upsertRecords(records);
     const duration = Date.now() - start;
-    logger.info('vectordb', 'upsert', { count: vectors.length, namespace, duration });
-    return result;
+    logger.info('vectordb', 'upsert', { count: records.length, namespace, duration });
   },
 
-  async queryByVector(vector, topK = 5, filter = undefined, namespace = 'default') {
+  async searchRecords(text, topK = 5, filter = undefined, namespace = 'default') {
     const start = Date.now();
     const idx = getIndex();
     if (!idx) throw new Error('Pinecone not configured');
 
     const ns = idx.namespace(namespace);
-    const result = await ns.query({ vector, topK, includeMetadata: true, filter });
+    const result = await ns.searchRecords({
+      query: { topK, inputs: { text }, filter },
+    });
     const duration = Date.now() - start;
-    logger.info('vectordb', 'query', { topK, namespace, matchCount: result.matches?.length, duration });
+    const hits = result?.result?.hits || [];
+    logger.info('vectordb', 'query', { topK, namespace, matchCount: hits.length, duration });
     return result;
   },
 
@@ -138,10 +131,8 @@ const vectorDb = {
     return await idx.describeIndexStats();
   },
 
-  // Export new functions
   embedQuote,
   queryQuotes,
-  generateEmbedding,
 };
 
 export default vectorDb;
