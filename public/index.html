@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="Quote Log - AI-powered quote extraction from news articles">
-  <meta name="theme-color" content="#1a1a2e">
+  <meta name="theme-color" content="#ffffff">
   <link rel="manifest" href="/manifest.json">
   <title>Quote Log</title>
   <link rel="stylesheet" href="/css/styles.css">
@@ -13,7 +13,7 @@
   <div id="app">
     <header>
       <nav>
-        <a href="/" class="logo" onclick="navigate(event, '/')">Quote Log</a>
+        <a href="/" class="logo" onclick="navigate(event, '/')">The Quote Log</a>
         <div class="nav-links">
           <a href="/" onclick="navigate(event, '/')">Home</a>
           <a href="/review" onclick="navigate(event, '/review')" class="nav-link-review">
@@ -23,6 +23,7 @@
           <a href="/settings" onclick="navigate(event, '/settings')">Settings</a>
         </div>
       </nav>
+      <div class="date-bar" id="date-bar"></div>
     </header>
 
     <main id="content">
@@ -31,7 +32,7 @@
     </main>
 
     <footer>
-      <p>&copy; 2026 Quote Log. Powered by AI.</p>
+      <p>&copy; 2026 The Quote Log. AI-powered news quote extraction.</p>
     </footer>
   </div>
 
@@ -54,5 +55,17 @@
   <script src="/js/review.js"></script>
   <script src="/js/logs.js"></script>
   <script src="/js/app.js"></script>
+
+  <script>
+    // Set today's date in the date bar
+    (function() {
+      const bar = document.getElementById('date-bar');
+      if (bar) {
+        const now = new Date();
+        const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+        bar.textContent = now.toLocaleDateString('en-US', options);
+      }
+    })();
+  </script>
 </body>
 </html>
