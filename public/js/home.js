@@ -1,5 +1,8 @@
 // Homepage - Quote List Display
 
+// Store full quote texts for show more/less toggle
+const _quoteTexts = {};
+
 /**
  * Extract domain from URL for display
  */
@@ -10,6 +13,36 @@ function extractDomain(url) {
   } catch {
     return url;
   }
+}
+
+/**
+ * Build HTML for a single quote entry
+ */
+function buildQuoteEntryHtml(q) {
+  const isLong = q.text.length > 280;
+  const truncatedText = isLong ? q.text.substring(0, 280) + '...' : q.text;
+  const sourceLinks = (q.sourceUrls || [])
+    .map(url => `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="source-link">${escapeHtml(extractDomain(url))}</a>`)
+    .join(' ');
+
+  if (isLong) {
+    _quoteTexts[q.id] = q.text;
+  }
+
+  return `
+    <div class="quote-entry">
+      <blockquote>
+        <p class="quote-text" id="qt-${q.id}">${escapeHtml(truncatedText)}</p>
+        ${isLong ? `<a href="#" class="show-more-toggle" onclick="toggleQuoteText(event, ${q.id})">show more</a>` : ''}
+        <cite>
+          &mdash; <a href="/author/${q.personId}" onclick="navigate(event, '/author/${q.personId}')" class="author-link">${escapeHtml(q.personName)}</a>
+        </cite>
+      </blockquote>
+      <div class="quote-sources">
+        ${sourceLinks}
+      </div>
+    </div>
+  `;
 }
 
 /**
@@ -45,24 +78,7 @@ async function renderHome() {
       html += `<p class="quote-count">Showing ${quotesData.quotes.length} of ${quotesData.total} quotes</p>`;
 
       for (const q of quotesData.quotes) {
-        const truncatedText = q.text.length > 280 ? q.text.substring(0, 280) + '...' : q.text;
-        const sourceLinks = (q.sourceUrls || [])
-          .map(url => `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="source-link">${escapeHtml(extractDomain(url))}</a>`)
-          .join(' ');
-
-        html += `
-          <div class="quote-entry">
-            <blockquote>
-              <p class="quote-text">"${escapeHtml(truncatedText)}"</p>
-              <cite>
-                &mdash; <a href="/author/${q.personId}" onclick="navigate(event, '/author/${q.personId}')" class="author-link">${escapeHtml(q.personName)}</a>
-              </cite>
-            </blockquote>
-            <div class="quote-sources">
-              ${sourceLinks}
-            </div>
-          </div>
-        `;
+        html += buildQuoteEntryHtml(q);
       }
 
       // Pagination
@@ -100,24 +116,7 @@ async function loadQuotesPage(page) {
     `;
 
     for (const q of quotesData.quotes) {
-      const truncatedText = q.text.length > 280 ? q.text.substring(0, 280) + '...' : q.text;
-      const sourceLinks = (q.sourceUrls || [])
-        .map(url => `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="source-link">${escapeHtml(extractDomain(url))}</a>`)
-        .join(' ');
-
-      html += `
-        <div class="quote-entry">
-          <blockquote>
-            <p class="quote-text">"${escapeHtml(truncatedText)}"</p>
-            <cite>
-              &mdash; <a href="/author/${q.personId}" onclick="navigate(event, '/author/${q.personId}')" class="author-link">${escapeHtml(q.personName)}</a>
-            </cite>
-          </blockquote>
-          <div class="quote-sources">
-            ${sourceLinks}
-          </div>
-        </div>
-      `;
+      html += buildQuoteEntryHtml(q);
     }
 
     // Pagination
@@ -175,23 +174,9 @@ function handleNewQuotes(quotes) {
     if (quoteEntries.length > 0) {
       const firstEntry = quoteEntries[0];
       for (const q of quotes.reverse()) {
-        const sourceLinks = (q.sourceUrls || [])
-          .map(url => `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="source-link">${escapeHtml(extractDomain(url))}</a>`)
-          .join(' ');
-
         const newEntry = document.createElement('div');
         newEntry.className = 'quote-entry new-quote';
-        newEntry.innerHTML = `
-          <blockquote>
-            <p class="quote-text">"${escapeHtml(q.text)}"</p>
-            <cite>
-              &mdash; <a href="/author/${q.personId}" onclick="navigate(event, '/author/${q.personId}')" class="author-link">${escapeHtml(q.personName)}</a>
-            </cite>
-          </blockquote>
-          <div class="quote-sources">
-            ${sourceLinks}
-          </div>
-        `;
+        newEntry.innerHTML = buildQuoteEntryHtml(q).replace('<div class="quote-entry">', '').replace(/<\/div>\s*$/, '');
 
         firstEntry.parentNode.insertBefore(newEntry, firstEntry);
 
@@ -205,4 +190,23 @@ function handleNewQuotes(quotes) {
 function escapeHtml(str) {
   if (!str) return '';
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/**
+ * Toggle between truncated and full quote text
+ */
+function toggleQuoteText(event, quoteId) {
+  event.preventDefault();
+  const el = document.getElementById('qt-' + quoteId);
+  const toggle = event.target;
+  const fullText = _quoteTexts[quoteId];
+  if (!el || !fullText) return;
+
+  if (toggle.textContent === 'show more') {
+    el.textContent = '\u201c' + fullText + '\u201d';
+    toggle.textContent = 'show less';
+  } else {
+    el.textContent = '\u201c' + fullText.substring(0, 280) + '...\u201d';
+    toggle.textContent = 'show more';
+  }
 }

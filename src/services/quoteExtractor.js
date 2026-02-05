@@ -65,7 +65,7 @@ async function extractQuotesWithGemini(articleText) {
 
 For each quote, return:
 - quote_text: The exact quoted text. For direct quotes, use the exact words. For indirect quotes, use the reported speech.
-- speaker: The full name of the person being quoted. Never use pronouns — resolve "he", "she", "they" to the actual name.
+- speaker: The full name of the person being quoted. Never use pronouns \u2014 resolve "he", "she", "they" to the actual name.
 - speaker_title: Their role, title, or affiliation as mentioned in the article (e.g., "CEO of Apple", "U.S. Senator"). Null if not mentioned.
 - quote_type: "direct" if in quotation marks, "indirect" if paraphrased/reported speech.
 - context: One sentence describing what the quote is about and why it was said.
@@ -83,18 +83,34 @@ If there are no attributable quotes, return: { "quotes": [] }
 Article text:
 ${articleText.substring(0, 15000)}`;
 
-  try {
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const text = response.text();
+  // Retry with exponential backoff for rate limits
+  let lastError;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      const text = response.text();
 
-    // Parse JSON response
-    const parsed = JSON.parse(text);
-    return parsed.quotes || [];
-  } catch (err) {
-    logger.error('extractor', 'gemini_extraction_failed', { error: err.message });
-    return [];
+      // Parse JSON response
+      const parsed = JSON.parse(text);
+      return parsed.quotes || [];
+    } catch (err) {
+      lastError = err;
+      // Check for rate limit (429) or server errors (5xx)
+      const isRateLimit = err.message?.includes('429') || err.message?.includes('RESOURCE_EXHAUSTED');
+      const isServerError = err.message?.includes('500') || err.message?.includes('503');
+      if ((isRateLimit || isServerError) && attempt < 2) {
+        const delay = Math.pow(2, attempt + 1) * 1000; // 2s, 4s
+        logger.warn('extractor', 'gemini_rate_limited', { attempt: attempt + 1, delay });
+        await new Promise(r => setTimeout(r, delay));
+        continue;
+      }
+      break;
+    }
   }
+
+  logger.error('extractor', 'gemini_extraction_failed', { error: lastError?.message });
+  return [];
 }
 
 /**

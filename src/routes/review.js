@@ -117,6 +117,11 @@ router.post('/:id/merge', (req, res) => {
       quote_count = (SELECT COUNT(*) FROM quotes WHERE person_id = ? AND canonical_quote_id IS NULL)
       WHERE id = ?`).run(item.candidate_person_id, item.candidate_person_id);
 
+    // Record merge in audit trail
+    db.prepare(`INSERT INTO person_merges (surviving_person_id, merged_person_id, merged_by, confidence, reason)
+      VALUES (?, ?, 'user', ?, ?)`)
+      .run(item.candidate_person_id, item.id, item.similarity_score, `Merged "${item.new_name}" into existing person`);
+
     // Mark review item as resolved
     db.prepare(`UPDATE disambiguation_queue SET
       status = 'merged', resolved_by = 'user', resolved_at = datetime('now')
@@ -226,6 +231,11 @@ router.post('/batch', (req, res) => {
           last_seen_at = datetime('now'),
           quote_count = (SELECT COUNT(*) FROM quotes WHERE person_id = ? AND canonical_quote_id IS NULL)
           WHERE id = ?`).run(item.candidate_person_id, item.candidate_person_id);
+
+        // Record merge in audit trail
+        db.prepare(`INSERT INTO person_merges (surviving_person_id, merged_person_id, merged_by, confidence, reason)
+          VALUES (?, ?, 'user', ?, ?)`)
+          .run(item.candidate_person_id, id, item.similarity_score, `Batch merged "${item.new_name}" into existing person`);
 
         db.prepare(`UPDATE disambiguation_queue SET
           status = 'merged', resolved_by = 'user', resolved_at = datetime('now')
