@@ -14,7 +14,7 @@ async function renderAuthor(id) {
       content.innerHTML = `
         <div class="empty-state">
           <h3>Author not found</h3>
-          <p><a href="/" onclick="navigate(event, '/')">Back to home</a></p>
+          <p><a href="/" onclick="navigate(event, '/')" style="color:var(--accent)">Back to home</a></p>
         </div>
       `;
       return;
@@ -25,8 +25,8 @@ async function renderAuthor(id) {
     const initial = a.name.charAt(0).toUpperCase();
 
     let html = `
-      <p style="margin-bottom:1rem">
-        <a href="/" onclick="navigate(event, '/')" style="color:var(--accent)">&larr; Back to quotes</a>
+      <p style="margin-bottom:1.5rem;font-family:var(--font-ui);font-size:0.85rem">
+        <a href="/" onclick="navigate(event, '/')" style="color:var(--accent);text-decoration:none">&larr; Back to quotes</a>
       </p>
 
       <div class="author-header">
@@ -34,7 +34,7 @@ async function renderAuthor(id) {
         <div class="author-info">
           <h1 class="page-title">${escapeHtml(a.name)}</h1>
           ${a.disambiguation ? `<p class="author-disambiguation">${escapeHtml(a.disambiguation)}</p>` : ''}
-          <p class="page-subtitle">${a.quoteCount} quote${a.quoteCount !== 1 ? 's' : ''}</p>
+          <p class="page-subtitle" style="border-bottom:none;padding-bottom:0;margin-bottom:0">${a.quoteCount} quote${a.quoteCount !== 1 ? 's' : ''}</p>
         </div>
       </div>
     `;
@@ -51,13 +51,13 @@ async function renderAuthor(id) {
       }
     }
 
-    html += '<h2 style="margin:2rem 0 1rem">Quotes</h2>';
+    html += '<h2 style="margin:2rem 0 1rem;font-family:var(--font-headline);font-size:1.3rem">Quotes</h2>';
 
     if (quotesData.quotes.length === 0) {
-      html += '<p style="color:var(--text-muted)">No quotes found for this author.</p>';
+      html += '<p style="color:var(--text-muted);font-family:var(--font-ui)">No quotes found for this author.</p>';
     } else {
       for (const q of quotesData.quotes) {
-        const date = q.createdAt ? new Date(q.createdAt).toLocaleDateString() : '';
+        const date = q.createdAt ? new Date(q.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '';
         const sourceLinks = (q.sourceUrls || [])
           .map(url => `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="source-link">${escapeHtml(extractDomain(url))}</a>`)
           .join(' ');
@@ -102,7 +102,7 @@ async function loadAuthorQuotesPage(authorId, page) {
 
     let html = '';
     for (const q of quotesData.quotes) {
-      const date = q.createdAt ? new Date(q.createdAt).toLocaleDateString() : '';
+      const date = q.createdAt ? new Date(q.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '';
       const sourceLinks = (q.sourceUrls || [])
         .map(url => `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="source-link">${escapeHtml(extractDomain(url))}</a>`)
         .join(' ');
