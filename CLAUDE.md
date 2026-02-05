@@ -68,6 +68,10 @@ railway logs --lines 20 <deployment-id>
 - When pushing in batches, verify ALL modified files were included across all batches. Easy to miss files.
 - After MCP push, always `git fetch origin && git reset --hard origin/main` to sync local.
 
+## Auto-Deploy After Code Changes (MANDATORY)
+
+Whenever the user prompts you to create, read, update, or delete code, after completing the task you MUST deploy to Railway and verify it builds and runs without errors. If the deploy fails (build error, runtime error, or health check failure), fix the errors and redeploy — repeat until the deploy succeeds with no errors.
+
 ## Commit Messages
 
 Use conventional commits: `feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `style:`, `chore:`
