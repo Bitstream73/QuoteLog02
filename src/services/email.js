@@ -16,7 +16,7 @@ export async function sendPasswordResetEmail(to, resetUrl) {
   }
 
   await resend.emails.send({
-    from: 'Quote Log <noreply@updates.karlsmark.com>',
+    from: 'Quote Log <noreply@karlsmark.com>',
     to,
     subject: 'Password Reset — The Quote Log',
     html: `
