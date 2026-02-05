@@ -67,6 +67,11 @@ async function runFetchCycle() {
   const lookbackHours = parseInt(getSettingValue('article_lookback_hours', '24'), 10);
   const maxArticles = parseInt(getSettingValue('max_articles_per_cycle', '100'), 10);
 
+  logger.info('scheduler', 'sources_loaded', {
+    count: sources.length,
+    domains: sources.map(s => s.domain),
+  });
+
   let totalNewArticles = 0;
   let totalNewQuotes = 0;
   const errors = [];

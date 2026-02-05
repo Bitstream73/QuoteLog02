@@ -33,6 +33,20 @@ router.post('/', requireAdmin, async (req, res) => {
   // Remove trailing slash and path
   domain = domain.split('/')[0];
 
+  // Extract root domain (e.g., "rss.cnn.com" -> "cnn.com", "feeds.bbci.co.uk" -> "bbci.co.uk")
+  // Keep last 2 parts, or last 3 if second-to-last is short (co, com, org, etc. for ccTLDs)
+  const domainParts = domain.split('.');
+  if (domainParts.length > 2) {
+    const sld = domainParts[domainParts.length - 2];
+    if (['co', 'com', 'org', 'net', 'gov', 'ac', 'edu'].includes(sld)) {
+      // ccTLD like .co.uk, .com.au — keep last 3 parts
+      domain = domainParts.slice(-3).join('.');
+    } else {
+      // Regular subdomain — keep last 2 parts
+      domain = domainParts.slice(-2).join('.');
+    }
+  }
+
   // Basic domain validation
   if (!/^[a-z0-9]+([\-\.]{1}[a-z0-9]+)*\.[a-z]{2,}$/.test(domain)) {
     return res.status(400).json({ error: 'Invalid domain format' });
@@ -74,7 +88,7 @@ router.post('/', requireAdmin, async (req, res) => {
 router.patch('/:id', requireAdmin, (req, res) => {
   const db = getDb();
   const { id } = req.params;
-  const { name, rss_url, enabled } = req.body;
+  const { domain, name, rss_url, enabled } = req.body;
 
   const source = db.prepare('SELECT * FROM sources WHERE id = ?').get(id);
   if (!source) {
@@ -84,6 +98,10 @@ router.patch('/:id', requireAdmin, (req, res) => {
   const updates = [];
   const values = [];
 
+  if (domain !== undefined) {
+    updates.push('domain = ?');
+    values.push(domain.trim().toLowerCase());
+  }
   if (name !== undefined) {
     updates.push('name = ?');
     values.push(name);

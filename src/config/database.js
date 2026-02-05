@@ -63,6 +63,24 @@ function initializeTables(db) {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_sources_domain ON sources(domain)`);
   }
 
+  // Migration: normalize source domains to root domain (e.g., rss.cnn.com -> cnn.com)
+  const sourcesWithSubdomains = db.prepare(
+    "SELECT id, domain FROM sources WHERE domain LIKE '%.%.%'"
+  ).all();
+  for (const src of sourcesWithSubdomains) {
+    const parts = src.domain.split('.');
+    let rootDomain;
+    const sld = parts[parts.length - 2];
+    if (['co', 'com', 'org', 'net', 'gov', 'ac', 'edu'].includes(sld)) {
+      rootDomain = parts.slice(-3).join('.');
+    } else {
+      rootDomain = parts.slice(-2).join('.');
+    }
+    if (rootDomain !== src.domain) {
+      db.prepare('UPDATE sources SET domain = ? WHERE id = ?').run(rootDomain, src.id);
+    }
+  }
+
   // Articles - Tracked articles (prevents re-processing)
   db.exec(`
     CREATE TABLE IF NOT EXISTS articles (

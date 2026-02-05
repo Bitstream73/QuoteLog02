@@ -73,9 +73,11 @@ export async function fetchArticlesFromSource(source, lookbackHours) {
       }
 
       // Only include articles from the source domain
+      // Match if hostname ends with the source domain (handles subdomains like www.cnn.com matching cnn.com)
       try {
         const urlObj = new URL(url);
-        if (!urlObj.hostname.includes(source.domain)) continue;
+        const hostname = urlObj.hostname.toLowerCase();
+        if (hostname !== source.domain && !hostname.endsWith('.' + source.domain)) continue;
       } catch {
         continue;
       }
@@ -87,8 +89,9 @@ export async function fetchArticlesFromSource(source, lookbackHours) {
       });
     }
 
-    logger.debug('fetcher', 'feed_parsed', {
+    logger.info('fetcher', 'feed_parsed', {
       domain: source.domain,
+      feedUrl,
       total: feed.items?.length || 0,
       filtered: articles.length,
     });
