@@ -27,6 +27,7 @@ async function renderSettings() {
         <div class="add-source-form">
           <input type="text" id="new-source-domain" placeholder="e.g., reuters.com" class="input-text">
           <input type="text" id="new-source-name" placeholder="Display name (optional)" class="input-text">
+          <input type="text" id="new-source-rss" placeholder="RSS feed URL (optional, auto-detected)" class="input-text">
           <button class="btn btn-primary" onclick="addSource()">Add Source</button>
         </div>
 
@@ -162,9 +163,11 @@ function renderSourceRow(source) {
 async function addSource() {
   const domainInput = document.getElementById('new-source-domain');
   const nameInput = document.getElementById('new-source-name');
+  const rssInput = document.getElementById('new-source-rss');
 
   const domain = domainInput.value.trim();
   const name = nameInput.value.trim();
+  const rss_url = rssInput.value.trim();
 
   if (!domain) {
     alert('Please enter a domain');
@@ -172,7 +175,11 @@ async function addSource() {
   }
 
   try {
-    const result = await API.post('/sources', { domain, name: name || undefined });
+    const result = await API.post('/sources', {
+      domain,
+      name: name || undefined,
+      rss_url: rss_url || undefined,
+    });
 
     // Add to list
     const sourcesList = document.getElementById('sources-list');
@@ -184,6 +191,7 @@ async function addSource() {
     // Clear inputs
     domainInput.value = '';
     nameInput.value = '';
+    rssInput.value = '';
   } catch (err) {
     alert('Error adding source: ' + err.message);
   }

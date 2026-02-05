@@ -27,10 +27,11 @@ export function getDb() {
 
 function initializeTables(db) {
   // Sources - User-configured reputable news sources
+  // domain is NOT unique — multiple feeds from the same domain are allowed (e.g. CNN Politics, CNN World)
   db.exec(`
     CREATE TABLE IF NOT EXISTS sources (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      domain TEXT NOT NULL UNIQUE,
+      domain TEXT NOT NULL,
       name TEXT,
       rss_url TEXT,
       enabled INTEGER NOT NULL DEFAULT 1,
@@ -39,6 +40,28 @@ function initializeTables(db) {
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_sources_domain ON sources(domain)`);
+
+  // Migration: remove UNIQUE constraint from domain column (allow multiple feeds per domain)
+  const domainColInfo = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='sources'").get();
+  if (domainColInfo && domainColInfo.sql.includes('domain TEXT NOT NULL UNIQUE')) {
+    db.exec(`
+      ALTER TABLE sources RENAME TO sources_old;
+      CREATE TABLE sources (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        domain TEXT NOT NULL,
+        name TEXT,
+        rss_url TEXT,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        consecutive_failures INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      INSERT INTO sources SELECT * FROM sources_old;
+      DROP TABLE sources_old;
+    `);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_sources_domain ON sources(domain)`);
+  }
 
   // Articles - Tracked articles (prevents re-processing)
   db.exec(`

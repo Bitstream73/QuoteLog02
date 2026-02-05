@@ -45,16 +45,18 @@ router.post('/', requireAdmin, async (req, res) => {
     name = parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
   }
 
-  // Check if domain already exists
-  const existing = db.prepare('SELECT id FROM sources WHERE domain = ?').get(domain);
-  if (existing) {
-    return res.status(409).json({ error: 'Source with this domain already exists' });
-  }
-
   try {
     // Try to auto-discover RSS feed if not provided
     if (!rss_url) {
       rss_url = await discoverRssFeed(domain);
+    }
+
+    // Check for duplicate by rss_url (same feed URL = true duplicate)
+    if (rss_url) {
+      const existing = db.prepare('SELECT id FROM sources WHERE rss_url = ?').get(rss_url);
+      if (existing) {
+        return res.status(409).json({ error: 'A source with this RSS feed URL already exists' });
+      }
     }
 
     const result = db.prepare(
