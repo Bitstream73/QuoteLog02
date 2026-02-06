@@ -5,6 +5,8 @@ import { fetchArticlesFromSource, processArticle } from './articleFetcher.js';
 let fetchTimer = null;
 let appInstance = null;
 let cycleRunning = false;
+let lastCycleStartedAt = null;
+let nextCycleAt = null;
 
 /**
  * Start the fetch scheduler
@@ -25,8 +27,12 @@ export function startFetchScheduler(app) {
     });
   }
 
+  // Track next cycle time
+  nextCycleAt = Date.now() + intervalMs;
+
   // Then run on interval
   fetchTimer = setInterval(() => {
+    nextCycleAt = Date.now() + intervalMs;
     if (!cycleRunning) {
       runFetchCycle().catch(err => {
         logger.error('scheduler', 'fetch_cycle_error', { error: err.message });
@@ -74,6 +80,7 @@ async function runFetchCycle() {
   const io = appInstance?.get('io');
 
   try {
+    lastCycleStartedAt = Date.now();
     logger.info('scheduler', 'fetch_cycle_start', {});
     console.log('Starting fetch cycle...');
 
@@ -200,4 +207,30 @@ async function insertNewArticles(articles, sourceId, db) {
   return inserted;
 }
 
-export default { startFetchScheduler, stopFetchScheduler, restartFetchScheduler };
+/**
+ * Trigger a fetch cycle immediately (manual "Fetch Now")
+ */
+export function triggerFetchNow() {
+  if (cycleRunning) {
+    return { started: false, reason: 'cycle_already_running' };
+  }
+  runFetchCycle().catch(err => {
+    logger.error('scheduler', 'manual_fetch_error', { error: err.message });
+  });
+  return { started: true };
+}
+
+/**
+ * Get scheduler status for the frontend countdown timer
+ */
+export function getSchedulerStatus() {
+  const intervalMinutes = parseInt(getSettingValue('fetch_interval_minutes', '15'), 10);
+  return {
+    running: cycleRunning,
+    intervalMinutes,
+    lastCycleStartedAt: lastCycleStartedAt ? new Date(lastCycleStartedAt).toISOString() : null,
+    nextCycleAt: nextCycleAt ? new Date(nextCycleAt).toISOString() : null,
+  };
+}
+
+export default { startFetchScheduler, stopFetchScheduler, restartFetchScheduler, triggerFetchNow, getSchedulerStatus };

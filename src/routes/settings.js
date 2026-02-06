@@ -106,4 +106,21 @@ router.patch('/', requireAdmin, (req, res) => {
   res.json(settings);
 });
 
+// Get scheduler status (for countdown timer)
+router.get('/scheduler', requireAdmin, async (req, res) => {
+  const { getSchedulerStatus } = await import('../services/scheduler.js');
+  res.json(getSchedulerStatus());
+});
+
+// Trigger immediate fetch
+router.post('/fetch-now', requireAdmin, async (req, res) => {
+  const { triggerFetchNow } = await import('../services/scheduler.js');
+  const result = triggerFetchNow();
+  if (result.started) {
+    res.json({ message: 'Fetch cycle started' });
+  } else {
+    res.status(409).json({ error: 'A fetch cycle is already running' });
+  }
+});
+
 export default router;

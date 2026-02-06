@@ -42,6 +42,14 @@ async function renderSettings() {
       <div class="settings-section">
         <h2>Fetch Settings</h2>
 
+        <div class="setting-row" style="align-items:center">
+          <label>
+            <span class="setting-label">Next Fetch</span>
+            <span class="setting-description" id="scheduler-status">Loading...</span>
+          </label>
+          <button class="btn btn-primary" id="fetch-now-btn" onclick="fetchNow()">Fetch Now</button>
+        </div>
+
         <div class="setting-row">
           <label>
             <span class="setting-label">Fetch Interval (minutes)</span>
@@ -130,6 +138,9 @@ async function renderSettings() {
     `;
 
     content.innerHTML = html;
+
+    // Start scheduler countdown
+    startSchedulerCountdown();
 
     // Load logs section
     await loadLogsStats();
@@ -242,5 +253,87 @@ async function updateTheme(theme) {
     await API.put('/settings', { theme });
   } catch (err) {
     console.error('Failed to update theme:', err);
+  }
+}
+
+let countdownInterval = null;
+let nextCycleTime = null;
+
+async function startSchedulerCountdown() {
+  // Clear any existing interval
+  if (countdownInterval) clearInterval(countdownInterval);
+
+  try {
+    const status = await API.get('/settings/scheduler');
+    nextCycleTime = status.nextCycleAt ? new Date(status.nextCycleAt).getTime() : null;
+
+    const btn = document.getElementById('fetch-now-btn');
+    if (status.running) {
+      btn.disabled = true;
+      btn.textContent = 'Fetching...';
+    }
+
+    updateCountdownDisplay();
+    countdownInterval = setInterval(updateCountdownDisplay, 1000);
+  } catch (err) {
+    const el = document.getElementById('scheduler-status');
+    if (el) el.textContent = 'Unable to load scheduler status';
+  }
+}
+
+function updateCountdownDisplay() {
+  const el = document.getElementById('scheduler-status');
+  if (!el) {
+    if (countdownInterval) clearInterval(countdownInterval);
+    return;
+  }
+
+  if (!nextCycleTime) {
+    el.textContent = 'No fetch scheduled';
+    return;
+  }
+
+  const remaining = nextCycleTime - Date.now();
+  if (remaining <= 0) {
+    el.textContent = 'Fetch starting...';
+    // Refresh status after a short delay
+    setTimeout(() => startSchedulerCountdown(), 5000);
+    return;
+  }
+
+  const mins = Math.floor(remaining / 60000);
+  const secs = Math.floor((remaining % 60000) / 1000);
+  el.textContent = `Next fetch in ${mins}m ${secs.toString().padStart(2, '0')}s`;
+}
+
+async function fetchNow() {
+  const btn = document.getElementById('fetch-now-btn');
+  btn.disabled = true;
+  btn.textContent = 'Fetching...';
+
+  try {
+    await API.post('/settings/fetch-now');
+    const el = document.getElementById('scheduler-status');
+    if (el) el.textContent = 'Fetch cycle running...';
+
+    // Poll for completion
+    const pollInterval = setInterval(async () => {
+      try {
+        const status = await API.get('/settings/scheduler');
+        if (!status.running) {
+          clearInterval(pollInterval);
+          btn.disabled = false;
+          btn.textContent = 'Fetch Now';
+          nextCycleTime = status.nextCycleAt ? new Date(status.nextCycleAt).getTime() : null;
+          updateCountdownDisplay();
+        }
+      } catch (e) {
+        // ignore polling errors
+      }
+    }, 3000);
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = 'Fetch Now';
+    alert('Error: ' + err.message);
   }
 }
