@@ -617,6 +617,139 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
 }
 
 /* ===================================
+   New Quote Layout — Headshot + Content
+   =================================== */
+.quote-layout {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.quote-headshot-col {
+  flex-shrink: 0;
+}
+
+.quote-headshot {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--border);
+}
+
+.quote-headshot-placeholder {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--bg-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-headline);
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  border: 2px solid var(--border);
+}
+
+.quote-content-col {
+  flex: 1;
+  min-width: 0;
+}
+
+.quote-text-row {
+  margin-bottom: 0.25rem;
+}
+
+.quote-author-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+  font-family: var(--font-ui);
+}
+
+.quote-date-inline {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-family: var(--font-ui);
+}
+
+.quote-sources-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  margin-bottom: 0.25rem;
+}
+
+.quote-primary-source {
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding: 0.2rem 0.5rem;
+  background: var(--bg-secondary);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+
+.quote-article-title {
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+  font-style: italic;
+  color: var(--text-muted);
+}
+
+.quote-context-toggle {
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+  margin-top: 0.25rem;
+}
+
+.quote-context-toggle:hover {
+  color: var(--accent);
+}
+
+.context-arrow {
+  font-size: 0.7rem;
+  display: inline-block;
+  margin-right: 0.25rem;
+}
+
+.quote-context {
+  font-family: var(--font-ui);
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  padding: 0.5rem 0.75rem;
+  margin-top: 0.25rem;
+  border-left: 3px solid var(--accent);
+  background: var(--bg-secondary);
+  line-height: 1.5;
+}
+
+.quote-hidden {
+  opacity: 0.4;
+}
+
+.btn-visibility {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.9rem;
+  padding: 0 0.25rem;
+  line-height: 1;
+  opacity: 0.6;
+}
+
+.btn-visibility:hover {
+  opacity: 1;
+}
+
+/* ===================================
    Review Badge
    =================================== */
 .nav-link-review {
@@ -1058,6 +1191,14 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   border: 2px solid var(--border);
 }
 
+.author-avatar-img {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--border);
+}
+
 .author-info {
   flex: 1;
 }
@@ -1176,6 +1317,15 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
 /* ===================================
    Responsive Design
    =================================== */
+@media (max-width: 480px) {
+  .quote-layout {
+    flex-direction: column;
+  }
+  .quote-headshot-col {
+    margin-bottom: 0.5rem;
+  }
+}
+
 @media (max-width: 768px) {
   nav { padding: 0.75rem 1rem; }
   .logo { font-size: 1.5rem; }

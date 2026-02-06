@@ -147,6 +147,14 @@ async function renderSettings() {
             <button class="btn btn-secondary" onclick="document.getElementById('import-db-file').click()">Import JSON</button>
           </div>
         </div>
+
+        <div class="setting-row" style="align-items:center">
+          <label>
+            <span class="setting-label">Backfill Headshots</span>
+            <span class="setting-description">Fetch headshot photos from Wikipedia for persons without one</span>
+          </label>
+          <button class="btn btn-secondary" id="backfill-headshots-btn" onclick="backfillHeadshots()">Backfill Headshots</button>
+        </div>
       </div>
 
       <!-- Logs Section -->
@@ -384,6 +392,22 @@ async function exportDatabase() {
   } finally {
     btn.disabled = false;
     btn.textContent = 'Export JSON';
+  }
+}
+
+async function backfillHeadshots() {
+  const btn = document.getElementById('backfill-headshots-btn');
+  btn.disabled = true;
+  btn.textContent = 'Backfilling...';
+
+  try {
+    const result = await API.post('/admin/backfill-headshots', { limit: 50 });
+    alert(`Backfill complete: ${result.found} headshots found out of ${result.processed} persons processed.`);
+  } catch (err) {
+    alert('Backfill failed: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Backfill Headshots';
   }
 }
 

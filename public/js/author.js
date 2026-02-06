@@ -24,13 +24,17 @@ async function renderAuthor(id) {
     const aliases = authorData.aliases || [];
     const initial = a.name.charAt(0).toUpperCase();
 
+    const avatarHtml = a.photoUrl
+      ? `<img src="${escapeHtml(a.photoUrl)}" alt="${escapeHtml(a.name)}" class="author-avatar-img" onerror="this.outerHTML='<div class=\\'author-avatar\\'>${initial}</div>'">`
+      : `<div class="author-avatar">${initial}</div>`;
+
     let html = `
       <p style="margin-bottom:1.5rem;font-family:var(--font-ui);font-size:0.85rem">
         <a href="/" onclick="navigate(event, '/')" style="color:var(--accent);text-decoration:none">&larr; Back to quotes</a>
       </p>
 
       <div class="author-header">
-        <div class="author-avatar">${initial}</div>
+        ${avatarHtml}
         <div class="author-info">
           <h1 class="page-title">${escapeHtml(a.name)}</h1>
           ${a.disambiguation ? `<p class="author-disambiguation">${escapeHtml(a.disambiguation)}</p>` : ''}

@@ -16,33 +16,132 @@ function extractDomain(url) {
 }
 
 /**
- * Build HTML for a single quote entry
+ * Build HTML for a single quote entry with new layout:
+ * |Headshot| |Quote text| - |Author|
+ * |       | |Primary Source| |addl. sources|
+ * |       | |twirl down context|
  */
 function buildQuoteEntryHtml(q) {
   const isLong = q.text.length > 280;
   const truncatedText = isLong ? q.text.substring(0, 280) + '...' : q.text;
-  const sourceLinks = (q.sourceUrls || [])
-    .map(url => `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="source-link">${escapeHtml(extractDomain(url))}</a>`)
-    .join(' ');
 
   if (isLong) {
     _quoteTexts[q.id] = q.text;
   }
 
+  // Headshot or initial placeholder
+  const initial = (q.personName || '?').charAt(0).toUpperCase();
+  const headshotHtml = q.photoUrl
+    ? `<img src="${escapeHtml(q.photoUrl)}" alt="${escapeHtml(q.personName)}" class="quote-headshot" onerror="this.outerHTML='<div class=\\'quote-headshot-placeholder\\'>${initial}</div>'">`
+    : `<div class="quote-headshot-placeholder">${initial}</div>`;
+
+  // Source links
+  const sourceLinks = (q.sourceUrls || [])
+    .map(url => `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="source-link">${escapeHtml(extractDomain(url))}</a>`)
+    .join(' ');
+
+  // Primary source display
+  const primarySource = q.primarySourceName || q.primarySourceDomain || '';
+  const primarySourceHtml = primarySource
+    ? `<span class="quote-primary-source">${escapeHtml(primarySource)}</span>`
+    : '';
+
+  // Article title
+  const articleTitleHtml = q.articleTitle
+    ? `<span class="quote-article-title">${escapeHtml(q.articleTitle)}</span>`
+    : '';
+
+  // Publish date
+  const dateStr = q.articlePublishedAt
+    ? new Date(q.articlePublishedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    : '';
+  const dateHtml = dateStr ? `<span class="quote-date-inline">${dateStr}</span>` : '';
+
+  // Visibility toggle (admin only)
+  const hiddenClass = q.isVisible === 0 ? ' quote-hidden' : '';
+  const visibilityBtn = isAdmin
+    ? `<button class="btn-visibility" onclick="toggleVisibility(event, ${q.id}, ${q.isVisible === 0 ? 'true' : 'false'})" title="${q.isVisible === 0 ? 'Show quote' : 'Hide quote'}">${q.isVisible === 0 ? '&#x1f441;&#xfe0f;&#x200d;&#x1f5e8;' : '&#x1f441;'}</button>`
+    : '';
+
+  // Context section (expandable)
+  const contextHtml = q.context
+    ? `<div class="quote-context-toggle" onclick="toggleContext(event, ${q.id})">
+        <span class="context-arrow" id="ctx-arrow-${q.id}">&#x25b6;</span> Context
+      </div>
+      <div class="quote-context" id="ctx-${q.id}" style="display:none">${escapeHtml(q.context)}</div>`
+    : '';
+
   return `
-    <div class="quote-entry">
-      <blockquote>
-        <p class="quote-text" id="qt-${q.id}">${escapeHtml(truncatedText)}</p>
-        ${isLong ? `<a href="#" class="show-more-toggle" onclick="toggleQuoteText(event, ${q.id})">show more</a>` : ''}
-        <cite>
-          &mdash; <a href="/author/${q.personId}" onclick="navigate(event, '/author/${q.personId}')" class="author-link">${escapeHtml(q.personName)}</a>
-        </cite>
-      </blockquote>
-      <div class="quote-sources">
-        ${sourceLinks}
+    <div class="quote-entry${hiddenClass}" id="qe-${q.id}">
+      <div class="quote-layout">
+        <div class="quote-headshot-col">
+          ${headshotHtml}
+        </div>
+        <div class="quote-content-col">
+          <div class="quote-text-row">
+            <p class="quote-text" id="qt-${q.id}">${escapeHtml(truncatedText)}</p>
+            ${isLong ? `<a href="#" class="show-more-toggle" onclick="toggleQuoteText(event, ${q.id})">show more</a>` : ''}
+          </div>
+          <div class="quote-author-row">
+            <a href="/author/${q.personId}" onclick="navigate(event, '/author/${q.personId}')" class="author-link">${escapeHtml(q.personName)}</a>
+            ${dateHtml}
+            ${visibilityBtn}
+          </div>
+          <div class="quote-sources-row">
+            ${primarySourceHtml}
+            ${sourceLinks}
+            ${articleTitleHtml}
+          </div>
+          ${contextHtml}
+        </div>
       </div>
     </div>
   `;
+}
+
+/**
+ * Toggle context expand/collapse
+ */
+function toggleContext(event, quoteId) {
+  event.preventDefault();
+  const ctx = document.getElementById('ctx-' + quoteId);
+  const arrow = document.getElementById('ctx-arrow-' + quoteId);
+  if (!ctx) return;
+
+  if (ctx.style.display === 'none') {
+    ctx.style.display = 'block';
+    if (arrow) arrow.innerHTML = '&#x25bc;';
+  } else {
+    ctx.style.display = 'none';
+    if (arrow) arrow.innerHTML = '&#x25b6;';
+  }
+}
+
+/**
+ * Toggle quote visibility (admin PATCH call)
+ */
+async function toggleVisibility(event, quoteId, newVisible) {
+  event.preventDefault();
+  try {
+    await API.patch(`/quotes/${quoteId}/visibility`, { isVisible: newVisible });
+    const entry = document.getElementById('qe-' + quoteId);
+    if (entry) {
+      if (newVisible) {
+        entry.classList.remove('quote-hidden');
+      } else {
+        entry.classList.add('quote-hidden');
+      }
+      // Re-render just the visibility button
+      const btn = entry.querySelector('.btn-visibility');
+      if (btn) {
+        btn.setAttribute('onclick', `toggleVisibility(event, ${quoteId}, ${!newVisible})`);
+        btn.setAttribute('title', newVisible ? 'Hide quote' : 'Show quote');
+        btn.innerHTML = newVisible ? '&#x1f441;' : '&#x1f441;&#xfe0f;&#x200d;&#x1f5e8;';
+      }
+    }
+  } catch (err) {
+    console.error('Failed to toggle visibility:', err);
+  }
 }
 
 /**
@@ -174,10 +273,10 @@ function handleNewQuotes(quotes) {
     if (quoteEntries.length > 0) {
       const firstEntry = quoteEntries[0];
       for (const q of quotes.reverse()) {
-        const newEntry = document.createElement('div');
-        newEntry.className = 'quote-entry new-quote';
-        newEntry.innerHTML = buildQuoteEntryHtml(q).replace('<div class="quote-entry">', '').replace(/<\/div>\s*$/, '');
-
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = buildQuoteEntryHtml(q);
+        const newEntry = wrapper.firstElementChild;
+        newEntry.classList.add('new-quote');
         firstEntry.parentNode.insertBefore(newEntry, firstEntry);
 
         // Remove animation class after animation completes
