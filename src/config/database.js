@@ -51,10 +51,28 @@ export async function initDbAsync() {
   dbInitPromise = (async () => {
     const dbPath = config.databasePath;
     const dbDir = path.dirname(dbPath);
-    const maxRetries = 30;
+    const maxRetries = 60;
     const retryDelayMs = 2000;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      // Diagnostic logging every 5 attempts
+      if (attempt === 1 || attempt % 5 === 0) {
+        const dirExists = fs.existsSync(dbDir);
+        let writable = false;
+        let dirContents = [];
+        let statInfo = null;
+        try {
+          fs.accessSync(dbDir, fs.constants.W_OK);
+          writable = true;
+        } catch { writable = false; }
+        try { dirContents = fs.readdirSync(dbDir); } catch { dirContents = ['<unreadable>']; }
+        try {
+          const s = fs.statSync(dbDir);
+          statInfo = { uid: s.uid, gid: s.gid, mode: s.mode.toString(8) };
+        } catch { statInfo = null; }
+        console.log(`[startup] DB diagnostics (attempt ${attempt}): path=${dbPath}, dir=${dbDir}, exists=${dirExists}, writable=${writable}, contents=[${dirContents.join(',')}], stat=${JSON.stringify(statInfo)}, pid_uid=${process.getuid?.() ?? 'N/A'}`);
+      }
+
       try {
         if (!fs.existsSync(dbDir)) {
           fs.mkdirSync(dbDir, { recursive: true });
@@ -73,8 +91,9 @@ export async function initDbAsync() {
         return db;
       } catch (err) {
         if (err.code === 'SQLITE_CANTOPEN' && attempt < maxRetries) {
-          console.warn(`[startup] Database open failed (attempt ${attempt}/${maxRetries}): ${err.message}`);
-          console.warn(`[startup] Volume may not be mounted yet. Retrying in ${retryDelayMs}ms...`);
+          if (attempt <= 3 || attempt % 10 === 0) {
+            console.warn(`[startup] Database open failed (attempt ${attempt}/${maxRetries}): ${err.message}`);
+          }
           await new Promise(resolve => setTimeout(resolve, retryDelayMs));
           db = null;
         } else {
