@@ -260,14 +260,14 @@ function mergeQuotes(canonicalId, variantIds, db) {
  * Main deduplication and insert function
  */
 export async function insertAndDeduplicateQuote(quoteData, personId, article, db) {
-  const { text, quoteType, context, sourceUrl } = quoteData;
+  const { text, quoteType, context, sourceUrl, rssMetadata } = quoteData;
 
   // Find duplicate candidates
   const candidates = await findDuplicateCandidates(text, personId, db);
 
   if (candidates.length === 0) {
     // No duplicates - insert new quote
-    return insertNewQuote(text, quoteType, context, sourceUrl, personId, article.id, db);
+    return insertNewQuote(text, quoteType, context, sourceUrl, personId, article.id, db, rssMetadata);
   }
 
   // Check each candidate
@@ -354,19 +354,19 @@ export async function insertAndDeduplicateQuote(quoteData, personId, article, db
   }
 
   // No strong duplicate found - insert as new
-  return insertNewQuote(text, quoteType, context, sourceUrl, personId, article.id, db);
+  return insertNewQuote(text, quoteType, context, sourceUrl, personId, article.id, db, rssMetadata);
 }
 
 /**
  * Insert a new quote
  */
-function insertNewQuote(text, quoteType, context, sourceUrl, personId, articleId, db) {
+function insertNewQuote(text, quoteType, context, sourceUrl, personId, articleId, db, rssMetadata) {
   const sourceUrls = JSON.stringify([sourceUrl]);
 
   const result = db.prepare(`INSERT INTO quotes
-    (person_id, text, quote_type, context, source_urls)
-    VALUES (?, ?, ?, ?, ?)`)
-    .run(personId, text, quoteType || 'direct', context, sourceUrls);
+    (person_id, text, quote_type, context, source_urls, rss_metadata)
+    VALUES (?, ?, ?, ?, ?, ?)`)
+    .run(personId, text, quoteType || 'direct', context, sourceUrls, rssMetadata || null);
 
   const quoteId = result.lastInsertRowid;
 

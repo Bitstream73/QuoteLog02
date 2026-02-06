@@ -68,6 +68,8 @@ For each quote, return:
 - quote_text: The exact quoted text as it appears in quotation marks. Use the verbatim words only.
 - speaker: The full name of the person being quoted. Never use pronouns — resolve "he", "she", "they" to the actual name.
 - speaker_title: Their role, title, or affiliation as mentioned in the article (e.g., "CEO of Apple", "U.S. Senator"). Null if not mentioned.
+- speaker_category: One of: "Politician", "Government Official", "Business Leader", "Entertainer", "Athlete", "Pundit", "Journalist", "Scientist/Academic", "Legal/Judicial", "Military/Defense", "Activist/Advocate", "Religious Leader", "Other". Choose based on the speaker's primary public role.
+- speaker_category_context: Brief context for the category. For Politicians: party and office (e.g. "Republican, U.S. Senator from Texas"). For Athletes: team and sport (e.g. "Los Angeles Lakers, NBA"). For Business Leaders: company and title. For Entertainers: medium and notable works. For Pundits/Journalists: outlet. For others: relevant affiliation. Null if unknown.
 - quote_type: Always "direct".
 - context: One sentence describing what the quote is about and why it was said.
 
@@ -200,8 +202,26 @@ export async function extractQuotesFromArticle(articleText, article, db, io) {
       // Resolve person (disambiguation)
       const personId = await resolvePersonId(q.speaker, q.speaker_title, q.context, article, db);
 
+      // Update person category if provided by extraction
+      if (q.speaker_category) {
+        const existingPerson = db.prepare('SELECT category FROM persons WHERE id = ?').get(personId);
+        if (!existingPerson?.category || existingPerson.category === 'Other') {
+          db.prepare('UPDATE persons SET category = ?, category_context = ? WHERE id = ?')
+            .run(q.speaker_category, q.speaker_category_context || null, personId);
+        }
+      }
+
       // Fire-and-forget headshot fetch
       fetchAndStoreHeadshot(personId, q.speaker).catch(() => {});
+
+      // Build RSS metadata from article info
+      const rssMetadata = {
+        articleUrl: article.url,
+        articleTitle: article.title || null,
+        publishedAt: article.published_at || null,
+        sourceId: article.source_id || null,
+        domain: article.domain || null,
+      };
 
       // Insert and deduplicate quote (use article summary as context fallback)
       const quoteData = await insertAndDeduplicateQuote(
@@ -210,6 +230,7 @@ export async function extractQuotesFromArticle(articleText, article, db, io) {
           quoteType: q.quote_type,
           context: q.context || articleSummary || null,
           sourceUrl: article.url,
+          rssMetadata: JSON.stringify(rssMetadata),
         },
         personId,
         article,

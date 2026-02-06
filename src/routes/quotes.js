@@ -20,39 +20,54 @@ function isAdminRequest(req) {
   }
 }
 
-// Get paginated quotes for homepage
+// Get paginated quotes for homepage (supports category filter and article grouping)
 router.get('/', (req, res) => {
   const db = getDb();
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 50;
   const offset = (page - 1) * limit;
   const admin = isAdminRequest(req);
+  const category = req.query.category || null;
+  const search = req.query.search || null;
 
   const visibilityFilter = admin ? '' : 'AND q.is_visible = 1';
+  const categoryFilter = category && category !== 'All' ? 'AND p.category = ?' : '';
+  const searchFilter = search ? 'AND (q.text LIKE ? OR p.canonical_name LIKE ? OR p.category LIKE ?)' : '';
+
+  const params = [];
+  if (categoryFilter) params.push(category);
+  if (searchFilter) {
+    const searchTerm = `%${search}%`;
+    params.push(searchTerm, searchTerm, searchTerm);
+  }
 
   // Count total canonical quotes (not variants)
   const total = db.prepare(
-    `SELECT COUNT(*) as count FROM quotes q WHERE q.canonical_quote_id IS NULL ${visibilityFilter}`
-  ).get().count;
+    `SELECT COUNT(*) as count FROM quotes q
+     JOIN persons p ON q.person_id = p.id
+     WHERE q.canonical_quote_id IS NULL ${visibilityFilter} ${categoryFilter} ${searchFilter}`
+  ).get(...params).count;
 
   // Get quotes with person info + first linked article/source
   const quotes = db.prepare(`
     SELECT q.id, q.text, q.source_urls, q.created_at, q.context, q.quote_type, q.is_visible,
-           p.id AS person_id, p.canonical_name, p.photo_url,
-           a.title AS article_title, a.published_at AS article_published_at,
+           q.rss_metadata,
+           p.id AS person_id, p.canonical_name, p.photo_url, p.category AS person_category,
+           p.category_context AS person_category_context,
+           a.id AS article_id, a.title AS article_title, a.published_at AS article_published_at, a.url AS article_url,
            s.domain AS primary_source_domain, s.name AS primary_source_name
     FROM quotes q
     JOIN persons p ON q.person_id = p.id
     LEFT JOIN quote_articles qa ON qa.quote_id = q.id
     LEFT JOIN articles a ON qa.article_id = a.id
     LEFT JOIN sources s ON a.source_id = s.id
-    WHERE q.canonical_quote_id IS NULL ${visibilityFilter}
+    WHERE q.canonical_quote_id IS NULL ${visibilityFilter} ${categoryFilter} ${searchFilter}
     GROUP BY q.id
     ORDER BY q.created_at DESC
     LIMIT ? OFFSET ?
-  `).all(limit, offset);
+  `).all(...params, limit, offset);
 
-  // Parse source_urls JSON
+  // Parse source_urls JSON and format
   const formattedQuotes = quotes.map(q => ({
     id: q.id,
     text: q.text,
@@ -62,19 +77,104 @@ router.get('/', (req, res) => {
     personId: q.person_id,
     personName: q.canonical_name,
     photoUrl: q.photo_url || null,
+    personCategory: q.person_category || 'Other',
+    personCategoryContext: q.person_category_context || null,
+    articleId: q.article_id || null,
     articleTitle: q.article_title || null,
     articlePublishedAt: q.article_published_at || null,
+    articleUrl: q.article_url || null,
     primarySourceDomain: q.primary_source_domain || null,
     primarySourceName: q.primary_source_name || null,
     sourceUrls: JSON.parse(q.source_urls || '[]'),
+    rssMetadata: q.rss_metadata ? JSON.parse(q.rss_metadata) : null,
     createdAt: q.created_at,
   }));
+
+  // Get available categories for tab rendering
+  const categories = db.prepare(`
+    SELECT DISTINCT p.category, COUNT(*) as count
+    FROM persons p
+    JOIN quotes q ON q.person_id = p.id
+    WHERE q.canonical_quote_id IS NULL ${admin ? '' : 'AND q.is_visible = 1'}
+    GROUP BY p.category
+    ORDER BY count DESC
+  `).all();
 
   res.json({
     quotes: formattedQuotes,
     total,
     page,
     totalPages: Math.ceil(total / limit),
+    categories,
+  });
+});
+
+// Search quotes (must be before /:id to avoid route conflict)
+router.get('/search', (req, res) => {
+  const db = getDb();
+  const { q: query } = req.query;
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.limit) || 50;
+  const offset = (page - 1) * limit;
+  const admin = isAdminRequest(req);
+
+  if (!query || query.trim().length < 2) {
+    return res.status(400).json({ error: 'Search query must be at least 2 characters' });
+  }
+
+  const visibilityFilter = admin ? '' : 'AND q.is_visible = 1';
+  const searchTerm = `%${query.trim()}%`;
+
+  const total = db.prepare(`
+    SELECT COUNT(*) as count FROM quotes q
+    JOIN persons p ON q.person_id = p.id
+    WHERE q.canonical_quote_id IS NULL ${visibilityFilter}
+    AND (q.text LIKE ? OR p.canonical_name LIKE ? OR p.category LIKE ? OR q.context LIKE ?)
+  `).get(searchTerm, searchTerm, searchTerm, searchTerm).count;
+
+  const quotes = db.prepare(`
+    SELECT q.id, q.text, q.source_urls, q.created_at, q.context, q.quote_type, q.is_visible,
+           p.id AS person_id, p.canonical_name, p.photo_url, p.category AS person_category,
+           p.category_context AS person_category_context,
+           a.id AS article_id, a.title AS article_title, a.published_at AS article_published_at, a.url AS article_url,
+           s.domain AS primary_source_domain, s.name AS primary_source_name
+    FROM quotes q
+    JOIN persons p ON q.person_id = p.id
+    LEFT JOIN quote_articles qa ON qa.quote_id = q.id
+    LEFT JOIN articles a ON qa.article_id = a.id
+    LEFT JOIN sources s ON a.source_id = s.id
+    WHERE q.canonical_quote_id IS NULL ${visibilityFilter}
+    AND (q.text LIKE ? OR p.canonical_name LIKE ? OR p.category LIKE ? OR q.context LIKE ?)
+    GROUP BY q.id
+    ORDER BY q.created_at DESC
+    LIMIT ? OFFSET ?
+  `).all(searchTerm, searchTerm, searchTerm, searchTerm, limit, offset);
+
+  res.json({
+    quotes: quotes.map(q => ({
+      id: q.id,
+      text: q.text,
+      context: q.context,
+      quoteType: q.quote_type,
+      isVisible: q.is_visible,
+      personId: q.person_id,
+      personName: q.canonical_name,
+      photoUrl: q.photo_url || null,
+      personCategory: q.person_category || 'Other',
+      personCategoryContext: q.person_category_context || null,
+      articleId: q.article_id || null,
+      articleTitle: q.article_title || null,
+      articlePublishedAt: q.article_published_at || null,
+      articleUrl: q.article_url || null,
+      primarySourceDomain: q.primary_source_domain || null,
+      primarySourceName: q.primary_source_name || null,
+      sourceUrls: JSON.parse(q.source_urls || '[]'),
+      createdAt: q.created_at,
+    })),
+    total,
+    page,
+    totalPages: Math.ceil(total / limit),
+    query: query.trim(),
   });
 });
 
@@ -169,6 +269,31 @@ router.patch('/:id/visibility', requireAdmin, (req, res) => {
   db.prepare('UPDATE quotes SET is_visible = ? WHERE id = ?').run(isVisible ? 1 : 0, req.params.id);
 
   res.json({ success: true, isVisible });
+});
+
+// Edit quote text (admin only)
+router.patch('/:id', requireAdmin, (req, res) => {
+  const db = getDb();
+  const { text, context } = req.body;
+
+  const quote = db.prepare('SELECT id FROM quotes WHERE id = ?').get(req.params.id);
+  if (!quote) {
+    return res.status(404).json({ error: 'Quote not found' });
+  }
+
+  if (text !== undefined) {
+    if (typeof text !== 'string' || text.trim().length === 0) {
+      return res.status(400).json({ error: 'Quote text cannot be empty' });
+    }
+    db.prepare('UPDATE quotes SET text = ? WHERE id = ?').run(text.trim(), req.params.id);
+  }
+
+  if (context !== undefined) {
+    db.prepare('UPDATE quotes SET context = ? WHERE id = ?').run(context || null, req.params.id);
+  }
+
+  const updated = db.prepare('SELECT * FROM quotes WHERE id = ?').get(req.params.id);
+  res.json({ success: true, quote: { id: updated.id, text: updated.text, context: updated.context } });
 });
 
 export default router;

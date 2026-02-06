@@ -173,12 +173,21 @@ function initializeTables(db) {
   if (!quoteCols.includes('is_visible')) {
     db.exec(`ALTER TABLE quotes ADD COLUMN is_visible INTEGER NOT NULL DEFAULT 1`);
   }
+  if (!quoteCols.includes('rss_metadata')) {
+    db.exec(`ALTER TABLE quotes ADD COLUMN rss_metadata TEXT`);
+  }
   db.exec(`CREATE INDEX IF NOT EXISTS idx_quotes_visible ON quotes(is_visible)`);
 
   // Migration: add photo_url column to persons
   const personCols = db.prepare("PRAGMA table_info(persons)").all().map(c => c.name);
   if (!personCols.includes('photo_url')) {
     db.exec(`ALTER TABLE persons ADD COLUMN photo_url TEXT`);
+  }
+  if (!personCols.includes('category')) {
+    db.exec(`ALTER TABLE persons ADD COLUMN category TEXT DEFAULT 'Other'`);
+  }
+  if (!personCols.includes('category_context')) {
+    db.exec(`ALTER TABLE persons ADD COLUMN category_context TEXT`);
   }
 
   // Quote-to-article link (many-to-many)

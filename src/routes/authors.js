@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import jwt from 'jsonwebtoken';
 import { getDb } from '../config/database.js';
+import { requireAdmin } from '../middleware/auth.js';
 import config from '../config/index.js';
 
 const router = Router();
@@ -26,7 +27,7 @@ router.get('/', (req, res) => {
   const total = db.prepare('SELECT COUNT(*) as count FROM persons').get().count;
 
   const authors = db.prepare(`
-    SELECT id, canonical_name, disambiguation, quote_count, last_seen_at
+    SELECT id, canonical_name, disambiguation, quote_count, last_seen_at, photo_url, category, category_context
     FROM persons
     ORDER BY quote_count DESC, last_seen_at DESC
     LIMIT ? OFFSET ?
@@ -76,12 +77,38 @@ router.get('/:id', (req, res) => {
       lastSeenAt: person.last_seen_at,
       wikidataId: person.wikidata_id,
       photoUrl: person.photo_url || null,
+      category: person.category || 'Other',
+      categoryContext: person.category_context || null,
       organizations: metadata.organizations || [],
       titles: metadata.titles || [],
       topics: metadata.topics || [],
     },
     aliases: aliases.map(a => ({ alias: a.alias, type: a.alias_type })),
   });
+});
+
+// Update author details (admin only)
+router.patch('/:id', requireAdmin, (req, res) => {
+  const db = getDb();
+  const { id } = req.params;
+  const { photoUrl, category, categoryContext } = req.body;
+
+  const person = db.prepare('SELECT id FROM persons WHERE id = ?').get(id);
+  if (!person) {
+    return res.status(404).json({ error: 'Author not found' });
+  }
+
+  if (photoUrl !== undefined) {
+    db.prepare('UPDATE persons SET photo_url = ? WHERE id = ?').run(photoUrl || null, id);
+  }
+  if (category !== undefined) {
+    db.prepare('UPDATE persons SET category = ? WHERE id = ?').run(category, id);
+  }
+  if (categoryContext !== undefined) {
+    db.prepare('UPDATE persons SET category_context = ? WHERE id = ?').run(categoryContext || null, id);
+  }
+
+  res.json({ success: true });
 });
 
 // Get quotes for a specific author
