@@ -4,6 +4,7 @@ import { getDb, getSettingValue } from '../config/database.js';
 import logger from './logger.js';
 import { resolvePersonId } from './nameDisambiguator.js';
 import { insertAndDeduplicateQuote } from './quoteDeduplicator.js';
+import { fetchAndStoreHeadshot } from './personPhoto.js';
 
 // Quote detection patterns
 const QUOTE_CHARS = /["\u201C\u201D]/;
@@ -61,16 +62,18 @@ async function extractQuotesWithGemini(articleText) {
     },
   });
 
-  const prompt = `You are a precise news quote extraction system. Extract ALL direct and indirect quotes from this news article.
+  const prompt = `You are a precise news quote extraction system. Extract ONLY direct, verbatim quotes from this news article.
 
 For each quote, return:
-- quote_text: The exact quoted text. For direct quotes, use the exact words. For indirect quotes, use the reported speech.
-- speaker: The full name of the person being quoted. Never use pronouns \u2014 resolve "he", "she", "they" to the actual name.
+- quote_text: The exact quoted text as it appears in quotation marks. Use the verbatim words only.
+- speaker: The full name of the person being quoted. Never use pronouns — resolve "he", "she", "they" to the actual name.
 - speaker_title: Their role, title, or affiliation as mentioned in the article (e.g., "CEO of Apple", "U.S. Senator"). Null if not mentioned.
-- quote_type: "direct" if in quotation marks, "indirect" if paraphrased/reported speech.
+- quote_type: Always "direct".
 - context: One sentence describing what the quote is about and why it was said.
 
 Rules:
+- ONLY extract verbatim quotes that appear inside quotation marks.
+- Do NOT extract indirect/reported speech, paraphrases, or descriptions of what someone said.
 - Only extract quotes attributed to a specific named person. Skip unattributed quotes.
 - If a quote spans multiple paragraphs, combine into one entry.
 - If a person is quoted multiple times, create separate entries for each distinct statement.
@@ -78,7 +81,7 @@ Rules:
 - For speaker names, use the most complete version that appears in the article.
 
 Return a JSON object: { "quotes": [...] }
-If there are no attributable quotes, return: { "quotes": [] }
+If there are no attributable direct quotes, return: { "quotes": [] }
 
 Article text:
 ${articleText.substring(0, 15000)}`;
@@ -114,6 +117,30 @@ ${articleText.substring(0, 15000)}`;
 }
 
 /**
+ * Generate a brief article summary for context fallback
+ */
+async function generateArticleSummary(articleText) {
+  if (!config.geminiApiKey) return null;
+
+  try {
+    const genAI = new GoogleGenerativeAI(config.geminiApiKey);
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-2.5-flash',
+      generationConfig: { temperature: 0.1 },
+    });
+
+    const result = await model.generateContent(
+      `Summarize this news article in 2-3 sentences. Focus on the main topic and key events.\n\nArticle:\n${articleText.substring(0, 5000)}`
+    );
+    const response = await result.response;
+    return response.text().trim() || null;
+  } catch (err) {
+    logger.warn('extractor', 'summary_generation_failed', { error: err.message });
+    return null;
+  }
+}
+
+/**
  * Main quote extraction pipeline for an article
  */
 export async function extractQuotesFromArticle(articleText, article, db, io) {
@@ -130,11 +157,17 @@ export async function extractQuotesFromArticle(articleText, article, db, io) {
     return [];
   }
 
-  // Step 3: Verify and filter quotes
+  // Step 3: Verify and filter quotes (direct only)
   const minWords = parseInt(getSettingValue('min_quote_words', '5'), 10);
   const verifiedQuotes = rawQuotes.filter(q => {
-    // Verify quote exists in article (for direct quotes)
-    if (q.quote_type === 'direct' && !verifyQuoteInArticle(q.quote_text, articleText)) {
+    // Reject non-direct quotes
+    if (q.quote_type !== 'direct') {
+      logger.debug('extractor', 'indirect_quote_skipped', { quote: q.quote_text?.substring(0, 50) });
+      return false;
+    }
+
+    // Verify quote exists in article
+    if (!verifyQuoteInArticle(q.quote_text, articleText)) {
       logger.debug('extractor', 'quote_not_verified', { quote: q.quote_text.substring(0, 50) });
       return false;
     }
@@ -153,6 +186,13 @@ export async function extractQuotesFromArticle(articleText, article, db, io) {
     return true;
   });
 
+  // Generate article summary as context fallback for quotes without context
+  let articleSummary = null;
+  const needsSummary = verifiedQuotes.some(q => !q.context);
+  if (needsSummary) {
+    articleSummary = await generateArticleSummary(articleText);
+  }
+
   // Step 4: Process each verified quote
   const insertedQuotes = [];
   for (const q of verifiedQuotes) {
@@ -160,12 +200,15 @@ export async function extractQuotesFromArticle(articleText, article, db, io) {
       // Resolve person (disambiguation)
       const personId = await resolvePersonId(q.speaker, q.speaker_title, q.context, article, db);
 
-      // Insert and deduplicate quote
+      // Fire-and-forget headshot fetch
+      fetchAndStoreHeadshot(personId, q.speaker).catch(() => {});
+
+      // Insert and deduplicate quote (use article summary as context fallback)
       const quoteData = await insertAndDeduplicateQuote(
         {
           text: q.quote_text,
           quoteType: q.quote_type,
-          context: q.context,
+          context: q.context || articleSummary || null,
           sourceUrl: article.url,
         },
         personId,

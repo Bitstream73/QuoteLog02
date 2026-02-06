@@ -184,11 +184,11 @@ export function importDatabaseJson(data) {
     // Import persons
     if (data.tables.persons) {
       const insertPerson = db.prepare(
-        `INSERT INTO persons (id, canonical_name, disambiguation, wikidata_id, first_seen_at, last_seen_at, quote_count, metadata)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO persons (id, canonical_name, disambiguation, wikidata_id, first_seen_at, last_seen_at, quote_count, metadata, photo_url)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
       );
       for (const row of data.tables.persons) {
-        insertPerson.run(row.id, row.canonical_name, row.disambiguation, row.wikidata_id, row.first_seen_at, row.last_seen_at, row.quote_count, row.metadata);
+        insertPerson.run(row.id, row.canonical_name, row.disambiguation, row.wikidata_id, row.first_seen_at, row.last_seen_at, row.quote_count, row.metadata, row.photo_url ?? null);
       }
       counts.persons = data.tables.persons.length;
     }
@@ -220,11 +220,11 @@ export function importDatabaseJson(data) {
     // Import quotes
     if (data.tables.quotes) {
       const insertQuote = db.prepare(
-        `INSERT INTO quotes (id, person_id, text, quote_type, context, canonical_quote_id, source_urls, first_seen_at, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO quotes (id, person_id, text, quote_type, context, canonical_quote_id, source_urls, first_seen_at, created_at, is_visible)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       );
       for (const row of data.tables.quotes) {
-        insertQuote.run(row.id, row.person_id, row.text, row.quote_type, row.context, row.canonical_quote_id, row.source_urls, row.first_seen_at, row.created_at);
+        insertQuote.run(row.id, row.person_id, row.text, row.quote_type, row.context, row.canonical_quote_id, row.source_urls, row.first_seen_at, row.created_at, row.is_visible ?? 1);
       }
       counts.quotes = data.tables.quotes.length;
     }
