@@ -8,12 +8,30 @@ let _activeCategory = 'Politicians';
 let _activeSubFilter = '';
 let _currentSearch = '';
 
+// Pending new quotes count (for non-jarring updates)
+let _pendingNewQuotes = 0;
+
 // Sub-filter definitions per broad category
 const SUB_FILTERS = {
   Politicians: ['U.S.', 'UK', 'EU', 'Republican', 'Democrat', 'Labor', 'Candidate'],
   Professionals: ['Law', 'STEM', 'Philosophy', 'Author', 'Historian', 'Business', 'Science'],
   Other: ['Entertainment', 'Sports', 'Activist', 'Religious', 'Media'],
 };
+
+/**
+ * Format a timestamp as mm/dd/yyyy - hh:mm:ss
+ */
+function formatDateTime(timestamp) {
+  if (!timestamp) return '';
+  const d = new Date(timestamp);
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  const hh = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  const ss = String(d.getSeconds()).padStart(2, '0');
+  return `${mm}/${dd}/${yyyy} - ${hh}:${min}:${ss}`;
+}
 
 /**
  * Extract domain from URL for display
@@ -172,9 +190,7 @@ function buildQuoteEntryHtml(q, insideGroup, gangOpts) {
     : '';
 
   // Publish date
-  const dateStr = q.articlePublishedAt
-    ? new Date(q.articlePublishedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-    : '';
+  const dateStr = formatDateTime(q.articlePublishedAt);
   const dateHtml = !insideGroup && dateStr ? `<span class="quote-date-inline">${dateStr}</span>` : '';
 
   // Visibility toggle (admin only)
@@ -242,9 +258,7 @@ function buildQuoteEntryHtml(q, insideGroup, gangOpts) {
  * Groups with 3+ quotes collapse by default, showing first 2 with fade.
  */
 function buildArticleGroupHtml(group) {
-  const dateStr = group.articlePublishedAt
-    ? new Date(group.articlePublishedAt).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
-    : '';
+  const dateStr = formatDateTime(group.articlePublishedAt);
 
   const primarySource = group.primarySourceName || group.primarySourceDomain || '';
   const primarySourceHtml = primarySource
@@ -642,12 +656,48 @@ function updateReviewBadge(count) {
 
 /**
  * Handle new quotes from Socket.IO
- * Re-render the full homepage so article grouping and twirl work correctly.
+ * Show a non-jarring notification banner instead of re-rendering the page.
  */
 function handleNewQuotes(quotes) {
   if (window.location.pathname === '/' || window.location.pathname === '') {
-    renderHome();
+    _pendingNewQuotes += (quotes ? quotes.length : 0);
+    showNewQuotesBanner();
   }
+}
+
+/**
+ * Show a banner at the top of the feed indicating new quotes are available.
+ */
+function showNewQuotesBanner() {
+  if (_pendingNewQuotes <= 0) return;
+
+  let banner = document.getElementById('new-quotes-banner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'new-quotes-banner';
+    banner.className = 'new-quotes-banner';
+    const content = document.getElementById('content');
+    if (content && content.firstChild) {
+      content.insertBefore(banner, content.firstChild);
+    }
+  }
+
+  const label = _pendingNewQuotes === 1 ? '1 new quote' : `${_pendingNewQuotes} new quotes`;
+  banner.innerHTML = `${label} available <button class="new-quotes-refresh-btn" onclick="loadNewQuotes()">Refresh</button>`;
+  banner.style.display = '';
+}
+
+/**
+ * Load new quotes: re-render while preserving scroll position.
+ */
+function loadNewQuotes() {
+  _pendingNewQuotes = 0;
+  const banner = document.getElementById('new-quotes-banner');
+  if (banner) banner.remove();
+  const scrollY = window.scrollY;
+  renderHome().then(() => {
+    window.scrollTo(0, scrollY);
+  });
 }
 
 function escapeHtml(str) {

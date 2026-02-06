@@ -5,7 +5,7 @@ async function renderQuote(id) {
     const data = await API.get(`/quotes/${id}`);
     if (!data.quote) { content.innerHTML = '<div class="empty-state"><h3>Quote not found</h3><p><a href="/" onclick="navigate(event, \'/\')" style="color:var(--accent)">Back to home</a></p></div>'; return; }
     const q = data.quote;
-    const date = q.published_date ? new Date(q.published_date * 1000).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'Unknown date';
+    const date = q.published_date ? formatDateTime(q.published_date * 1000) : 'Unknown date';
     let html = `
       <p style="margin-bottom:1.5rem;font-family:var(--font-ui);font-size:0.85rem">
         <a href="/" onclick="navigate(event, '/')" style="color:var(--accent);text-decoration:none">&larr; Back to quotes</a>
