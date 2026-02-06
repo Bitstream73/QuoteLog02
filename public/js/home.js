@@ -4,8 +4,16 @@
 const _quoteTexts = {};
 
 // Current active category filter
-let _activeCategory = 'Politician';
+let _activeCategory = 'Politicians';
+let _activeSubFilter = '';
 let _currentSearch = '';
+
+// Sub-filter definitions per broad category
+const SUB_FILTERS = {
+  Politicians: ['U.S.', 'UK', 'EU', 'Republican', 'Democrat', 'Labor', 'Candidate'],
+  Professionals: ['Law', 'STEM', 'Philosophy', 'Author', 'Historian', 'Business', 'Science'],
+  Other: ['Entertainment', 'Sports', 'Activist', 'Religious', 'Media'],
+};
 
 /**
  * Extract domain from URL for display
@@ -129,7 +137,9 @@ function shareQuote(event, quoteId, channel) {
  * |       | |twirl down context|
  * |       | |share options|
  */
-function buildQuoteEntryHtml(q, insideGroup) {
+function buildQuoteEntryHtml(q, insideGroup, gangOpts) {
+  const hideAuthor = gangOpts?.hideAuthor || false;
+  const showAuthorAfter = gangOpts?.showAuthorAfter || false;
   const isLong = q.text.length > 280;
   const truncatedText = isLong ? q.text.substring(0, 280) + '...' : q.text;
 
@@ -194,24 +204,32 @@ function buildQuoteEntryHtml(q, insideGroup) {
   // Share options (only if not inside group — group shows share at bottom)
   const shareHtml = !insideGroup ? buildShareHtml(q) : '';
 
+  // When ganged (consecutive same author in group), hide headshot and author row
+  const showHeadshot = !hideAuthor;
+  const showAuthorRow = !hideAuthor;
+
   return `
     <div class="quote-entry${hiddenClass}" id="qe-${q.id}">
       <div class="quote-layout">
-        <div class="quote-headshot-col">
-          ${headshotHtml}
-        </div>
+        ${showHeadshot ? `<div class="quote-headshot-col">${headshotHtml}</div>` : `<div class="quote-headshot-col quote-headshot-spacer"></div>`}
         <div class="quote-content-col">
           <div class="quote-text-row">
             <p class="quote-text" id="qt-${q.id}">${escapeHtml(truncatedText)}</p>
             ${isLong ? `<a href="#" class="show-more-toggle" onclick="toggleQuoteText(event, ${q.id})">show more</a>` : ''}
           </div>
-          <div class="quote-author-row">
+          ${showAuthorRow ? `<div class="quote-author-row">
             <a href="/author/${q.personId}" onclick="navigate(event, '/author/${q.personId}')" class="author-link">${escapeHtml(q.personName)}</a>
             ${categoryCtxHtml}
             ${dateHtml}
             ${visibilityBtn}
             ${editBtn}
-          </div>
+          </div>` : ''}
+          ${showAuthorAfter ? `<div class="quote-author-row">
+            <a href="/author/${q.personId}" onclick="navigate(event, '/author/${q.personId}')" class="author-link">${escapeHtml(q.personName)}</a>
+            ${categoryCtxHtml}
+            ${visibilityBtn}
+            ${editBtn}
+          </div>` : ''}
           <div class="quote-sources-row">
             ${primarySourceHtml}
             ${sourceLinks}
@@ -227,6 +245,7 @@ function buildQuoteEntryHtml(q, insideGroup) {
 
 /**
  * Build HTML for an article group (multiple quotes from same article)
+ * Groups with 3+ quotes collapse by default, showing first 2 with fade.
  */
 function buildArticleGroupHtml(group) {
   const dateStr = group.articlePublishedAt
@@ -260,18 +279,39 @@ function buildArticleGroupHtml(group) {
   const firstQ = group.quotes[0];
   const shareHtml = buildShareHtml(firstQ);
 
+  const collapsible = group.quotes.length >= 3;
+  const groupId = group.articleId;
+
+  // Gang consecutive same-author quotes
   let quotesHtml = '';
-  for (const q of group.quotes) {
-    quotesHtml += buildQuoteEntryHtml(q, true);
+  for (let i = 0; i < group.quotes.length; i++) {
+    const q = group.quotes[i];
+    const prevAuthor = i > 0 ? group.quotes[i - 1].personId : null;
+    const nextAuthor = i < group.quotes.length - 1 ? group.quotes[i + 1].personId : null;
+    const isConsecutiveSameAuthor = q.personId === prevAuthor;
+    const isLastInRun = q.personId !== nextAuthor;
+
+    quotesHtml += buildQuoteEntryHtml(q, true, { hideAuthor: isConsecutiveSameAuthor, showAuthorAfter: isLastInRun && isConsecutiveSameAuthor });
   }
 
+  // Twirl caret for collapsible groups
+  const twirlHtml = collapsible
+    ? `<span class="article-group-twirl" id="twirl-${groupId}" onclick="toggleArticleGroup(event, ${groupId})">&#x25b6;</span>`
+    : '';
+
+  const collapsedClass = collapsible ? ' article-group-collapsed' : '';
+
   return `
-    <div class="article-group">
+    <div class="article-group${collapsedClass}" id="ag-${groupId}">
       <div class="article-group-header">
+        ${twirlHtml}
         <span class="article-group-title">${escapeHtml(group.articleTitle || 'Untitled Article')}</span>
         <span class="article-group-date">${dateStr}</span>
       </div>
-      ${quotesHtml}
+      <div class="article-group-quotes" id="agq-${groupId}">
+        ${quotesHtml}
+      </div>
+      ${collapsible ? `<div class="article-group-fade" id="agf-${groupId}" onclick="toggleArticleGroup(event, ${groupId})"></div>` : ''}
       <div class="article-group-footer">
         <div class="article-group-sources">
           ${primarySourceHtml}
@@ -282,6 +322,24 @@ function buildArticleGroupHtml(group) {
       </div>
     </div>
   `;
+}
+
+/**
+ * Toggle article group collapse/expand
+ */
+function toggleArticleGroup(event, groupId) {
+  event.preventDefault();
+  const group = document.getElementById('ag-' + groupId);
+  const twirl = document.getElementById('twirl-' + groupId);
+  if (!group) return;
+
+  if (group.classList.contains('article-group-collapsed')) {
+    group.classList.remove('article-group-collapsed');
+    if (twirl) twirl.innerHTML = '&#x25bc;';
+  } else {
+    group.classList.add('article-group-collapsed');
+    if (twirl) twirl.innerHTML = '&#x25b6;';
+  }
 }
 
 function toggleGroupContext(event, groupId) {
@@ -366,33 +424,51 @@ async function editQuoteInline(event, quoteId) {
 }
 
 /**
- * Build category tabs HTML
+ * Build category tabs HTML with sub-filters
  */
 function buildCategoryTabsHtml(categories, activeCategory) {
-  const defaultOrder = ['Politician', 'Government Official', 'Business Leader', 'Entertainer', 'Athlete', 'Pundit', 'Journalist', 'Scientist/Academic', 'Legal/Judicial', 'Military/Defense', 'Activist/Advocate', 'Religious Leader', 'Other'];
   const catMap = {};
   for (const c of categories) {
-    catMap[c.category || 'Other'] = c.count;
+    catMap[c.category] = c.count;
   }
+
+  const broadOrder = ['All', 'Politicians', 'Professionals', 'Other'];
 
   let tabs = `<div class="category-tabs">`;
-  tabs += `<button class="category-tab ${activeCategory === 'All' ? 'active' : ''}" onclick="filterByCategory('All')">All</button>`;
+  for (const cat of broadOrder) {
+    const count = catMap[cat] || 0;
+    tabs += `<button class="category-tab ${activeCategory === cat ? 'active' : ''}" onclick="filterByCategory('${escapeHtml(cat)}')">${escapeHtml(cat)} ${count > 0 ? `<span class="cat-count">${count}</span>` : ''}</button>`;
+  }
+  tabs += `</div>`;
 
-  for (const cat of defaultOrder) {
-    if (catMap[cat]) {
-      tabs += `<button class="category-tab ${activeCategory === cat ? 'active' : ''}" onclick="filterByCategory('${escapeHtml(cat)}')">${escapeHtml(cat)} <span class="cat-count">${catMap[cat]}</span></button>`;
+  // Sub-filters for the active category
+  const subs = SUB_FILTERS[activeCategory];
+  if (subs && activeCategory !== 'All') {
+    tabs += `<div class="sub-filters">`;
+    tabs += `<button class="sub-filter-btn ${_activeSubFilter === '' ? 'active' : ''}" onclick="filterBySub('')">All</button>`;
+    for (const sf of subs) {
+      tabs += `<button class="sub-filter-btn ${_activeSubFilter === sf ? 'active' : ''}" onclick="filterBySub('${escapeHtml(sf)}')">${escapeHtml(sf)}</button>`;
     }
+    tabs += `</div>`;
   }
 
-  tabs += `</div>`;
   return tabs;
 }
 
 /**
- * Filter by category
+ * Filter by broad category
  */
 function filterByCategory(category) {
   _activeCategory = category;
+  _activeSubFilter = '';
+  renderHome();
+}
+
+/**
+ * Filter by sub-filter within category
+ */
+function filterBySub(sub) {
+  _activeSubFilter = sub;
   renderHome();
 }
 
@@ -417,6 +493,7 @@ async function renderHome() {
       limit: '50',
       category: _activeCategory,
     });
+    if (_activeSubFilter) queryParams.set('subFilter', _activeSubFilter);
     if (_currentSearch) queryParams.set('search', _currentSearch);
 
     const [quotesData, reviewStats] = await Promise.all([
@@ -508,6 +585,7 @@ async function loadQuotesPage(page) {
       limit: '50',
       category: _activeCategory,
     });
+    if (_activeSubFilter) queryParams.set('subFilter', _activeSubFilter);
     if (_currentSearch) queryParams.set('search', _currentSearch);
 
     const quotesData = await API.get('/quotes?' + queryParams.toString());

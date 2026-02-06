@@ -16,8 +16,9 @@ RUN addgroup -g 1001 -S nodejs && \
 COPY --from=builder /app/node_modules ./node_modules
 COPY . .
 
-# Copy seed file to project root as fallback (volume mount shadows data/)
-RUN cp -f data/sources-seed.json sources-seed.json 2>/dev/null || true
+# Copy seed files to project root as fallback (volume mount shadows data/)
+RUN cp -f data/sources-seed.json sources-seed.json 2>/dev/null || true && \
+    cp -f data/settings-seed.json settings-seed.json 2>/dev/null || true
 
 # Create data directories
 RUN mkdir -p data uploads && \

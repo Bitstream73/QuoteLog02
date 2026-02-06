@@ -1,0 +1,13 @@
+{
+  "description": "Persisted settings for QuoteLog. Auto-seeded on fresh database.",
+  "settings": {
+    "fetch_interval_minutes": "15",
+    "article_lookback_hours": "24",
+    "auto_merge_confidence_threshold": "0.9",
+    "review_confidence_threshold": "0.7",
+    "max_articles_per_cycle": "100",
+    "min_quote_words": "5",
+    "theme": "light",
+    "log_level": "info"
+  }
+}

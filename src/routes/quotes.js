@@ -20,7 +20,29 @@ function isAdminRequest(req) {
   }
 }
 
-// Get paginated quotes for homepage (supports category filter and article grouping)
+// Broad category mappings for the simplified tab system
+const BROAD_CATEGORY_MAP = {
+  Politicians: ['Politician', 'Government Official'],
+  Professionals: ['Business Leader', 'Scientist/Academic', 'Legal/Judicial', 'Journalist', 'Military/Defense'],
+  // "Other" is everything not in Politicians or Professionals
+};
+
+function getBroadCategoryFilter(broadCategory) {
+  if (!broadCategory || broadCategory === 'All') return { sql: '', params: [] };
+  const cats = BROAD_CATEGORY_MAP[broadCategory];
+  if (cats) {
+    const placeholders = cats.map(() => '?').join(',');
+    return { sql: `AND p.category IN (${placeholders})`, params: cats };
+  }
+  if (broadCategory === 'Other') {
+    const allMapped = [...BROAD_CATEGORY_MAP.Politicians, ...BROAD_CATEGORY_MAP.Professionals];
+    const placeholders = allMapped.map(() => '?').join(',');
+    return { sql: `AND (p.category NOT IN (${placeholders}) OR p.category IS NULL)`, params: allMapped };
+  }
+  return { sql: '', params: [] };
+}
+
+// Get paginated quotes for homepage (supports broad category filter, sub-filter, and article grouping)
 router.get('/', (req, res) => {
   const db = getDb();
   const page = parseInt(req.query.page) || 1;
@@ -28,24 +50,29 @@ router.get('/', (req, res) => {
   const offset = (page - 1) * limit;
   const admin = isAdminRequest(req);
   const category = req.query.category || null;
+  const subFilter = req.query.subFilter || null;
   const search = req.query.search || null;
 
   const visibilityFilter = admin ? '' : 'AND q.is_visible = 1';
-  const categoryFilter = category && category !== 'All' ? 'AND p.category = ?' : '';
-  const searchFilter = search ? 'AND (q.text LIKE ? OR p.canonical_name LIKE ? OR p.category LIKE ?)' : '';
+  const { sql: categoryFilter, params: categoryParams } = getBroadCategoryFilter(category);
+  const subFilterSql = subFilter ? 'AND (p.category_context LIKE ? OR p.category LIKE ? OR q.context LIKE ?)' : '';
+  const searchFilter = search ? 'AND (q.text LIKE ? OR p.canonical_name LIKE ? OR p.category LIKE ? OR q.context LIKE ?)' : '';
 
-  const params = [];
-  if (categoryFilter) params.push(category);
+  const params = [...categoryParams];
+  if (subFilterSql) {
+    const sfTerm = `%${subFilter}%`;
+    params.push(sfTerm, sfTerm, sfTerm);
+  }
   if (searchFilter) {
     const searchTerm = `%${search}%`;
-    params.push(searchTerm, searchTerm, searchTerm);
+    params.push(searchTerm, searchTerm, searchTerm, searchTerm);
   }
 
   // Count total canonical quotes (not variants)
   const total = db.prepare(
     `SELECT COUNT(*) as count FROM quotes q
      JOIN persons p ON q.person_id = p.id
-     WHERE q.canonical_quote_id IS NULL ${visibilityFilter} ${categoryFilter} ${searchFilter}`
+     WHERE q.canonical_quote_id IS NULL ${visibilityFilter} ${categoryFilter} ${subFilterSql} ${searchFilter}`
   ).get(...params).count;
 
   // Get quotes with person info + first linked article/source
@@ -61,7 +88,7 @@ router.get('/', (req, res) => {
     LEFT JOIN quote_articles qa ON qa.quote_id = q.id
     LEFT JOIN articles a ON qa.article_id = a.id
     LEFT JOIN sources s ON a.source_id = s.id
-    WHERE q.canonical_quote_id IS NULL ${visibilityFilter} ${categoryFilter} ${searchFilter}
+    WHERE q.canonical_quote_id IS NULL ${visibilityFilter} ${categoryFilter} ${subFilterSql} ${searchFilter}
     GROUP BY q.id
     ORDER BY q.created_at DESC
     LIMIT ? OFFSET ?
@@ -90,22 +117,38 @@ router.get('/', (req, res) => {
     createdAt: q.created_at,
   }));
 
-  // Get available categories for tab rendering
-  const categories = db.prepare(`
-    SELECT DISTINCT p.category, COUNT(*) as count
+  // Get broad category counts for tab rendering
+  const allCats = db.prepare(`
+    SELECT p.category, COUNT(*) as count
     FROM persons p
     JOIN quotes q ON q.person_id = p.id
     WHERE q.canonical_quote_id IS NULL ${admin ? '' : 'AND q.is_visible = 1'}
     GROUP BY p.category
-    ORDER BY count DESC
   `).all();
+
+  const politicianCats = new Set(BROAD_CATEGORY_MAP.Politicians);
+  const professionalCats = new Set(BROAD_CATEGORY_MAP.Professionals);
+  let politiciansCount = 0, professionalsCount = 0, otherCount = 0, allCount = 0;
+  for (const c of allCats) {
+    allCount += c.count;
+    if (politicianCats.has(c.category)) politiciansCount += c.count;
+    else if (professionalCats.has(c.category)) professionalsCount += c.count;
+    else otherCount += c.count;
+  }
+
+  const broadCategories = [
+    { category: 'All', count: allCount },
+    { category: 'Politicians', count: politiciansCount },
+    { category: 'Professionals', count: professionalsCount },
+    { category: 'Other', count: otherCount },
+  ];
 
   res.json({
     quotes: formattedQuotes,
     total,
     page,
     totalPages: Math.ceil(total / limit),
-    categories,
+    categories: broadCategories,
   });
 });
 

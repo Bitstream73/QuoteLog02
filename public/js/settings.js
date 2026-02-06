@@ -164,6 +164,11 @@ async function renderSettings() {
           <button class="btn btn-secondary btn-sm" onclick="loadAdminQuotes()">Refresh</button>
         </div>
         <p class="section-description">View, edit, and manage extracted quotes. Click a quote to edit its text or change the associated author headshot.</p>
+        <div style="display:flex;gap:0.5rem;margin-bottom:1rem">
+          <input type="search" id="admin-quote-search" placeholder="Search quotes, authors..." class="input-text" style="flex:1;width:auto" onkeydown="if(event.key==='Enter')searchAdminQuotes()">
+          <button class="btn btn-primary btn-sm" onclick="searchAdminQuotes()">Search</button>
+          <button class="btn btn-secondary btn-sm" onclick="clearAdminSearch()">Clear</button>
+        </div>
         <div id="admin-quotes-list">
           <div class="loading">Loading quotes...</div>
         </div>
@@ -455,15 +460,33 @@ async function importDatabase(input) {
 // ===================================
 
 let _adminQuotePage = 1;
+let _adminQuoteSearch = '';
+
+function searchAdminQuotes() {
+  const input = document.getElementById('admin-quote-search');
+  _adminQuoteSearch = input ? input.value.trim() : '';
+  _adminQuotePage = 1;
+  loadAdminQuotes();
+}
+
+function clearAdminSearch() {
+  _adminQuoteSearch = '';
+  const input = document.getElementById('admin-quote-search');
+  if (input) input.value = '';
+  _adminQuotePage = 1;
+  loadAdminQuotes();
+}
 
 async function loadAdminQuotes(page) {
-  _adminQuotePage = page || 1;
+  _adminQuotePage = page || _adminQuotePage || 1;
   const container = document.getElementById('admin-quotes-list');
   const paginationEl = document.getElementById('admin-quotes-pagination');
   if (!container) return;
 
   try {
-    const data = await API.get(`/quotes?page=${_adminQuotePage}&limit=20`);
+    let url = `/quotes?page=${_adminQuotePage}&limit=20`;
+    if (_adminQuoteSearch) url += `&search=${encodeURIComponent(_adminQuoteSearch)}`;
+    const data = await API.get(url);
     if (data.quotes.length === 0) {
       container.innerHTML = '<p class="empty-message">No quotes found.</p>';
       if (paginationEl) paginationEl.innerHTML = '';
@@ -475,20 +498,27 @@ async function loadAdminQuotes(page) {
       const dateStr = q.articlePublishedAt
         ? new Date(q.articlePublishedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
         : '';
+      const createdStr = q.createdAt
+        ? new Date(q.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+        : '';
       const initial = (q.personName || '?').charAt(0).toUpperCase();
       const headshotHtml = q.photoUrl
         ? `<img src="${escapeHtml(q.photoUrl)}" class="admin-quote-headshot" onerror="this.style.display='none'">`
         : `<div class="admin-quote-headshot-placeholder">${initial}</div>`;
+
+      const sourceUrls = (q.sourceUrls || []).map(u => {
+        try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; }
+      });
 
       html += `
         <div class="admin-quote-card" id="aqc-${q.id}">
           <div class="admin-quote-top">
             <div class="admin-quote-headshot-col">
               ${headshotHtml}
-              <button class="btn btn-secondary btn-sm" onclick="changeHeadshot(${q.personId}, '${escapeHtml(q.personName)}')" style="margin-top:0.25rem;font-size:0.65rem">Change</button>
+              <button class="btn btn-secondary btn-sm" onclick="changeHeadshot(${q.personId}, '${escapeHtml(q.personName)}')" style="margin-top:0.25rem;font-size:0.65rem">Photo</button>
             </div>
             <div class="admin-quote-info">
-              <div class="admin-quote-text">${escapeHtml(q.text.length > 200 ? q.text.substring(0, 200) + '...' : q.text)}</div>
+              <div class="admin-quote-text">${escapeHtml(q.text)}</div>
               <div class="admin-quote-meta">
                 <strong>${escapeHtml(q.personName)}</strong>
                 <span class="badge badge-info" style="font-size:0.6rem">${escapeHtml(q.personCategory || 'Other')}</span>
@@ -497,15 +527,18 @@ async function loadAdminQuotes(page) {
               <div class="admin-quote-details">
                 ${q.articleTitle ? `<div><strong>Article:</strong> ${escapeHtml(q.articleTitle)}</div>` : ''}
                 ${dateStr ? `<div><strong>Published:</strong> ${dateStr}</div>` : ''}
+                ${createdStr ? `<div><strong>Extracted:</strong> ${createdStr}</div>` : ''}
                 ${q.primarySourceName ? `<div><strong>Source:</strong> ${escapeHtml(q.primarySourceName)}</div>` : ''}
-                ${q.context ? `<div><strong>Context:</strong> ${escapeHtml(q.context.length > 150 ? q.context.substring(0, 150) + '...' : q.context)}</div>` : ''}
-                <div><strong>Visible:</strong> ${q.isVisible ? 'Yes' : 'No'}</div>
+                ${sourceUrls.length > 0 ? `<div><strong>URLs:</strong> ${sourceUrls.map(u => escapeHtml(u)).join(', ')}</div>` : ''}
+                ${q.context ? `<div><strong>Context:</strong> ${escapeHtml(q.context)}</div>` : ''}
+                <div><strong>Type:</strong> ${q.quoteType || 'direct'} &middot; <strong>Visible:</strong> ${q.isVisible ? 'Yes' : 'No'} &middot; <strong>ID:</strong> ${q.id}</div>
               </div>
               <div class="admin-quote-actions">
                 <button class="btn btn-secondary btn-sm" onclick="adminEditQuote(${q.id})">Edit Text</button>
                 <button class="btn btn-secondary btn-sm" onclick="adminEditContext(${q.id})">Edit Context</button>
                 <button class="btn btn-secondary btn-sm" onclick="adminToggleVisibility(${q.id}, ${!q.isVisible})">${q.isVisible ? 'Hide' : 'Show'}</button>
                 <button class="btn btn-secondary btn-sm" onclick="adminEditCategory(${q.personId}, '${escapeHtml(q.personName)}')">Category</button>
+                <button class="btn btn-secondary btn-sm" onclick="adminEditAuthor(${q.personId}, '${escapeHtml(q.personName)}')">Edit Author</button>
               </div>
             </div>
           </div>
@@ -527,6 +560,8 @@ async function loadAdminQuotes(page) {
       }
       pHtml += '</div>';
       paginationEl.innerHTML = pHtml;
+    } else if (paginationEl) {
+      paginationEl.innerHTML = '';
     }
   } catch (err) {
     container.innerHTML = `<p class="empty-message">Error loading quotes: ${escapeHtml(err.message)}</p>`;
@@ -572,6 +607,30 @@ async function changeHeadshot(personId, personName) {
 
   try {
     await API.patch(`/authors/${personId}`, { photoUrl: newUrl.trim() || null });
+    loadAdminQuotes(_adminQuotePage);
+  } catch (err) {
+    alert('Error: ' + err.message);
+  }
+}
+
+async function adminEditAuthor(personId, personName) {
+  const newName = prompt(`Edit author name for "${personName}":`, personName);
+  if (newName === null) return;
+
+  const newDisambiguation = prompt(`Edit description/disambiguation for "${newName || personName}" (leave blank to clear):`, '');
+
+  const updates = {};
+  if (newName !== null && newName.trim() !== '' && newName.trim() !== personName) {
+    updates.canonicalName = newName.trim();
+  }
+  if (newDisambiguation !== null) {
+    updates.disambiguation = newDisambiguation.trim() || null;
+  }
+
+  if (Object.keys(updates).length === 0) return;
+
+  try {
+    await API.patch(`/authors/${personId}`, updates);
     loadAdminQuotes(_adminQuotePage);
   } catch (err) {
     alert('Error: ' + err.message);

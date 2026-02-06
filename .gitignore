@@ -3,6 +3,7 @@ node_modules/
 *.db
 data/*
 !data/sources-seed.json
+!data/settings-seed.json
 uploads/
 coverage/
 .DS_Store

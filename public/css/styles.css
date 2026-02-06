@@ -1606,6 +1606,39 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
 }
 
 /* ===================================
+   Sub-Filter Pills
+   =================================== */
+.sub-filters {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.sub-filter-btn {
+  font-family: var(--font-ui);
+  font-size: 0.7rem;
+  padding: 0.2rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.sub-filter-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.sub-filter-btn.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+/* ===================================
    Article Group (multiple quotes from same article)
    =================================== */
 .article-group {
@@ -1617,15 +1650,19 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
 
 .article-group-header {
   display: flex;
-  justify-content: space-between;
   align-items: baseline;
+  gap: 0.5rem;
   padding: 0.75rem 1rem;
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border);
 }
 
+.article-group-header .article-group-date {
+  margin-left: auto;
+}
+
 .article-group-title {
-  font-family: var(--font-headline);
+  font-family: var(--font-ui);
   font-size: 1rem;
   font-weight: 700;
   color: var(--text-primary);
@@ -1664,6 +1701,49 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   font-weight: 600;
   color: var(--accent) !important;
   border-color: var(--accent) !important;
+}
+
+/* ===================================
+   Article Group Collapse/Expand
+   =================================== */
+.article-group-twirl {
+  font-size: 0.7rem;
+  cursor: pointer;
+  color: var(--text-muted);
+  padding: 0.2rem 0.4rem;
+  transition: transform 0.2s, color 0.2s;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.article-group-twirl:hover {
+  color: var(--accent);
+}
+
+.article-group-collapsed .article-group-quotes {
+  max-height: 220px;
+  overflow: hidden;
+  position: relative;
+}
+
+.article-group-fade {
+  display: none;
+}
+
+.article-group-collapsed .article-group-fade {
+  display: block;
+  position: relative;
+  margin-top: -60px;
+  height: 60px;
+  background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,1));
+  cursor: pointer;
+  z-index: 1;
+}
+
+/* Spacer for ganged quotes (same author, no headshot) */
+.quote-headshot-spacer {
+  width: 56px;
+  flex-shrink: 0;
 }
 
 /* ===================================

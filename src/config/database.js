@@ -306,16 +306,39 @@ function initializeTables(db) {
     ON CONFLICT(email) DO UPDATE SET password_hash = excluded.password_hash, updated_at = datetime('now')`)
     .run('jakob@karlsmark.com', adminHash);
 
-  // Insert default settings
+  // Insert default settings (seed from file if available, else use hardcoded defaults)
+  const settingsSeedPath = [
+    path.join(__dirname, '../../data/settings-seed.json'),
+    path.join(__dirname, '../../settings-seed.json'),
+  ].find(p => fs.existsSync(p));
+
+  const defaultSettings = {
+    fetch_interval_minutes: '15',
+    article_lookback_hours: '24',
+    auto_merge_confidence_threshold: '0.9',
+    review_confidence_threshold: '0.7',
+    max_articles_per_cycle: '100',
+    min_quote_words: '5',
+    theme: 'light',
+    log_level: 'info',
+  };
+
+  let seedSettings = defaultSettings;
+  if (settingsSeedPath) {
+    try {
+      const seedData = JSON.parse(fs.readFileSync(settingsSeedPath, 'utf-8'));
+      if (seedData.settings && typeof seedData.settings === 'object') {
+        seedSettings = { ...defaultSettings, ...seedData.settings };
+      }
+    } catch (e) {
+      // Fall back to hardcoded defaults
+    }
+  }
+
   const insertSetting = db.prepare(`INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)`);
-  insertSetting.run('fetch_interval_minutes', '15');
-  insertSetting.run('article_lookback_hours', '24');
-  insertSetting.run('auto_merge_confidence_threshold', '0.9');
-  insertSetting.run('review_confidence_threshold', '0.7');
-  insertSetting.run('max_articles_per_cycle', '100');
-  insertSetting.run('min_quote_words', '5');
-  insertSetting.run('theme', 'light');
-  insertSetting.run('log_level', 'info');
+  for (const [key, value] of Object.entries(seedSettings)) {
+    insertSetting.run(key, value);
+  }
 }
 
 export function closeDb() {
@@ -421,4 +444,30 @@ export function exportSourcesSeed() {
   return sources.length;
 }
 
-export default { getDb, closeDb, getSettingValue, setSettingValue, verifyDatabaseState, seedSources, exportSourcesSeed };
+/**
+ * Export current settings to data/settings-seed.json for persistence across deploys
+ * @returns {number} Number of settings exported
+ */
+export function exportSettingsSeed() {
+  const db = getDb();
+  const rows = db.prepare('SELECT key, value FROM settings').all();
+  const settings = {};
+  for (const row of rows) {
+    settings[row.key] = row.value;
+  }
+
+  const seedPath = path.join(__dirname, '../../data/settings-seed.json');
+  const seedData = {
+    description: 'Persisted settings for QuoteLog. Auto-seeded on fresh database.',
+    settings,
+  };
+
+  try {
+    fs.writeFileSync(seedPath, JSON.stringify(seedData, null, 2) + '\n');
+  } catch (e) {
+    // Non-critical - may fail in Docker if data/ is read-only
+  }
+  return rows.length;
+}
+
+export default { getDb, closeDb, getSettingValue, setSettingValue, verifyDatabaseState, seedSources, exportSourcesSeed, exportSettingsSeed };

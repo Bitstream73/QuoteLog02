@@ -91,13 +91,22 @@ router.get('/:id', (req, res) => {
 router.patch('/:id', requireAdmin, (req, res) => {
   const db = getDb();
   const { id } = req.params;
-  const { photoUrl, category, categoryContext } = req.body;
+  const { photoUrl, category, categoryContext, canonicalName, disambiguation } = req.body;
 
   const person = db.prepare('SELECT id FROM persons WHERE id = ?').get(id);
   if (!person) {
     return res.status(404).json({ error: 'Author not found' });
   }
 
+  if (canonicalName !== undefined) {
+    if (typeof canonicalName !== 'string' || canonicalName.trim().length === 0) {
+      return res.status(400).json({ error: 'Name cannot be empty' });
+    }
+    db.prepare('UPDATE persons SET canonical_name = ? WHERE id = ?').run(canonicalName.trim(), id);
+  }
+  if (disambiguation !== undefined) {
+    db.prepare('UPDATE persons SET disambiguation = ? WHERE id = ?').run(disambiguation || null, id);
+  }
   if (photoUrl !== undefined) {
     db.prepare('UPDATE persons SET photo_url = ? WHERE id = ?').run(photoUrl || null, id);
   }
@@ -108,7 +117,18 @@ router.patch('/:id', requireAdmin, (req, res) => {
     db.prepare('UPDATE persons SET category_context = ? WHERE id = ?').run(categoryContext || null, id);
   }
 
-  res.json({ success: true });
+  const updated = db.prepare('SELECT * FROM persons WHERE id = ?').get(id);
+  res.json({
+    success: true,
+    author: {
+      id: updated.id,
+      name: updated.canonical_name,
+      disambiguation: updated.disambiguation,
+      photoUrl: updated.photo_url,
+      category: updated.category,
+      categoryContext: updated.category_context,
+    },
+  });
 });
 
 // Get quotes for a specific author

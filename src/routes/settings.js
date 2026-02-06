@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getDb, getSettingValue, setSettingValue } from '../config/database.js';
+import { getDb, getSettingValue, setSettingValue, exportSettingsSeed } from '../config/database.js';
 import { requireAdmin } from '../middleware/auth.js';
 
 const router = Router();
@@ -84,6 +84,9 @@ router.patch('/', requireAdmin, (req, res) => {
 
     update.run(key, String(validatedValue));
   }
+
+  // Persist settings to seed file for deploy resilience
+  try { exportSettingsSeed(); } catch (e) { /* non-critical */ }
 
   // Restart scheduler if fetch_interval_minutes changed
   if (req.body.fetch_interval_minutes !== undefined) {
