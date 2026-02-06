@@ -9,23 +9,48 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 let db;
 
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
 export function getDb() {
   if (db) return db;
 
   const dbPath = config.databasePath;
   const dbDir = path.dirname(dbPath);
 
-  if (!fs.existsSync(dbDir)) {
-    fs.mkdirSync(dbDir, { recursive: true });
+  // Retry logic for Railway volume mount race condition:
+  // Railway mounts volumes asynchronously \u2014 the app can start before /app/data is ready.
+  const maxRetries = 10;
+  const retryDelayMs = 2000;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      if (!fs.existsSync(dbDir)) {
+        fs.mkdirSync(dbDir, { recursive: true });
+      }
+
+      db = new Database(dbPath);
+      db.pragma('journal_mode = WAL');
+      db.pragma('foreign_keys = ON');
+
+      initializeTables(db);
+
+      if (attempt > 1) {
+        console.log(`[startup] Database opened successfully on attempt ${attempt}`);
+      }
+      return db;
+    } catch (err) {
+      if (err.code === 'SQLITE_CANTOPEN' && attempt < maxRetries) {
+        console.warn(`[startup] Database open failed (attempt ${attempt}/${maxRetries}): ${err.message}`);
+        console.warn(`[startup] Volume may not be mounted yet. Retrying in ${retryDelayMs}ms...`);
+        sleepSync(retryDelayMs);
+        db = null; // Reset for retry
+      } else {
+        throw err;
+      }
+    }
   }
-
-  db = new Database(dbPath);
-  db.pragma('journal_mode = WAL');
-  db.pragma('foreign_keys = ON');
-
-  initializeTables(db);
-
-  return db;
 }
 
 function initializeTables(db) {
