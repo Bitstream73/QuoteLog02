@@ -64,7 +64,9 @@ nav {
   padding: 1.25rem 2rem 1rem;
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
+  align-items: center;
+  gap: 1.5rem;
+  flex-wrap: wrap;
 }
 
 .logo {
@@ -78,6 +80,62 @@ nav {
 }
 
 .logo:hover {
+  color: var(--accent);
+}
+
+.logo-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.logo-subhead {
+  font-family: var(--font-ui);
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-style: italic;
+  letter-spacing: 0.02em;
+  margin-top: 0.15rem;
+}
+
+/* Header Search Bar */
+.header-search {
+  flex: 1;
+  max-width: 360px;
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.search-input {
+  flex: 1;
+  font-family: var(--font-ui);
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--border);
+  border-right: none;
+  border-radius: var(--radius) 0 0 var(--radius);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.search-btn {
+  font-size: 0.85rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border);
+  border-left: none;
+  border-radius: 0 var(--radius) var(--radius) 0;
+  background: var(--bg-secondary);
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: color 0.2s;
+}
+
+.search-btn:hover {
   color: var(--accent);
 }
 
@@ -103,17 +161,19 @@ nav {
   border-bottom: 1px solid var(--accent);
 }
 
-/* Date bar under header */
-.date-bar {
-  max-width: var(--max-width);
-  margin: 0 auto;
-  padding: 0.4rem 2rem;
-  font-family: var(--font-ui);
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+/* Search Results Header */
+.search-results-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
   border-bottom: 1px solid var(--border);
+}
+
+.search-results-header h2 {
+  font-family: var(--font-headline);
+  font-size: 1.3rem;
 }
 
 /* ===================================
@@ -1327,8 +1387,11 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
 }
 
 @media (max-width: 768px) {
-  nav { padding: 0.75rem 1rem; }
+  nav { padding: 0.75rem 1rem; flex-wrap: wrap; }
   .logo { font-size: 1.5rem; }
+  .header-search { max-width: 100%; order: 3; flex-basis: 100%; }
+  .category-tabs { gap: 0.15rem; }
+  .category-tab { font-size: 0.65rem; padding: 0.25rem 0.5rem; }
   main { padding: 1rem; }
   .page-title { font-size: 1.8rem; }
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
@@ -1483,6 +1546,272 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
 
 .auth-link a:hover {
   text-decoration: underline;
+}
+
+/* ===================================
+   Category Tabs
+   =================================== */
+.category-tabs {
+  display: flex;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.5rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 2px solid var(--border-dark);
+}
+
+.category-tab {
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.35rem 0.75rem;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: var(--radius) var(--radius) 0 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.category-tab:hover {
+  color: var(--accent);
+  background: var(--accent-light);
+}
+
+.category-tab.active {
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border-color: var(--border-dark);
+  font-weight: 700;
+  position: relative;
+}
+
+.category-tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--bg-primary);
+}
+
+.cat-count {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+/* ===================================
+   Article Group (multiple quotes from same article)
+   =================================== */
+.article-group {
+  margin-bottom: 1.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-primary);
+}
+
+.article-group-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 0.75rem 1rem;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+}
+
+.article-group-title {
+  font-family: var(--font-headline);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.article-group-date {
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.article-group .quote-entry {
+  padding: 1rem 1rem;
+  border-bottom: 1px dashed var(--border);
+  margin-bottom: 0;
+}
+
+.article-group .quote-entry:last-of-type {
+  border-bottom: none;
+}
+
+.article-group-footer {
+  padding: 0.75rem 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.article-group-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.4rem;
+}
+
+.source-link-primary {
+  font-weight: 600;
+  color: var(--accent) !important;
+  border-color: var(--accent) !important;
+}
+
+/* ===================================
+   Quote Category Context
+   =================================== */
+.quote-category-context {
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* ===================================
+   Share Buttons
+   =================================== */
+.share-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.share-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.3rem 0.5rem;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.share-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.share-btn.share-copied {
+  color: var(--success);
+  border-color: var(--success);
+}
+
+/* ===================================
+   Admin Edit Button
+   =================================== */
+.btn-edit-quote {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 0 0.25rem;
+  line-height: 1;
+  opacity: 0.5;
+  color: var(--text-muted);
+}
+
+.btn-edit-quote:hover {
+  opacity: 1;
+  color: var(--accent);
+}
+
+/* ===================================
+   Admin Quote Management Cards
+   =================================== */
+.admin-quote-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  margin-bottom: 0.75rem;
+  background: var(--bg-primary);
+}
+
+.admin-quote-top {
+  display: flex;
+  gap: 1rem;
+}
+
+.admin-quote-headshot-col {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.admin-quote-headshot {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--border);
+}
+
+.admin-quote-headshot-placeholder {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--bg-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-headline);
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  border: 2px solid var(--border);
+}
+
+.admin-quote-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.admin-quote-text {
+  font-family: var(--font-body);
+  font-style: italic;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  margin-bottom: 0.4rem;
+  line-height: 1.5;
+}
+
+.admin-quote-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+  font-family: var(--font-ui);
+  font-size: 0.85rem;
+}
+
+.admin-quote-details {
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.5rem;
+  line-height: 1.6;
+}
+
+.admin-quote-details strong {
+  color: var(--text-primary);
+}
+
+.admin-quote-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
 }
 
 .hidden {
