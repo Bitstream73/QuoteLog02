@@ -152,7 +152,7 @@ function shareQuote(event, quoteId, channel) {
  * Build HTML for a single quote entry with layout:
  * |Headshot| |Quote text| - |Author|
  * |       | |Primary Source| |addl. sources|
- * |       | |twirl down context|
+ * |       | |context|
  * |       | |share options|
  */
 function buildQuoteEntryHtml(q, insideGroup, gangOpts) {
@@ -184,8 +184,10 @@ function buildQuoteEntryHtml(q, insideGroup, gangOpts) {
     ? `<span class="quote-primary-source">${escapeHtml(primarySource)}</span>`
     : '';
 
-  // Article title (only if not in group)
-  const articleTitleHtml = !insideGroup && q.articleTitle
+  // Article title (only if not in group) — clickable link to article detail page
+  const articleTitleHtml = !insideGroup && q.articleTitle && q.articleId
+    ? `<a href="/article/${q.articleId}" onclick="navigate(event, '/article/${q.articleId}')" class="quote-article-title-link">${escapeHtml(q.articleTitle)}</a>`
+    : !insideGroup && q.articleTitle
     ? `<span class="quote-article-title">${escapeHtml(q.articleTitle)}</span>`
     : '';
 
@@ -204,12 +206,9 @@ function buildQuoteEntryHtml(q, insideGroup, gangOpts) {
     ? `<button class="btn-edit-quote" onclick="editQuoteInline(event, ${q.id})" title="Edit quote">&#x270E;</button>`
     : '';
 
-  // Context section (expandable) — only if not in group
+  // Context section — always visible, only if not in group
   const contextHtml = !insideGroup && q.context
-    ? `<div class="quote-context-toggle" onclick="toggleContext(event, ${q.id})">
-        <span class="context-arrow" id="ctx-arrow-${q.id}">&#x25b6;</span> Context
-      </div>
-      <div class="quote-context" id="ctx-${q.id}" style="display:none">${escapeHtml(q.context)}</div>`
+    ? `<div class="quote-context">${escapeHtml(q.context)}</div>`
     : '';
 
   // Share options (only if not inside group — group shows share at bottom)
@@ -265,13 +264,10 @@ function buildArticleGroupHtml(group) {
     ? `<a href="${escapeHtml(group.articleUrl || '#')}" target="_blank" rel="noopener" class="source-link source-link-primary">${escapeHtml(primarySource)}</a>`
     : '';
 
-  // Find a context from any quote in the group
+  // Find a context from any quote in the group — always visible
   const contextQuote = group.quotes.find(q => q.context);
   const contextHtml = contextQuote
-    ? `<div class="quote-context-toggle" onclick="toggleGroupContext(event, 'grp-${group.articleId}')">
-        <span class="context-arrow" id="ctx-arrow-grp-${group.articleId}">&#x25b6;</span> Context
-      </div>
-      <div class="quote-context" id="ctx-grp-${group.articleId}" style="display:none">${escapeHtml(contextQuote.context)}</div>`
+    ? `<div class="quote-context">${escapeHtml(contextQuote.context)}</div>`
     : '';
 
   // First quote's share button (share the article group)
@@ -304,7 +300,7 @@ function buildArticleGroupHtml(group) {
     <div class="article-group${collapsedClass}" id="ag-${groupId}">
       <div class="article-group-header">
         ${twirlHtml}
-        <span class="article-group-title">${escapeHtml(group.articleTitle || 'Untitled Article')}</span>
+        <a href="/article/${groupId}" onclick="navigate(event, '/article/${groupId}')" class="article-group-title-link">${escapeHtml(group.articleTitle || 'Untitled Article')}</a>
         <span class="article-group-date">${dateStr}</span>
       </div>
       <div class="article-group-quotes" id="agq-${groupId}">
