@@ -5,7 +5,6 @@ const API = {
       if (res.status === 401 && !path.startsWith('/auth/')) {
         isAdmin = false;
         if (typeof updateNav === 'function') updateNav();
-        if (typeof navigate === 'function') navigate(null, '/login');
       }
       const error = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
       throw new Error(error.error || `API error: ${res.status}`);
@@ -23,7 +22,6 @@ const API = {
       if (res.status === 401 && !path.startsWith('/auth/')) {
         isAdmin = false;
         if (typeof updateNav === 'function') updateNav();
-        if (typeof navigate === 'function') navigate(null, '/login');
       }
       const error = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
       throw new Error(error.error || `API error: ${res.status}`);
@@ -41,7 +39,6 @@ const API = {
       if (res.status === 401 && !path.startsWith('/auth/')) {
         isAdmin = false;
         if (typeof updateNav === 'function') updateNav();
-        if (typeof navigate === 'function') navigate(null, '/login');
       }
       const error = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
       throw new Error(error.error || `API error: ${res.status}`);
@@ -59,7 +56,6 @@ const API = {
       if (res.status === 401 && !path.startsWith('/auth/')) {
         isAdmin = false;
         if (typeof updateNav === 'function') updateNav();
-        if (typeof navigate === 'function') navigate(null, '/login');
       }
       const error = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
       throw new Error(error.error || `API error: ${res.status}`);
@@ -73,7 +69,6 @@ const API = {
       if (res.status === 401 && !path.startsWith('/auth/')) {
         isAdmin = false;
         if (typeof updateNav === 'function') updateNav();
-        if (typeof navigate === 'function') navigate(null, '/login');
       }
       const error = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
       throw new Error(error.error || `API error: ${res.status}`);
