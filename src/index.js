@@ -23,6 +23,7 @@ import sourcesRouter from './routes/sources.js';
 import reviewRouter from './routes/review.js';
 import logsRouter from './routes/logs.js';
 import adminRouter from './routes/admin.js';
+import articlesRouter from './routes/articles.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -100,6 +101,7 @@ export function createApp({ skipDbInit = false } = {}) {
   app.use('/api/review', reviewRouter);
   app.use('/api/logs', logsRouter);
   app.use('/api/admin', adminRouter);
+  app.use('/api/articles', articlesRouter);
 
   // SPA fallback - serve index.html for all non-API routes
   app.get('*', (req, res) => {
