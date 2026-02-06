@@ -1976,3 +1976,30 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
 .new-quotes-refresh-btn:hover {
   background: var(--accent-hover);
 }
+
+/* Clickable article title links */
+.article-group-title-link {
+  font-family: var(--font-ui);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.article-group-title-link:hover {
+  color: var(--accent);
+}
+
+.quote-article-title-link {
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+  font-style: italic;
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.quote-article-title-link:hover {
+  color: var(--accent);
+}
