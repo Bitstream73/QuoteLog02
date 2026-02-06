@@ -94,6 +94,9 @@ function route() {
   } else if (path.startsWith('/author/')) {
     const id = path.split('/')[2];
     renderAuthor(id);
+  } else if (path === '/admin') {
+    if (isAdmin) { navigate(null, '/settings'); return; }
+    renderLogin();
   } else if (path === '/login') {
     if (isAdmin) { navigate(null, '/'); return; }
     renderLogin();
