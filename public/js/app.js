@@ -112,6 +112,9 @@ function route() {
   if (isAdmin) {
     updateReviewBadgeAsync();
   }
+
+  // Show/hide ad on public pages only (not in standalone PWA mode)
+  updateAdVisibility(path);
 }
 
 async function updateReviewBadgeAsync() {
@@ -123,6 +126,32 @@ async function updateReviewBadgeAsync() {
     }
   } catch {
     // Ignore errors
+  }
+}
+
+// AdSense: show ad only on public pages, not in standalone PWA mode
+const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+let adInitialized = false;
+
+function updateAdVisibility(path) {
+  const adContainer = document.getElementById('ad-container');
+  if (!adContainer) return;
+
+  const isPublicPage = path === '/' || path === '' ||
+    path.startsWith('/quote/') || path.startsWith('/author/');
+
+  if (isPublicPage && !isStandalone) {
+    adContainer.style.display = '';
+    if (!adInitialized) {
+      try {
+        (window.adsbygoogle = window.adsbygoogle || []).push({});
+        adInitialized = true;
+      } catch (e) {
+        // AdSense not ready yet
+      }
+    }
+  } else {
+    adContainer.style.display = 'none';
   }
 }
 
