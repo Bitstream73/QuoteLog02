@@ -140,6 +140,17 @@ footer {
 }
 
 /* ===================================
+   Ad Container
+   =================================== */
+.ad-container {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: 1rem 2rem;
+  text-align: center;
+  border-top: 1px solid var(--border);
+}
+
+/* ===================================
    Cards
    =================================== */
 .card {
