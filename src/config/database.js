@@ -30,7 +30,7 @@ export function getDb() {
 
 function initializeTables(db) {
   // Sources - User-configured reputable news sources
-  // domain is NOT unique — multiple feeds from the same domain are allowed (e.g. CNN Politics, CNN World)
+  // domain is NOT unique \u2014 multiple feeds from the same domain are allowed (e.g. CNN Politics, CNN World)
   db.exec(`
     CREATE TABLE IF NOT EXISTS sources (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -376,11 +376,23 @@ export function verifyDatabaseState() {
     articles: db.prepare('SELECT COUNT(*) as count FROM articles').get().count,
   };
 
+  const resolvedPath = path.resolve(config.databasePath);
   console.log(`[startup] Database state: ${counts.sources} sources, ${counts.persons} persons, ${counts.quotes} quotes, ${counts.articles} articles`);
-  console.log(`[startup] Database path: ${config.databasePath}`);
+  console.log(`[startup] Database path: ${resolvedPath}`);
+
+  // Warn if database is not on the expected volume mount in production
+  const isProduction = config.env === 'production';
+  const volumeMount = process.env.RAILWAY_VOLUME_MOUNT_PATH;
+  if (isProduction && volumeMount && !resolvedPath.startsWith(volumeMount)) {
+    console.error(`[CRITICAL] Database path "${resolvedPath}" is NOT on the volume mount "${volumeMount}"!`);
+    console.error('[CRITICAL] Data will be LOST on next deploy. Fix DATABASE_PATH env var.');
+  }
+  if (isProduction && /^[A-Z]:/i.test(resolvedPath)) {
+    console.error(`[CRITICAL] Database path "${resolvedPath}" is a Windows path on a Linux container!`);
+  }
 
   if (counts.sources === 0) {
-    console.warn('[startup] WARNING: 0 sources detected — auto-seeding from sources-seed.json');
+    console.warn('[startup] WARNING: 0 sources detected \u2014 auto-seeding from sources-seed.json');
     const seeded = seedSources();
     if (seeded > 0) {
       console.log(`[startup] Seeded ${seeded} sources from sources-seed.json`);
