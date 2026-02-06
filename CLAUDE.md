@@ -82,6 +82,27 @@ Use conventional commits: `feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `style
 - Gemini model: `gemini-2.5-flash` (text extraction only)
 - Never fall back to older model versions as a fix
 
+## Data Persistence & Backup (CRITICAL)
+
+Railway volume bind mount paths can change between deployments (especially after consecutive failed deploys), causing total data loss. Multi-layer protection is in place:
+
+- **Auto-seed**: If 0 sources detected at startup, `data/sources-seed.json` is auto-loaded (committed to git)
+- **Pre-fetch backup**: Before each RSS fetch cycle, a WAL-safe SQLite backup is created in `data/backups/`
+- **Backup pruning**: Only the 5 most recent backups are kept
+- **JSON export/import**: Admin can export/import entire database via Settings > Database or `/api/admin/backup`
+- **Startup verification**: Row counts logged at startup for sources, persons, quotes, articles
+
+### Admin Backup/Restore Endpoints
+- `GET /api/admin/backup` — Download database as JSON (requires auth)
+- `POST /api/admin/backup` — Create disk backup (requires auth)
+- `POST /api/admin/restore` — Import from JSON export (requires auth)
+- `GET /api/admin/backups` — List available disk backups (requires auth)
+
+### After Data Loss Recovery
+1. Check if auto-seed restored sources (check startup logs)
+2. If you have a JSON backup, use Settings > Database > Import JSON
+3. Re-add any missing sources manually via Settings > News Sources
+
 ## Pinecone Vector DB (CRITICAL)
 
 The "quotelog" index uses **sparse vectors** with Pinecone's **integrated embedding model** (`pinecone-sparse-english-v0`). This means:

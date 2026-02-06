@@ -1,0 +1,60 @@
+{
+  "description": "Default news sources for QuoteLog. Auto-seeded when database has 0 sources.",
+  "sources": [
+    {
+      "domain": "reuters.com",
+      "name": "Reuters",
+      "rss_url": "https://www.reuters.com/rssFeed/worldNews"
+    },
+    {
+      "domain": "apnews.com",
+      "name": "AP News",
+      "rss_url": "https://news.google.com/rss/search?q=site:apnews.com"
+    },
+    {
+      "domain": "bbc.com",
+      "name": "BBC News",
+      "rss_url": "https://feeds.bbci.co.uk/news/rss.xml"
+    },
+    {
+      "domain": "cnn.com",
+      "name": "CNN",
+      "rss_url": "https://rss.cnn.com/rss/cnn_topstories.rss"
+    },
+    {
+      "domain": "cnn.com",
+      "name": "CNN Politics",
+      "rss_url": "https://rss.cnn.com/rss/cnn_allpolitics.rss"
+    },
+    {
+      "domain": "nytimes.com",
+      "name": "New York Times",
+      "rss_url": "https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml"
+    },
+    {
+      "domain": "washingtonpost.com",
+      "name": "Washington Post",
+      "rss_url": "https://feeds.washingtonpost.com/rss/politics"
+    },
+    {
+      "domain": "theguardian.com",
+      "name": "The Guardian",
+      "rss_url": "https://www.theguardian.com/world/rss"
+    },
+    {
+      "domain": "politico.com",
+      "name": "Politico",
+      "rss_url": "https://www.politico.com/rss/politicopicks.xml"
+    },
+    {
+      "domain": "npr.org",
+      "name": "NPR",
+      "rss_url": "https://feeds.npr.org/1001/rss.xml"
+    },
+    {
+      "domain": "cbsnews.com",
+      "name": "CBS News",
+      "rss_url": "https://www.cbsnews.com/latest/rss/main"
+    }
+  ]
+}

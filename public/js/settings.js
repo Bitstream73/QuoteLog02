@@ -124,6 +124,31 @@ async function renderSettings() {
         </div>
       </div>
 
+      <!-- Database Backup Section -->
+      <div class="settings-section">
+        <h2>Database</h2>
+        <p class="section-description">Export and import your database for backup and recovery.</p>
+
+        <div class="setting-row" style="align-items:center">
+          <label>
+            <span class="setting-label">Export Backup</span>
+            <span class="setting-description">Download all data as a JSON file</span>
+          </label>
+          <button class="btn btn-primary" id="export-db-btn" onclick="exportDatabase()">Export JSON</button>
+        </div>
+
+        <div class="setting-row" style="align-items:center">
+          <label>
+            <span class="setting-label">Import Backup</span>
+            <span class="setting-description">Restore from a previously exported JSON file</span>
+          </label>
+          <div>
+            <input type="file" id="import-db-file" accept=".json" style="display:none" onchange="importDatabase(this)">
+            <button class="btn btn-secondary" onclick="document.getElementById('import-db-file').click()">Import JSON</button>
+          </div>
+        </div>
+      </div>
+
       <!-- Logs Section -->
       <div id="logs-section" class="settings-section">
         <div class="section-header">
@@ -335,5 +360,52 @@ async function fetchNow() {
     btn.disabled = false;
     btn.textContent = 'Fetch Now';
     alert('Error: ' + err.message);
+  }
+}
+
+async function exportDatabase() {
+  const btn = document.getElementById('export-db-btn');
+  btn.disabled = true;
+  btn.textContent = 'Exporting...';
+
+  try {
+    const data = await API.get('/admin/backup');
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `quotelog-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    alert('Export failed: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Export JSON';
+  }
+}
+
+async function importDatabase(input) {
+  const file = input.files[0];
+  if (!file) return;
+
+  if (!confirm('This will REPLACE all current data with the imported backup. Are you sure?')) {
+    input.value = '';
+    return;
+  }
+
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text);
+    const result = await API.post('/admin/restore', data);
+    alert('Restore complete! Imported: ' + Object.entries(result.imported || {}).map(([k, v]) => `${k}: ${v}`).join(', '));
+    // Reload settings page to reflect new data
+    renderSettings();
+  } catch (err) {
+    alert('Import failed: ' + err.message);
+  } finally {
+    input.value = '';
   }
 }

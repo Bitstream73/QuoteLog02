@@ -1,7 +1,8 @@
 node_modules/
 .env
 *.db
-data/
+data/*
+!data/sources-seed.json
 uploads/
 coverage/
 .DS_Store
