@@ -1,6 +1,7 @@
 import { getDb, getSettingValue } from '../config/database.js';
 import logger from './logger.js';
 import { fetchArticlesFromSource, processArticle } from './articleFetcher.js';
+import { createBackup, pruneOldBackups } from './backup.js';
 
 let fetchTimer = null;
 let appInstance = null;
@@ -81,6 +82,15 @@ async function runFetchCycle() {
 
   try {
     lastCycleStartedAt = Date.now();
+
+    // Pre-fetch backup
+    try {
+      await createBackup();
+      pruneOldBackups(5);
+    } catch (backupErr) {
+      logger.warn('scheduler', 'pre_fetch_backup_failed', { error: backupErr.message });
+    }
+
     logger.info('scheduler', 'fetch_cycle_start', {});
     console.log('Starting fetch cycle...');
 
