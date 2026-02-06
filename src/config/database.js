@@ -20,8 +20,8 @@ export function getDb() {
   const dbDir = path.dirname(dbPath);
 
   // Retry logic for Railway volume mount race condition:
-  // Railway mounts volumes asynchronously \u2014 the app can start before /app/data is ready.
-  const maxRetries = 10;
+  // Railway mounts volumes asynchronously — the app can start before /app/data is ready.
+  const maxRetries = 30;
   const retryDelayMs = 2000;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -55,7 +55,7 @@ export function getDb() {
 
 function initializeTables(db) {
   // Sources - User-configured reputable news sources
-  // domain is NOT unique \u2014 multiple feeds from the same domain are allowed (e.g. CNN Politics, CNN World)
+  // domain is NOT unique — multiple feeds from the same domain are allowed (e.g. CNN Politics, CNN World)
   db.exec(`
     CREATE TABLE IF NOT EXISTS sources (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
