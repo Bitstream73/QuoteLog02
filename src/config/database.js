@@ -350,9 +350,14 @@ export function verifyDatabaseState() {
  * @returns {number} Number of sources seeded
  */
 export function seedSources() {
-  const seedPath = path.join(__dirname, '../../data/sources-seed.json');
-  if (!fs.existsSync(seedPath)) {
-    console.warn('[startup] sources-seed.json not found at:', seedPath);
+  // Check multiple locations: data/ dir (dev), project root (Docker volume shadows data/)
+  const candidates = [
+    path.join(__dirname, '../../data/sources-seed.json'),
+    path.join(__dirname, '../../sources-seed.json'),
+  ];
+  const seedPath = candidates.find(p => fs.existsSync(p));
+  if (!seedPath) {
+    console.warn('[startup] sources-seed.json not found at:', candidates.join(', '));
     return 0;
   }
 
