@@ -53,7 +53,7 @@ function groupQuotesByArticle(quotes) {
     }
   }
 
-  // Convert to array, groups with multiple quotes first, then singles
+  // Convert to array — all article groups rendered the same way
   const multiQuoteGroups = [];
   const singleQuoteGroups = [];
 
@@ -160,12 +160,7 @@ function buildQuoteEntryHtml(q, insideGroup, gangOpts) {
     ? `<span class="quote-category-context">${escapeHtml(q.personCategoryContext)}</span>`
     : '';
 
-  // Source links (only show if not inside an article group, or show per-quote sources)
-  const sourceLinks = insideGroup ? '' : (q.sourceUrls || [])
-    .map(url => `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="source-link">${escapeHtml(extractDomain(url))}</a>`)
-    .join(' ');
-
-  // Primary source display (only if not in group)
+  // Primary source display (only if not in group) — no separate URL links to avoid redundancy
   const primarySource = q.primarySourceName || q.primarySourceDomain || '';
   const primarySourceHtml = !insideGroup && primarySource
     ? `<span class="quote-primary-source">${escapeHtml(primarySource)}</span>`
@@ -230,12 +225,11 @@ function buildQuoteEntryHtml(q, insideGroup, gangOpts) {
             ${visibilityBtn}
             ${editBtn}
           </div>` : ''}
+          ${contextHtml}
           <div class="quote-sources-row">
             ${primarySourceHtml}
-            ${sourceLinks}
             ${articleTitleHtml}
           </div>
-          ${contextHtml}
           ${shareHtml}
         </div>
       </div>
@@ -251,15 +245,6 @@ function buildArticleGroupHtml(group) {
   const dateStr = group.articlePublishedAt
     ? new Date(group.articlePublishedAt).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
     : '';
-
-  const sourceLinks = [];
-  const allUrls = new Set();
-  for (const q of group.quotes) {
-    (q.sourceUrls || []).forEach(u => allUrls.add(u));
-  }
-  allUrls.forEach(url => {
-    sourceLinks.push(`<a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="source-link">${escapeHtml(extractDomain(url))}</a>`);
-  });
 
   const primarySource = group.primarySourceName || group.primarySourceDomain || '';
   const primarySourceHtml = primarySource
@@ -313,11 +298,10 @@ function buildArticleGroupHtml(group) {
       </div>
       ${collapsible ? `<div class="article-group-fade" id="agf-${groupId}" onclick="toggleArticleGroup(event, ${groupId})"></div>` : ''}
       <div class="article-group-footer">
+        ${contextHtml}
         <div class="article-group-sources">
           ${primarySourceHtml}
-          ${sourceLinks.join(' ')}
         </div>
-        ${contextHtml}
         ${shareHtml}
       </div>
     </div>
@@ -538,10 +522,12 @@ async function renderHome() {
         html += buildArticleGroupHtml(group);
       }
 
-      // Render single-quote groups and ungrouped as individual entries
+      // Render single-quote article groups with same card format
       for (const group of singleQuoteGroups) {
-        html += buildQuoteEntryHtml(group.quotes[0], false);
+        html += buildArticleGroupHtml(group);
       }
+
+      // Render ungrouped quotes as individual entries
       for (const q of ungrouped) {
         html += buildQuoteEntryHtml(q, false);
       }
@@ -605,7 +591,7 @@ async function loadQuotesPage(page) {
       html += buildArticleGroupHtml(group);
     }
     for (const group of singleQuoteGroups) {
-      html += buildQuoteEntryHtml(group.quotes[0], false);
+      html += buildArticleGroupHtml(group);
     }
     for (const q of ungrouped) {
       html += buildQuoteEntryHtml(q, false);
@@ -656,26 +642,11 @@ function updateReviewBadge(count) {
 
 /**
  * Handle new quotes from Socket.IO
+ * Re-render the full homepage so article grouping and twirl work correctly.
  */
 function handleNewQuotes(quotes) {
-  // If on homepage, prepend new quotes
   if (window.location.pathname === '/' || window.location.pathname === '') {
-    const content = document.getElementById('content');
-    const quoteEntries = content.querySelectorAll('.quote-entry');
-
-    if (quoteEntries.length > 0) {
-      const firstEntry = quoteEntries[0];
-      for (const q of quotes.reverse()) {
-        const wrapper = document.createElement('div');
-        wrapper.innerHTML = buildQuoteEntryHtml(q, false);
-        const newEntry = wrapper.firstElementChild;
-        newEntry.classList.add('new-quote');
-        firstEntry.parentNode.insertBefore(newEntry, firstEntry);
-
-        // Remove animation class after animation completes
-        setTimeout(() => newEntry.classList.remove('new-quote'), 1000);
-      }
-    }
+    renderHome();
   }
 }
 

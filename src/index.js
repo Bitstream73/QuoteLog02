@@ -54,6 +54,14 @@ export function createApp() {
   // Rate limiting
   app.use('/api/', createRateLimiter({ windowMs: 15 * 60 * 1000, max: 200 }));
 
+  // Service worker — must never be cached by browser so updates are detected
+  app.get('/sw.js', (req, res) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.sendFile(path.join(__dirname, '../public/sw.js'));
+  });
+
   // Static files
   app.use(express.static(path.join(__dirname, '../public')));
 

@@ -158,9 +158,28 @@ function updateAdVisibility(path) {
 // Handle browser back/forward
 window.addEventListener('popstate', route);
 
-// Register service worker
+// Register service worker with update detection
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/sw.js').catch(() => {});
+  navigator.serviceWorker.register('/sw.js').then((reg) => {
+    // Check for updates periodically (every 30 min)
+    setInterval(() => reg.update(), 30 * 60 * 1000);
+
+    reg.addEventListener('updatefound', () => {
+      const newWorker = reg.installing;
+      if (!newWorker) return;
+      newWorker.addEventListener('statechange', () => {
+        if (newWorker.state === 'activated' && navigator.serviceWorker.controller) {
+          // New version available — reload to get fresh assets
+          window.location.reload();
+        }
+      });
+    });
+  }).catch(() => {});
+
+  // When a new SW takes control, reload the page
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    window.location.reload();
+  });
 }
 
 // Modal functions
