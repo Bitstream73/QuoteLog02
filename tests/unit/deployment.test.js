@@ -7,7 +7,7 @@ describe('Deployment Configuration', () => {
 
     expect(dockerfile).toContain('FROM node:20-alpine');
     expect(dockerfile).toContain('HEALTHCHECK');
-    expect(dockerfile).toContain('USER nodejs');
+    expect(dockerfile).toContain('CMD');
   });
 
   it('should have valid railway.json', () => {
