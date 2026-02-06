@@ -1,7 +1,20 @@
 import { Router } from 'express';
+import jwt from 'jsonwebtoken';
 import { getDb } from '../config/database.js';
+import config from '../config/index.js';
 
 const router = Router();
+
+function isAdminRequest(req) {
+  const token = req.cookies?.auth_token;
+  if (!token) return false;
+  try {
+    jwt.verify(token, config.jwtSecret);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 // List all authors (persons) with quote counts
 router.get('/', (req, res) => {
@@ -62,6 +75,7 @@ router.get('/:id', (req, res) => {
       firstSeenAt: person.first_seen_at,
       lastSeenAt: person.last_seen_at,
       wikidataId: person.wikidata_id,
+      photoUrl: person.photo_url || null,
       organizations: metadata.organizations || [],
       titles: metadata.titles || [],
       topics: metadata.topics || [],
@@ -91,14 +105,17 @@ router.get('/:id/quotes', (req, res) => {
     personId = person.id;
   }
 
+  const admin = isAdminRequest(req);
+  const visFilter = admin ? '' : 'AND is_visible = 1';
+
   const total = db.prepare(
-    'SELECT COUNT(*) as count FROM quotes WHERE person_id = ? AND canonical_quote_id IS NULL'
+    `SELECT COUNT(*) as count FROM quotes WHERE person_id = ? AND canonical_quote_id IS NULL ${visFilter}`
   ).get(personId).count;
 
   const quotes = db.prepare(`
-    SELECT id, text, source_urls, created_at, context, quote_type
+    SELECT id, text, source_urls, created_at, context, quote_type, is_visible
     FROM quotes
-    WHERE person_id = ? AND canonical_quote_id IS NULL
+    WHERE person_id = ? AND canonical_quote_id IS NULL ${visFilter}
     ORDER BY created_at DESC
     LIMIT ? OFFSET ?
   `).all(personId, limit, offset);

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { requireAdmin } from '../middleware/auth.js';
 import { createBackup, listBackups, exportDatabaseJson, importDatabaseJson } from '../services/backup.js';
+import { backfillHeadshots } from '../services/personPhoto.js';
 
 const router = Router();
 
@@ -50,6 +51,17 @@ router.get('/backups', (req, res) => {
     res.json({ backups });
   } catch (err) {
     res.status(500).json({ error: 'Failed to list backups: ' + err.message });
+  }
+});
+
+// Backfill headshot photos from Wikipedia
+router.post('/backfill-headshots', async (req, res) => {
+  try {
+    const limit = parseInt(req.body?.limit) || 50;
+    const result = await backfillHeadshots(limit);
+    res.json({ message: 'Headshot backfill complete', ...result });
+  } catch (err) {
+    res.status(500).json({ error: 'Backfill failed: ' + err.message });
   }
 });
 

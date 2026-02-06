@@ -168,6 +168,19 @@ function initializeTables(db) {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_quotes_canonical ON quotes(canonical_quote_id)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_quotes_created ON quotes(created_at DESC)`);
 
+  // Migration: add is_visible column to quotes
+  const quoteCols = db.prepare("PRAGMA table_info(quotes)").all().map(c => c.name);
+  if (!quoteCols.includes('is_visible')) {
+    db.exec(`ALTER TABLE quotes ADD COLUMN is_visible INTEGER NOT NULL DEFAULT 1`);
+  }
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quotes_visible ON quotes(is_visible)`);
+
+  // Migration: add photo_url column to persons
+  const personCols = db.prepare("PRAGMA table_info(persons)").all().map(c => c.name);
+  if (!personCols.includes('photo_url')) {
+    db.exec(`ALTER TABLE persons ADD COLUMN photo_url TEXT`);
+  }
+
   // Quote-to-article link (many-to-many)
   db.exec(`
     CREATE TABLE IF NOT EXISTS quote_articles (
