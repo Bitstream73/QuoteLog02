@@ -57,7 +57,7 @@ function updateNav() {
 
   if (reviewLink) reviewLink.style.display = isAdmin ? '' : 'none';
   if (settingsLink) settingsLink.style.display = isAdmin ? '' : 'none';
-  if (loginLink) loginLink.style.display = isAdmin ? 'none' : '';
+  if (loginLink) loginLink.style.display = 'none'; // Login hidden from header per spec
   if (logoutLink) logoutLink.style.display = isAdmin ? '' : 'none';
 }
 
