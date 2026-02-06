@@ -8,7 +8,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 import config from './config/index.js';
-import { getDb, closeDb, verifyDatabaseState } from './config/database.js';
+import { getDb, closeDb, verifyDatabaseState, isDbReady, initDbAsync } from './config/database.js';
 import logger from './services/logger.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { createRateLimiter } from './middleware/rateLimiter.js';
@@ -26,12 +26,14 @@ import adminRouter from './routes/admin.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-export function createApp() {
+export function createApp({ skipDbInit = false } = {}) {
   const app = express();
 
-  // Initialize database and verify state
-  getDb();
-  verifyDatabaseState();
+  // Initialize database and verify state (skip in production — deferred to async init)
+  if (!skipDbInit) {
+    getDb();
+    verifyDatabaseState();
+  }
 
   // Security middleware
   app.use(helmet({
@@ -65,16 +67,18 @@ export function createApp() {
   // Static files
   app.use(express.static(path.join(__dirname, '../public')));
 
-  // Health check
+  // Health check — always returns 200 so Railway healthcheck passes during volume mount
   app.get('/api/health', (req, res) => {
     const pkg = { version: '1.0.0' };
-    let dbStatus = 'disconnected';
-    try {
-      const db = getDb();
-      db.prepare('SELECT 1').get();
-      dbStatus = 'connected';
-    } catch {
-      dbStatus = 'error';
+    let dbStatus = 'starting';
+    if (isDbReady()) {
+      try {
+        const db = getDb();
+        db.prepare('SELECT 1').get();
+        dbStatus = 'connected';
+      } catch {
+        dbStatus = 'error';
+      }
     }
 
     res.json({
@@ -115,7 +119,9 @@ export function createApp() {
 const isMainModule = process.argv[1] && fileURLToPath(import.meta.url).includes(process.argv[1].replace(/\\/g, '/').split('/').pop());
 
 if (isMainModule || (!process.argv[1] && process.env.NODE_ENV !== 'test')) {
-  const app = createApp();
+  const isProduction = config.env === 'production';
+  // In production, skip synchronous DB init — use async retry for volume mount race condition
+  const app = createApp({ skipDbInit: isProduction });
   const httpServer = createServer(app);
   const io = new SocketServer(httpServer, {
     cors: { origin: '*' },
@@ -131,13 +137,6 @@ if (isMainModule || (!process.argv[1] && process.env.NODE_ENV !== 'test')) {
   // Export io for use in other modules
   app.set('io', io);
 
-  // Start the fetch scheduler
-  import('./services/scheduler.js').then(({ startFetchScheduler }) => {
-    startFetchScheduler(app);
-  }).catch(err => {
-    logger.error('system', 'scheduler_init_failed', { error: err.message });
-  });
-
   httpServer.listen(config.port, () => {
     logger.info('system', 'startup', {
       version: '1.0.0',
@@ -146,6 +145,28 @@ if (isMainModule || (!process.argv[1] && process.env.NODE_ENV !== 'test')) {
       port: config.port,
     });
     console.log(`Server running on port ${config.port}`);
+
+    // In production, initialize DB asynchronously (with retries for volume mount)
+    // then start the scheduler once DB is ready
+    if (isProduction) {
+      initDbAsync().then(() => {
+        verifyDatabaseState();
+        console.log('[startup] Database ready, starting scheduler');
+        return import('./services/scheduler.js');
+      }).then(({ startFetchScheduler }) => {
+        startFetchScheduler(app);
+      }).catch(err => {
+        console.error('[startup] Database initialization failed:', err.message);
+        process.exit(1);
+      });
+    } else {
+      // In dev, DB is already initialized synchronously — start scheduler immediately
+      import('./services/scheduler.js').then(({ startFetchScheduler }) => {
+        startFetchScheduler(app);
+      }).catch(err => {
+        logger.error('system', 'scheduler_init_failed', { error: err.message });
+      });
+    }
   });
 
   // Graceful shutdown

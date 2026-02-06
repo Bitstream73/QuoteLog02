@@ -8,49 +8,83 @@ import config from './index.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 let db;
+let dbReady = false;
+let dbInitPromise = null;
 
-function sleepSync(ms) {
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
-}
-
+/**
+ * Get the database connection. Returns the db if ready, throws if not yet initialized.
+ */
 export function getDb() {
   if (db) return db;
 
+  // Synchronous attempt — works in dev or after volume is mounted
   const dbPath = config.databasePath;
   const dbDir = path.dirname(dbPath);
 
-  // Retry logic for Railway volume mount race condition:
-  // Railway mounts volumes asynchronously — the app can start before /app/data is ready.
-  const maxRetries = 30;
-  const retryDelayMs = 2000;
+  if (!fs.existsSync(dbDir)) {
+    fs.mkdirSync(dbDir, { recursive: true });
+  }
 
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      if (!fs.existsSync(dbDir)) {
-        fs.mkdirSync(dbDir, { recursive: true });
-      }
+  db = new Database(dbPath);
+  db.pragma('journal_mode = WAL');
+  db.pragma('foreign_keys = ON');
 
-      db = new Database(dbPath);
-      db.pragma('journal_mode = WAL');
-      db.pragma('foreign_keys = ON');
+  initializeTables(db);
+  dbReady = true;
+  return db;
+}
 
-      initializeTables(db);
+/** Check if database is initialized and ready */
+export function isDbReady() {
+  return dbReady;
+}
 
-      if (attempt > 1) {
-        console.log(`[startup] Database opened successfully on attempt ${attempt}`);
-      }
-      return db;
-    } catch (err) {
-      if (err.code === 'SQLITE_CANTOPEN' && attempt < maxRetries) {
-        console.warn(`[startup] Database open failed (attempt ${attempt}/${maxRetries}): ${err.message}`);
-        console.warn(`[startup] Volume may not be mounted yet. Retrying in ${retryDelayMs}ms...`);
-        sleepSync(retryDelayMs);
-        db = null; // Reset for retry
-      } else {
-        throw err;
+/**
+ * Initialize database with async retry logic for Railway volume mount race condition.
+ * Railway mounts volumes asynchronously — the app can start before /app/data is ready.
+ * This runs in the background so the server can start and pass healthcheck immediately.
+ */
+export async function initDbAsync() {
+  if (db) return db;
+  if (dbInitPromise) return dbInitPromise;
+
+  dbInitPromise = (async () => {
+    const dbPath = config.databasePath;
+    const dbDir = path.dirname(dbPath);
+    const maxRetries = 30;
+    const retryDelayMs = 2000;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        if (!fs.existsSync(dbDir)) {
+          fs.mkdirSync(dbDir, { recursive: true });
+        }
+
+        db = new Database(dbPath);
+        db.pragma('journal_mode = WAL');
+        db.pragma('foreign_keys = ON');
+
+        initializeTables(db);
+        dbReady = true;
+
+        if (attempt > 1) {
+          console.log(`[startup] Database opened successfully on attempt ${attempt}`);
+        }
+        return db;
+      } catch (err) {
+        if (err.code === 'SQLITE_CANTOPEN' && attempt < maxRetries) {
+          console.warn(`[startup] Database open failed (attempt ${attempt}/${maxRetries}): ${err.message}`);
+          console.warn(`[startup] Volume may not be mounted yet. Retrying in ${retryDelayMs}ms...`);
+          await new Promise(resolve => setTimeout(resolve, retryDelayMs));
+          db = null;
+        } else {
+          throw err;
+        }
       }
     }
-  }
+  })();
+
+  return dbInitPromise;
 }
 
 function initializeTables(db) {
