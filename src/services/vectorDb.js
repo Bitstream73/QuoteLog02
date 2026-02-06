@@ -37,12 +37,14 @@ export async function embedQuote(quoteId, text, personId) {
   try {
     const ns = idx.namespace('quotes');
 
-    await ns.upsertRecords([{
-      _id: `quote_${quoteId}`,
-      text: text.substring(0, 1000),
-      quote_id: quoteId,
-      person_id: personId,
-    }]);
+    await ns.upsertRecords({
+      records: [{
+        _id: `quote_${quoteId}`,
+        text: text.substring(0, 1000),
+        quote_id: quoteId,
+        person_id: personId,
+      }],
+    });
 
     logger.debug('vectordb', 'quote_embedded', { quoteId, personId });
   } catch (err) {
@@ -94,7 +96,7 @@ const vectorDb = {
     if (!idx) throw new Error('Pinecone not configured');
 
     const ns = idx.namespace(namespace);
-    await ns.upsertRecords(records);
+    await ns.upsertRecords({ records });
     const duration = Date.now() - start;
     logger.info('vectordb', 'upsert', { count: records.length, namespace, duration });
   },

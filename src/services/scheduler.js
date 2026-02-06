@@ -4,6 +4,7 @@ import { fetchArticlesFromSource, processArticle } from './articleFetcher.js';
 
 let fetchTimer = null;
 let appInstance = null;
+let cycleRunning = false;
 
 /**
  * Start the fetch scheduler
@@ -17,16 +18,22 @@ export function startFetchScheduler(app) {
 
   logger.info('scheduler', 'start', { intervalMinutes });
 
-  // Run immediately on start
-  runFetchCycle().catch(err => {
-    logger.error('scheduler', 'fetch_cycle_error', { error: err.message });
-  });
-
-  // Then run on interval
-  fetchTimer = setInterval(() => {
+  // Run immediately on start (only if not already running)
+  if (!cycleRunning) {
     runFetchCycle().catch(err => {
       logger.error('scheduler', 'fetch_cycle_error', { error: err.message });
     });
+  }
+
+  // Then run on interval
+  fetchTimer = setInterval(() => {
+    if (!cycleRunning) {
+      runFetchCycle().catch(err => {
+        logger.error('scheduler', 'fetch_cycle_error', { error: err.message });
+      });
+    } else {
+      logger.info('scheduler', 'skip_cycle', { reason: 'previous_cycle_still_running' });
+    }
   }, intervalMs);
 
   console.log(`Fetch scheduler started: every ${intervalMinutes} minutes`);
@@ -56,110 +63,120 @@ export function restartFetchScheduler(app) {
  * Run a single fetch cycle
  */
 async function runFetchCycle() {
+  if (cycleRunning) {
+    logger.info('scheduler', 'skip_cycle', { reason: 'already_running' });
+    return;
+  }
+  cycleRunning = true;
+
   const startTime = Date.now();
   const db = getDb();
   const io = appInstance?.get('io');
 
-  logger.info('scheduler', 'fetch_cycle_start', {});
-  console.log('Starting fetch cycle...');
+  try {
+    logger.info('scheduler', 'fetch_cycle_start', {});
+    console.log('Starting fetch cycle...');
 
-  const sources = db.prepare('SELECT * FROM sources WHERE enabled = 1').all();
-  const lookbackHours = parseInt(getSettingValue('article_lookback_hours', '24'), 10);
-  const maxArticles = parseInt(getSettingValue('max_articles_per_cycle', '100'), 10);
+    const sources = db.prepare('SELECT * FROM sources WHERE enabled = 1').all();
+    const lookbackHours = parseInt(getSettingValue('article_lookback_hours', '24'), 10);
+    const maxArticles = parseInt(getSettingValue('max_articles_per_cycle', '100'), 10);
 
-  logger.info('scheduler', 'sources_loaded', {
-    count: sources.length,
-    domains: sources.map(s => s.domain),
-  });
+    logger.info('scheduler', 'sources_loaded', {
+      count: sources.length,
+      domains: sources.map(s => s.domain),
+    });
 
-  let totalNewArticles = 0;
-  let totalNewQuotes = 0;
-  const errors = [];
+    let totalNewArticles = 0;
+    let totalNewQuotes = 0;
+    const errors = [];
 
-  // Phase 1: Discover articles from all sources
-  for (const source of sources) {
-    try {
-      const articles = await fetchArticlesFromSource(source, lookbackHours);
-      const newArticles = await insertNewArticles(articles, source.id, db);
-      totalNewArticles += newArticles.length;
+    // Phase 1: Discover articles from all sources
+    for (const source of sources) {
+      try {
+        const articles = await fetchArticlesFromSource(source, lookbackHours);
+        const newArticles = await insertNewArticles(articles, source.id, db);
+        totalNewArticles += newArticles.length;
 
-      // Reset consecutive failures on success
-      if (source.consecutive_failures > 0) {
-        db.prepare('UPDATE sources SET consecutive_failures = 0 WHERE id = ?').run(source.id);
-      }
-    } catch (err) {
-      logger.error('scheduler', 'source_fetch_error', {
-        source: source.domain,
-        error: err.message,
-      });
-      errors.push({ source: source.domain, error: err.message });
-
-      // Increment failure count
-      db.prepare('UPDATE sources SET consecutive_failures = consecutive_failures + 1 WHERE id = ?')
-        .run(source.id);
-
-      // Disable source if 3 consecutive failures
-      const updated = db.prepare('SELECT consecutive_failures FROM sources WHERE id = ?').get(source.id);
-      if (updated && updated.consecutive_failures >= 3) {
-        db.prepare('UPDATE sources SET enabled = 0 WHERE id = ?').run(source.id);
-        logger.warn('scheduler', 'source_disabled', {
+        // Reset consecutive failures on success
+        if (source.consecutive_failures > 0) {
+          db.prepare('UPDATE sources SET consecutive_failures = 0 WHERE id = ?').run(source.id);
+        }
+      } catch (err) {
+        logger.error('scheduler', 'source_fetch_error', {
           source: source.domain,
-          reason: 'consecutive_failures',
+          error: err.message,
         });
-        if (io) {
-          io.emit('source_disabled', { domain: source.domain, reason: 'consecutive failures' });
+        errors.push({ source: source.domain, error: err.message });
+
+        // Increment failure count
+        db.prepare('UPDATE sources SET consecutive_failures = consecutive_failures + 1 WHERE id = ?')
+          .run(source.id);
+
+        // Disable source if 3 consecutive failures
+        const updated = db.prepare('SELECT consecutive_failures FROM sources WHERE id = ?').get(source.id);
+        if (updated && updated.consecutive_failures >= 3) {
+          db.prepare('UPDATE sources SET enabled = 0 WHERE id = ?').run(source.id);
+          logger.warn('scheduler', 'source_disabled', {
+            source: source.domain,
+            reason: 'consecutive_failures',
+          });
+          if (io) {
+            io.emit('source_disabled', { domain: source.domain, reason: 'consecutive failures' });
+          }
         }
       }
     }
-  }
 
-  // Phase 2: Process pending articles (with global limit)
-  const pending = db.prepare(`
-    SELECT a.*, s.domain FROM articles a
-    JOIN sources s ON a.source_id = s.id
-    WHERE a.status = 'pending'
-    ORDER BY a.created_at ASC
-    LIMIT ?
-  `).all(maxArticles);
+    // Phase 2: Process pending articles (with global limit)
+    const pending = db.prepare(`
+      SELECT a.*, s.domain FROM articles a
+      JOIN sources s ON a.source_id = s.id
+      WHERE a.status = 'pending'
+      ORDER BY a.created_at ASC
+      LIMIT ?
+    `).all(maxArticles);
 
-  const newQuotes = [];
-  for (const article of pending) {
-    try {
-      const quotes = await processArticle(article, db, io);
-      totalNewQuotes += quotes.length;
-      newQuotes.push(...quotes);
-    } catch (err) {
-      logger.error('scheduler', 'article_process_error', {
-        url: article.url,
-        error: err.message,
-      });
-      db.prepare("UPDATE articles SET status = 'failed', error = ? WHERE id = ?")
-        .run(err.message, article.id);
+    const newQuotes = [];
+    for (const article of pending) {
+      try {
+        const quotes = await processArticle(article, db, io);
+        totalNewQuotes += quotes.length;
+        newQuotes.push(...quotes);
+      } catch (err) {
+        logger.error('scheduler', 'article_process_error', {
+          url: article.url,
+          error: err.message,
+        });
+        db.prepare("UPDATE articles SET status = 'failed', error = ? WHERE id = ?")
+          .run(err.message, article.id);
+      }
     }
-  }
 
-  const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-  logger.info('scheduler', 'fetch_cycle_complete', {
-    newArticles: totalNewArticles,
-    newQuotes: totalNewQuotes,
-    elapsed: parseFloat(elapsed),
-    errors: errors.length,
-  });
-
-  console.log(`Fetch cycle complete: ${totalNewArticles} new articles, ${totalNewQuotes} new quotes (${elapsed}s)`);
-
-  // Emit status update to connected clients
-  if (io) {
-    io.emit('fetch_cycle_complete', {
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    logger.info('scheduler', 'fetch_cycle_complete', {
       newArticles: totalNewArticles,
       newQuotes: totalNewQuotes,
       elapsed: parseFloat(elapsed),
+      errors: errors.length,
     });
 
-    // Emit new quotes for real-time updates
-    if (newQuotes.length > 0) {
-      io.emit('new_quotes', { quotes: newQuotes });
+    console.log(`Fetch cycle complete: ${totalNewArticles} new articles, ${totalNewQuotes} new quotes (${elapsed}s)`);
+
+    // Emit status update to connected clients
+    if (io) {
+      io.emit('fetch_cycle_complete', {
+        newArticles: totalNewArticles,
+        newQuotes: totalNewQuotes,
+        elapsed: parseFloat(elapsed),
+      });
+
+      // Emit new quotes for real-time updates
+      if (newQuotes.length > 0) {
+        io.emit('new_quotes', { quotes: newQuotes });
+      }
     }
+  } finally {
+    cycleRunning = false;
   }
 }
 
