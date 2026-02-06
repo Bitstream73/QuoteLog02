@@ -1,8 +1,11 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
+import { fileURLToPath } from 'url';
 import bcryptjs from 'bcryptjs';
 import config from './index.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 let db;
 
@@ -315,4 +318,80 @@ export function setSettingValue(key, value) {
     .run(key, String(value));
 }
 
-export default { getDb, closeDb, getSettingValue, setSettingValue };
+/**
+ * Verify database state at startup. Logs row counts and auto-seeds sources if empty.
+ */
+export function verifyDatabaseState() {
+  const db = getDb();
+
+  const counts = {
+    sources: db.prepare('SELECT COUNT(*) as count FROM sources').get().count,
+    persons: db.prepare('SELECT COUNT(*) as count FROM persons').get().count,
+    quotes: db.prepare('SELECT COUNT(*) as count FROM quotes').get().count,
+    articles: db.prepare('SELECT COUNT(*) as count FROM articles').get().count,
+  };
+
+  console.log(`[startup] Database state: ${counts.sources} sources, ${counts.persons} persons, ${counts.quotes} quotes, ${counts.articles} articles`);
+  console.log(`[startup] Database path: ${config.databasePath}`);
+
+  if (counts.sources === 0) {
+    console.warn('[startup] WARNING: 0 sources detected — auto-seeding from sources-seed.json');
+    const seeded = seedSources();
+    if (seeded > 0) {
+      console.log(`[startup] Seeded ${seeded} sources from sources-seed.json`);
+    }
+  }
+
+  return counts;
+}
+
+/**
+ * Seed sources from data/sources-seed.json
+ * @returns {number} Number of sources seeded
+ */
+export function seedSources() {
+  const seedPath = path.join(__dirname, '../../data/sources-seed.json');
+  if (!fs.existsSync(seedPath)) {
+    console.warn('[startup] sources-seed.json not found at:', seedPath);
+    return 0;
+  }
+
+  const seedData = JSON.parse(fs.readFileSync(seedPath, 'utf-8'));
+  if (!seedData.sources || !Array.isArray(seedData.sources)) {
+    console.warn('[startup] Invalid sources-seed.json format');
+    return 0;
+  }
+
+  const db = getDb();
+  const insert = db.prepare(
+    'INSERT OR IGNORE INTO sources (domain, name, rss_url, enabled) VALUES (?, ?, ?, 1)'
+  );
+
+  let count = 0;
+  for (const source of seedData.sources) {
+    const result = insert.run(source.domain, source.name, source.rss_url);
+    if (result.changes > 0) count++;
+  }
+
+  return count;
+}
+
+/**
+ * Export current sources to data/sources-seed.json
+ * @returns {number} Number of sources exported
+ */
+export function exportSourcesSeed() {
+  const db = getDb();
+  const sources = db.prepare('SELECT domain, name, rss_url FROM sources ORDER BY name ASC').all();
+
+  const seedPath = path.join(__dirname, '../../data/sources-seed.json');
+  const seedData = {
+    description: 'Default news sources for QuoteLog. Auto-seeded when database has 0 sources.',
+    sources,
+  };
+
+  fs.writeFileSync(seedPath, JSON.stringify(seedData, null, 2) + '\n');
+  return sources.length;
+}
+
+export default { getDb, closeDb, getSettingValue, setSettingValue, verifyDatabaseState, seedSources, exportSourcesSeed };

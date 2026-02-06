@@ -8,7 +8,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 import config from './config/index.js';
-import { getDb, closeDb } from './config/database.js';
+import { getDb, closeDb, verifyDatabaseState } from './config/database.js';
 import logger from './services/logger.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { createRateLimiter } from './middleware/rateLimiter.js';
@@ -22,14 +22,16 @@ import settingsRouter from './routes/settings.js';
 import sourcesRouter from './routes/sources.js';
 import reviewRouter from './routes/review.js';
 import logsRouter from './routes/logs.js';
+import adminRouter from './routes/admin.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export function createApp() {
   const app = express();
 
-  // Initialize database
+  // Initialize database and verify state
   getDb();
+  verifyDatabaseState();
 
   // Security middleware
   app.use(helmet({
@@ -85,6 +87,7 @@ export function createApp() {
   app.use('/api/sources', sourcesRouter);
   app.use('/api/review', reviewRouter);
   app.use('/api/logs', logsRouter);
+  app.use('/api/admin', adminRouter);
 
   // SPA fallback - serve index.html for all non-API routes
   app.get('*', (req, res) => {
