@@ -70,6 +70,47 @@ describe('Database Setup', () => {
     expect(result[0].journal_mode).toBe('wal');
   });
 
+  it('should support is_visible column on quotes table', () => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS persons_test (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        canonical_name TEXT NOT NULL,
+        photo_url TEXT
+      )
+    `);
+
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS quotes_test (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        person_id INTEGER NOT NULL,
+        text TEXT NOT NULL,
+        quote_type TEXT NOT NULL DEFAULT 'direct',
+        is_visible INTEGER NOT NULL DEFAULT 1
+      )
+    `);
+
+    // Insert test data
+    db.prepare('INSERT INTO persons_test (canonical_name) VALUES (?)').run('Test Person');
+    db.prepare('INSERT INTO quotes_test (person_id, text) VALUES (1, ?)').run('Test quote');
+
+    const quote = db.prepare('SELECT is_visible FROM quotes_test WHERE id = 1').get();
+    expect(quote.is_visible).toBe(1);
+
+    // Toggle visibility
+    db.prepare('UPDATE quotes_test SET is_visible = 0 WHERE id = 1').run();
+    const hidden = db.prepare('SELECT is_visible FROM quotes_test WHERE id = 1').get();
+    expect(hidden.is_visible).toBe(0);
+  });
+
+  it('should support photo_url column on persons table', () => {
+    const person = db.prepare('SELECT photo_url FROM persons_test WHERE id = 1').get();
+    expect(person.photo_url).toBeNull();
+
+    db.prepare('UPDATE persons_test SET photo_url = ? WHERE id = 1').run('https://example.com/photo.jpg');
+    const updated = db.prepare('SELECT photo_url FROM persons_test WHERE id = 1').get();
+    expect(updated.photo_url).toBe('https://example.com/photo.jpg');
+  });
+
   it('should create application_logs table with correct schema', () => {
     db.exec(`
       CREATE TABLE IF NOT EXISTS application_logs (

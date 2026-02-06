@@ -67,6 +67,34 @@ describe('Frontend Routes', () => {
     });
   });
 
+  describe('Quote Visibility API', () => {
+    it('should require auth for visibility toggle', async () => {
+      const response = await request(app)
+        .patch('/api/quotes/1/visibility')
+        .send({ isVisible: false });
+
+      expect(response.status).toBe(401);
+    });
+
+    it('should reject non-boolean isVisible', async () => {
+      const response = await request(app)
+        .patch('/api/quotes/1/visibility')
+        .set('Cookie', authCookie)
+        .send({ isVisible: 'yes' });
+
+      expect(response.status).toBe(400);
+    });
+
+    it('should return 404 for non-existent quote visibility toggle', async () => {
+      const response = await request(app)
+        .patch('/api/quotes/99999/visibility')
+        .set('Cookie', authCookie)
+        .send({ isVisible: false });
+
+      expect(response.status).toBe(404);
+    });
+  });
+
   describe('Authors API', () => {
     it('should get all authors', async () => {
       const response = await request(app).get('/api/authors');
