@@ -212,7 +212,7 @@ function renderSourceRow(source) {
         <span class="source-domain">${escapeHtml(source.domain)}</span>
         <span class="source-name">${escapeHtml(source.name || '')}</span>
         ${source.rss_url ? `<span class="source-rss" title="${escapeHtml(source.rss_url)}">RSS</span>` : ''}
-        ${source.consecutive_failures > 0 ? `<span class="source-warning" title="${source.consecutive_failures} failures">!</span>` : ''}
+        ${source.consecutive_failures > 0 ? `<span class="source-warning" title="${source.consecutive_failures} failures" style="cursor:pointer" onclick="showSourceErrors('${escapeHtml(source.domain)}', ${source.consecutive_failures})">!</span>` : ''}
       </div>
       <div class="source-actions">
         <label class="toggle">
@@ -634,6 +634,45 @@ async function adminEditAuthor(personId, personName) {
     loadAdminQuotes(_adminQuotePage);
   } catch (err) {
     alert('Error: ' + err.message);
+  }
+}
+
+async function showSourceErrors(domain, failureCount) {
+  const modalContent = document.getElementById('modal-content');
+  const modalOverlay = document.getElementById('modal-overlay');
+  modalContent.innerHTML = '<div class="loading">Loading error logs...</div>';
+  modalOverlay.classList.remove('hidden');
+
+  try {
+    const data = await API.get(`/logs?search=${encodeURIComponent(domain)}&level=error&limit=20`);
+    const logs = data.logs || [];
+
+    let html = `<h3 style="margin-bottom:0.5rem">Errors for ${escapeHtml(domain)}</h3>`;
+    html += `<p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:1rem">${failureCount} consecutive failure${failureCount !== 1 ? 's' : ''}</p>`;
+
+    if (logs.length === 0) {
+      html += '<p style="color:var(--text-muted)">No error logs found for this source.</p>';
+    } else {
+      for (const log of logs) {
+        const time = new Date(log.timestamp).toLocaleString();
+        const details = log.details ? JSON.parse(log.details) : {};
+        html += `
+          <div style="border-bottom:1px solid var(--border);padding:0.75rem 0">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.25rem">
+              <span class="badge badge-${log.level}">${log.level}</span>
+              <span style="font-size:0.8rem;color:var(--text-muted)">${time}</span>
+            </div>
+            <div style="font-family:var(--font-ui);font-size:0.85rem;margin-bottom:0.25rem"><strong>${escapeHtml(log.action)}</strong></div>
+            ${log.error ? `<div style="color:var(--error);font-size:0.85rem;margin-bottom:0.25rem">${escapeHtml(log.error)}</div>` : ''}
+            <div class="json-view" style="font-size:0.75rem;max-height:150px;overflow-y:auto">${JSON.stringify(details, null, 2)}</div>
+          </div>
+        `;
+      }
+    }
+
+    modalContent.innerHTML = html;
+  } catch (err) {
+    modalContent.innerHTML = `<p style="color:var(--error)">Error loading logs: ${escapeHtml(err.message)}</p>`;
   }
 }
 

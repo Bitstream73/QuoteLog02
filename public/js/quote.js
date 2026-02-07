@@ -23,17 +23,19 @@ async function renderQuote(id) {
 
     let html = `
       <p style="margin-bottom:1.5rem;font-family:var(--font-ui);font-size:0.85rem">
-        <a href="/" onclick="navigate(event, '/')" style="color:var(--accent);text-decoration:none">&larr; Back to quotes</a>
+        <a href="/" onclick="navigateBackToQuotes(event)" style="color:var(--accent);text-decoration:none">&larr; Back to quotes</a>
       </p>
       <div class="quote-detail-card">
         <div class="quote-layout" style="gap:1.25rem">
           <div class="quote-headshot-col">${headshotHtml}</div>
           <div class="quote-content-col">
             <div class="quote-detail-text">${escapeHtml(q.text)}</div>
-            <div class="quote-author-row" style="margin-top:0.75rem">
-              <a href="/author/${q.personId}" onclick="navigate(event, '/author/${q.personId}')" class="author-link">${escapeHtml(q.personName)}</a>
-              ${q.personDisambiguation ? `<span class="quote-category-context">${escapeHtml(q.personDisambiguation)}</span>` : ''}
-              ${quoteTypeHtml}
+            <div class="quote-author-block" style="margin-top:0.75rem">
+              <div class="quote-author-row">
+                <a href="/author/${q.personId}" onclick="navigate(event, '/author/${q.personId}')" class="author-link">${escapeHtml(q.personName)}</a>
+                ${quoteTypeHtml}
+              </div>
+              ${q.personDisambiguation ? `<div class="quote-author-description">${escapeHtml(q.personDisambiguation)}</div>` : ''}
             </div>
             ${q.context ? `<div class="quote-context" style="margin-top:0.75rem">${escapeHtml(q.context)}</div>` : ''}
             ${dateStr ? `<div class="quote-date-inline" style="margin-top:0.5rem">${dateStr}</div>` : ''}

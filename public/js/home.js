@@ -3,6 +3,9 @@
 // Store full quote texts for show more/less toggle
 const _quoteTexts = {};
 
+// Store quote metadata for sharing
+const _quoteMeta = {};
+
 // Current active category filter
 let _activeCategory = 'Politicians';
 let _activeSubFilter = '';
@@ -90,6 +93,17 @@ function groupQuotesByArticle(quotes) {
  * Build share buttons HTML
  */
 function buildShareHtml(q) {
+  // Store metadata for sharing
+  _quoteMeta[q.id] = {
+    text: q.text,
+    personName: q.personName,
+    personCategoryContext: q.personCategoryContext || q.personDisambiguation || '',
+    context: q.context || '',
+    articleTitle: q.articleTitle || '',
+    primarySourceName: q.primarySourceName || q.primarySourceDomain || '',
+    articlePublishedAt: q.articlePublishedAt || q.createdAt || '',
+  };
+
   const quoteText = q.text.length > 200 ? q.text.substring(0, 200) + '...' : q.text;
   const shareText = encodeURIComponent(`"${quoteText}" - ${q.personName}`);
   const shareUrl = encodeURIComponent(window.location.origin + '/quote/' + q.id);
@@ -117,29 +131,43 @@ function buildShareHtml(q) {
  */
 function shareQuote(event, quoteId, channel) {
   event.preventDefault();
+  const meta = _quoteMeta[quoteId] || {};
   const el = document.getElementById('qe-' + quoteId);
-  if (!el) return;
 
-  const quoteText = _quoteTexts[quoteId] || el.querySelector('.quote-text')?.textContent || '';
-  const authorName = el.querySelector('.author-link')?.textContent || '';
+  const quoteText = meta.text || _quoteTexts[quoteId] || (el && el.querySelector('.quote-text')?.textContent) || '';
+  const authorName = meta.personName || (el && el.querySelector('.author-link')?.textContent) || '';
+  const authorDesc = meta.personCategoryContext || (el && el.querySelector('.quote-author-description')?.textContent) || '';
+  const context = meta.context || (el && el.querySelector('.quote-context')?.textContent) || '';
+  const source = meta.primarySourceName || (el && el.querySelector('.quote-primary-source')?.textContent) || '';
+  const articleTitle = meta.articleTitle || (el && el.querySelector('.quote-article-title-link')?.textContent) || '';
+  const date = meta.articlePublishedAt ? formatDateTime(meta.articlePublishedAt) : (el && el.querySelector('.quote-date-inline')?.textContent) || '';
   const shareUrl = window.location.origin + '/quote/' + quoteId;
   const fullText = `"${quoteText}" - ${authorName}`;
+
+  // Build metadata lines for rich sharing
+  const metaLines = [];
+  if (authorDesc) metaLines.push(authorDesc);
+  if (context) metaLines.push(context);
+  if (articleTitle) metaLines.push(`Article: ${articleTitle}`);
+  if (source) metaLines.push(`Source: ${source}`);
+  if (date) metaLines.push(date);
+  const metaBlock = metaLines.length > 0 ? '\n' + metaLines.join('\n') : '';
 
   switch (channel) {
     case 'x':
       window.open(`https://x.com/intent/tweet?text=${encodeURIComponent(fullText)}&url=${encodeURIComponent(shareUrl)}`, '_blank');
       break;
     case 'facebook':
-      window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}&quote=${encodeURIComponent(fullText)}`, '_blank');
+      window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`, '_blank');
       break;
     case 'email': {
       const subject = encodeURIComponent(`Quote from ${authorName} - Quote Log`);
-      const body = encodeURIComponent(`${fullText}\n\nRead more: ${shareUrl}\n\n---\nShared from Quote Log - What, When, & Why They Said It.`);
-      window.location.href = `mailto:?subject=${subject}&body=${body}`;
+      const body = encodeURIComponent(`${fullText}${metaBlock}\n\nRead more: ${shareUrl}\n\n---\nShared from Quote Log - What, When, & Why They Said It.`);
+      window.open(`mailto:?subject=${subject}&body=${body}`, '_self');
       break;
     }
     case 'copy':
-      navigator.clipboard.writeText(`${fullText}\n${shareUrl}`).then(() => {
+      navigator.clipboard.writeText(`${fullText}${metaBlock}\n${shareUrl}`).then(() => {
         const btn = event.currentTarget;
         btn.classList.add('share-copied');
         setTimeout(() => btn.classList.remove('share-copied'), 1500);
@@ -183,10 +211,12 @@ function buildQuoteEntryHtml(q, insideGroup, gangOpts) {
     ? `<span class="quote-category-context">${escapeHtml(q.personCategoryContext)}</span>`
     : '';
 
-  // Primary source display (only if not in group) — no separate URL links to avoid redundancy
+  // Primary source display (only if not in group) — links to article page when available
   const primarySource = q.primarySourceName || q.primarySourceDomain || '';
   const primarySourceHtml = !insideGroup && primarySource
-    ? `<span class="quote-primary-source">${escapeHtml(primarySource)}</span>`
+    ? (q.articleId
+      ? `<a href="/article/${q.articleId}" onclick="navigate(event, '/article/${q.articleId}')" class="quote-primary-source quote-primary-source-link">${escapeHtml(primarySource)}</a>`
+      : `<span class="quote-primary-source">${escapeHtml(primarySource)}</span>`)
     : '';
 
   // Article title (only if not in group) — clickable link to article detail page
@@ -232,20 +262,24 @@ function buildQuoteEntryHtml(q, insideGroup, gangOpts) {
             <p class="quote-text" id="qt-${q.id}">${escapeHtml(truncatedText)}</p>
             ${isLong ? `<a href="#" class="show-more-toggle" onclick="toggleQuoteText(event, ${q.id})">show more</a>` : ''}
           </div>
-          ${showAuthorRow ? `<div class="quote-author-row">
-            <a href="/author/${q.personId}" onclick="navigate(event, '/author/${q.personId}')" class="author-link">${escapeHtml(q.personName)}</a>
-            ${categoryCtxHtml}
-            ${quoteTypeHtml}
-            ${dateHtml}
-            ${visibilityBtn}
-            ${editBtn}
+          ${showAuthorRow ? `<div class="quote-author-block">
+            <div class="quote-author-row">
+              <a href="/author/${q.personId}" onclick="navigate(event, '/author/${q.personId}')" class="author-link">${escapeHtml(q.personName)}</a>
+              ${quoteTypeHtml}
+              ${dateHtml}
+              ${visibilityBtn}
+              ${editBtn}
+            </div>
+            ${q.personCategoryContext ? `<div class="quote-author-description">${escapeHtml(q.personCategoryContext)}</div>` : ''}
           </div>` : ''}
-          ${showAuthorAfter ? `<div class="quote-author-row">
-            <a href="/author/${q.personId}" onclick="navigate(event, '/author/${q.personId}')" class="author-link">${escapeHtml(q.personName)}</a>
-            ${categoryCtxHtml}
-            ${quoteTypeHtml}
-            ${visibilityBtn}
-            ${editBtn}
+          ${showAuthorAfter ? `<div class="quote-author-block">
+            <div class="quote-author-row">
+              <a href="/author/${q.personId}" onclick="navigate(event, '/author/${q.personId}')" class="author-link">${escapeHtml(q.personName)}</a>
+              ${quoteTypeHtml}
+              ${visibilityBtn}
+              ${editBtn}
+            </div>
+            ${q.personCategoryContext ? `<div class="quote-author-description">${escapeHtml(q.personCategoryContext)}</div>` : ''}
           </div>` : ''}
           ${contextHtml}
           <div class="quote-sources-row">
@@ -268,7 +302,7 @@ function buildArticleGroupHtml(group) {
 
   const primarySource = group.primarySourceName || group.primarySourceDomain || '';
   const primarySourceHtml = primarySource
-    ? `<a href="${escapeHtml(group.articleUrl || '#')}" target="_blank" rel="noopener" class="source-link source-link-primary">${escapeHtml(primarySource)}</a>`
+    ? `<a href="/article/${groupId}" onclick="navigate(event, '/article/${groupId}')" class="source-link source-link-primary">${escapeHtml(primarySource)}</a>`
     : '';
 
   // Find a context from any quote in the group — always visible
@@ -312,8 +346,8 @@ function buildArticleGroupHtml(group) {
       </div>
       <div class="article-group-quotes" id="agq-${groupId}">
         ${quotesHtml}
+        ${collapsible ? `<div class="article-group-fade" id="agf-${groupId}" onclick="toggleArticleGroup(event, ${groupId})"></div>` : ''}
       </div>
-      ${collapsible ? `<div class="article-group-fade" id="agf-${groupId}" onclick="toggleArticleGroup(event, ${groupId})"></div>` : ''}
       <div class="article-group-footer">
         ${contextHtml}
         <div class="article-group-sources">
