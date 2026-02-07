@@ -173,6 +173,11 @@ function buildQuoteEntryHtml(q, insideGroup, gangOpts) {
     ? `<img src="${escapeHtml(q.photoUrl)}" alt="${escapeHtml(q.personName)}" class="quote-headshot" onerror="this.outerHTML='<div class=\\'quote-headshot-placeholder\\'>${initial}</div>'">`
     : `<div class="quote-headshot-placeholder">${initial}</div>`;
 
+  // Quote type indicator (direct vs indirect)
+  const quoteTypeHtml = q.quoteType === 'indirect'
+    ? `<span class="quote-type-badge quote-type-indirect">Indirect</span>`
+    : '';
+
   // Category context (party, team, etc.)
   const categoryCtxHtml = q.personCategoryContext
     ? `<span class="quote-category-context">${escapeHtml(q.personCategoryContext)}</span>`
@@ -230,6 +235,7 @@ function buildQuoteEntryHtml(q, insideGroup, gangOpts) {
           ${showAuthorRow ? `<div class="quote-author-row">
             <a href="/author/${q.personId}" onclick="navigate(event, '/author/${q.personId}')" class="author-link">${escapeHtml(q.personName)}</a>
             ${categoryCtxHtml}
+            ${quoteTypeHtml}
             ${dateHtml}
             ${visibilityBtn}
             ${editBtn}
@@ -237,6 +243,7 @@ function buildQuoteEntryHtml(q, insideGroup, gangOpts) {
           ${showAuthorAfter ? `<div class="quote-author-row">
             <a href="/author/${q.personId}" onclick="navigate(event, '/author/${q.personId}')" class="author-link">${escapeHtml(q.personName)}</a>
             ${categoryCtxHtml}
+            ${quoteTypeHtml}
             ${visibilityBtn}
             ${editBtn}
           </div>` : ''}
