@@ -10,7 +10,7 @@ QuoteLog02 is an AI-powered news quote extraction app. Node.js/Express backend, 
 - **Backend**: Express, better-sqlite3 (WAL mode), Socket.IO
 - **AI**: Gemini 2.5 Flash (text extraction), text-embedding-004 (embeddings)
 - **Vector DB**: Pinecone (sparse vectors, pinecone-sparse-english-v0, integrated embedding)
-- **Testing**: Vitest (59 tests across 10 test files)
+- **Testing**: Vitest (147 tests across 15 test files)
 - **Deploy**: Railway (Dockerfile multi-stage build with node:20-alpine)
 
 ## Pre-Deploy Checklist (CRITICAL)
@@ -28,6 +28,7 @@ After every `railway up`, you MUST verify BOTH of these:
 1. **Check build logs** - `railway logs --build --lines 50 <deployment-id>` — confirm the Docker image built successfully. Look for "Build time:" at the end.
 2. **Check runtime logs** - `railway logs --lines 20 <deployment-id>` — confirm the app actually started and is serving requests. Look for "Server running on port 3000" with NO errors after it. A successful build does NOT guarantee a successful deploy — runtime import errors, missing env vars, or crash loops will only show here.
 3. **Hit the health endpoint** - Verify `https://quotelog02-production.up.railway.app/api/health` returns `{"status":"healthy"}`.
+4. **Visually check the homepage** - Use browser automation (puppeteer/chrome tools) or WebFetch to load `https://quotelog02-production.up.railway.app/` and confirm quotes are rendering. Look for "Error Loading Quotes" or blank content — these indicate client-side JS errors that won't appear in server logs.
 
 **Common runtime failure**: ESM import errors (e.g., `does not provide an export named 'default'`). These won't show in build logs — only in runtime logs.
 

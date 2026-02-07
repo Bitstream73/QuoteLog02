@@ -70,8 +70,10 @@ router.get('/', (req, res) => {
 
   // Count total canonical quotes (not variants)
   const total = db.prepare(
-    `SELECT COUNT(*) as count FROM quotes q
+    `SELECT COUNT(DISTINCT q.id) as count FROM quotes q
      JOIN persons p ON q.person_id = p.id
+     LEFT JOIN quote_articles qa ON qa.quote_id = q.id
+     LEFT JOIN articles a ON qa.article_id = a.id
      WHERE q.canonical_quote_id IS NULL ${visibilityFilter} ${categoryFilter} ${subFilterSql} ${searchFilter}`
   ).get(...params).count;
 
