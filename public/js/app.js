@@ -5,6 +5,7 @@ let isAdmin = false;
 
 // Homepage scroll position (saved when navigating to article/quote)
 let _homeScrollY = 0;
+let _pendingScrollRestore = false;
 
 // Socket.IO connection
 let socket = null;
@@ -88,12 +89,9 @@ function navigate(event, path) {
 
 function navigateBackToQuotes(event) {
   if (event) event.preventDefault();
+  _pendingScrollRestore = true;
   window.history.pushState({}, '', '/');
   route();
-  // Restore scroll position after render
-  requestAnimationFrame(() => {
-    window.scrollTo(0, _homeScrollY);
-  });
 }
 
 function route() {

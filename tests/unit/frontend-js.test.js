@@ -119,9 +119,27 @@ describe('Frontend JS files', () => {
       expect(appJs).toContain('_homeScrollY');
     });
 
+    it('should declare _pendingScrollRestore flag', () => {
+      const appJs = fs.readFileSync(path.join(process.cwd(), 'public/js/app.js'), 'utf-8');
+      expect(appJs).toContain('_pendingScrollRestore');
+    });
+
     it('should define navigateBackToQuotes function', () => {
       const appJs = fs.readFileSync(path.join(process.cwd(), 'public/js/app.js'), 'utf-8');
       expect(appJs).toContain('function navigateBackToQuotes');
+    });
+
+    it('should set _pendingScrollRestore in navigateBackToQuotes', () => {
+      const appJs = fs.readFileSync(path.join(process.cwd(), 'public/js/app.js'), 'utf-8');
+      const funcStart = appJs.indexOf('function navigateBackToQuotes');
+      const funcEnd = appJs.indexOf('\nfunction ', funcStart + 1);
+      const funcBody = appJs.substring(funcStart, funcEnd);
+      expect(funcBody).toContain('_pendingScrollRestore = true');
+    });
+
+    it('should check _pendingScrollRestore in renderHome (home.js)', () => {
+      const homeJs = fs.readFileSync(path.join(process.cwd(), 'public/js/home.js'), 'utf-8');
+      expect(homeJs).toContain('_pendingScrollRestore');
     });
   });
 

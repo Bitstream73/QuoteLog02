@@ -598,6 +598,14 @@ async function renderHome() {
     }
 
     content.innerHTML = html;
+
+    // Restore scroll position if returning from article/quote page
+    if (_pendingScrollRestore) {
+      _pendingScrollRestore = false;
+      requestAnimationFrame(() => {
+        window.scrollTo(0, _homeScrollY);
+      });
+    }
   } catch (err) {
     content.innerHTML = `<div class="empty-state"><h3>Error loading quotes</h3><p>${escapeHtml(err.message)}</p></div>`;
   }
