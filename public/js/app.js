@@ -3,6 +3,9 @@
 // Auth state
 let isAdmin = false;
 
+// Homepage scroll position (saved when navigating to article/quote)
+let _homeScrollY = 0;
+
 // Socket.IO connection
 let socket = null;
 
@@ -75,8 +78,22 @@ async function logout(event) {
 
 function navigate(event, path) {
   if (event) event.preventDefault();
+  // Save scroll position when leaving homepage
+  if (window.location.pathname === '/' || window.location.pathname === '') {
+    _homeScrollY = window.scrollY;
+  }
   window.history.pushState({}, '', path);
   route();
+}
+
+function navigateBackToQuotes(event) {
+  if (event) event.preventDefault();
+  window.history.pushState({}, '', '/');
+  route();
+  // Restore scroll position after render
+  requestAnimationFrame(() => {
+    window.scrollTo(0, _homeScrollY);
+  });
 }
 
 function route() {
