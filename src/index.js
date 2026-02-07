@@ -5,6 +5,7 @@ import helmet from 'helmet';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 
 import config from './config/index.js';
@@ -104,10 +105,62 @@ export function createApp({ skipDbInit = false } = {}) {
   app.use('/api/articles', articlesRouter);
 
   // SPA fallback - serve index.html for all non-API routes
+  // For /quote/:id, inject OG/Twitter meta tags for social sharing
   app.get('*', (req, res) => {
     if (req.path.startsWith('/api/')) {
       return res.status(404).json({ error: 'Not found' });
     }
+
+    const quoteMatch = req.path.match(/^\/quote\/(\d+)$/);
+    if (quoteMatch && isDbReady()) {
+      try {
+        const db = getDb();
+        const quote = db.prepare(`
+          SELECT q.text, q.context, q.created_at, p.canonical_name, p.disambiguation, p.photo_url,
+                 a.title AS article_title, s.name AS source_name
+          FROM quotes q
+          JOIN persons p ON q.person_id = p.id
+          LEFT JOIN quote_articles qa ON qa.quote_id = q.id
+          LEFT JOIN articles a ON qa.article_id = a.id
+          LEFT JOIN sources s ON a.source_id = s.id
+          WHERE q.id = ?
+        `).get(quoteMatch[1]);
+
+        if (quote) {
+          let html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf-8');
+          const truncText = quote.text.length > 200 ? quote.text.substring(0, 200) + '...' : quote.text;
+          const esc = (s) => s ? s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : '';
+          const title = `"${esc(truncText)}" - ${esc(quote.canonical_name)}`;
+          const description = [
+            quote.disambiguation,
+            quote.context,
+            quote.article_title ? `From: ${quote.article_title}` : null,
+            quote.source_name ? `Source: ${quote.source_name}` : null,
+          ].filter(Boolean).join(' | ');
+          const proto = req.get('x-forwarded-proto') || req.protocol;
+          const url = `${proto}://${req.get('host')}/quote/${quoteMatch[1]}`;
+          const image = quote.photo_url || '';
+
+          const metaTags = `
+    <meta property="og:type" content="article">
+    <meta property="og:title" content="${title}">
+    <meta property="og:description" content="${esc(description)}">
+    <meta property="og:url" content="${esc(url)}">
+    ${image ? `<meta property="og:image" content="${esc(image)}">` : ''}
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="${title}">
+    <meta name="twitter:description" content="${esc(description)}">
+    ${image ? `<meta name="twitter:image" content="${esc(image)}">` : ''}
+    <title>${title} | Quote Log</title>`;
+
+          html = html.replace('<title>Quote Log</title>', metaTags);
+          return res.send(html);
+        }
+      } catch (err) {
+        // Fall through to default index.html
+      }
+    }
+
     res.sendFile(path.join(__dirname, '../public/index.html'));
   });
 

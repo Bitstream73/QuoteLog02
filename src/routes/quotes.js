@@ -56,7 +56,7 @@ router.get('/', (req, res) => {
   const visibilityFilter = admin ? '' : 'AND q.is_visible = 1';
   const { sql: categoryFilter, params: categoryParams } = getBroadCategoryFilter(category);
   const subFilterSql = subFilter ? 'AND (p.category_context LIKE ? OR p.category LIKE ? OR q.context LIKE ?)' : '';
-  const searchFilter = search ? 'AND (q.text LIKE ? OR p.canonical_name LIKE ? OR p.category LIKE ? OR q.context LIKE ?)' : '';
+  const searchFilter = search ? 'AND (q.text LIKE ? OR p.canonical_name LIKE ? OR p.category LIKE ? OR q.context LIKE ? OR a.title LIKE ?)' : '';
 
   const params = [...categoryParams];
   if (subFilterSql) {
@@ -65,7 +65,7 @@ router.get('/', (req, res) => {
   }
   if (searchFilter) {
     const searchTerm = `%${search}%`;
-    params.push(searchTerm, searchTerm, searchTerm, searchTerm);
+    params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
   }
 
   // Count total canonical quotes (not variants)
@@ -169,11 +169,13 @@ router.get('/search', (req, res) => {
   const searchTerm = `%${query.trim()}%`;
 
   const total = db.prepare(`
-    SELECT COUNT(*) as count FROM quotes q
+    SELECT COUNT(DISTINCT q.id) as count FROM quotes q
     JOIN persons p ON q.person_id = p.id
+    LEFT JOIN quote_articles qa ON qa.quote_id = q.id
+    LEFT JOIN articles a ON qa.article_id = a.id
     WHERE q.canonical_quote_id IS NULL ${visibilityFilter}
-    AND (q.text LIKE ? OR p.canonical_name LIKE ? OR p.category LIKE ? OR q.context LIKE ?)
-  `).get(searchTerm, searchTerm, searchTerm, searchTerm).count;
+    AND (q.text LIKE ? OR p.canonical_name LIKE ? OR p.category LIKE ? OR q.context LIKE ? OR a.title LIKE ?)
+  `).get(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm).count;
 
   const quotes = db.prepare(`
     SELECT q.id, q.text, q.source_urls, q.created_at, q.context, q.quote_type, q.is_visible,
@@ -187,11 +189,11 @@ router.get('/search', (req, res) => {
     LEFT JOIN articles a ON qa.article_id = a.id
     LEFT JOIN sources s ON a.source_id = s.id
     WHERE q.canonical_quote_id IS NULL ${visibilityFilter}
-    AND (q.text LIKE ? OR p.canonical_name LIKE ? OR p.category LIKE ? OR q.context LIKE ?)
+    AND (q.text LIKE ? OR p.canonical_name LIKE ? OR p.category LIKE ? OR q.context LIKE ? OR a.title LIKE ?)
     GROUP BY q.id
     ORDER BY q.created_at DESC
     LIMIT ? OFFSET ?
-  `).all(searchTerm, searchTerm, searchTerm, searchTerm, limit, offset);
+  `).all(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, limit, offset);
 
   res.json({
     quotes: quotes.map(q => ({
