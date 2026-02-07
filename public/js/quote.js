@@ -3,27 +3,88 @@ async function renderQuote(id) {
   content.innerHTML = '<div class="loading">Loading quote...</div>';
   try {
     const data = await API.get(`/quotes/${id}`);
-    if (!data.quote) { content.innerHTML = '<div class="empty-state"><h3>Quote not found</h3><p><a href="/" onclick="navigate(event, \'/\')" style="color:var(--accent)">Back to home</a></p></div>'; return; }
+    if (!data.quote) {
+      content.innerHTML = '<div class="empty-state"><h3>Quote not found</h3><p><a href="/" onclick="navigate(event, \'/\')" style="color:var(--accent)">Back to home</a></p></div>';
+      return;
+    }
     const q = data.quote;
-    const date = q.published_date ? formatDateTime(q.published_date * 1000) : 'Unknown date';
+    const dateStr = formatDateTime(q.createdAt);
+
+    // Headshot
+    const initial = (q.personName || '?').charAt(0).toUpperCase();
+    const headshotHtml = q.photoUrl
+      ? `<img src="${escapeHtml(q.photoUrl)}" alt="${escapeHtml(q.personName)}" class="quote-headshot" style="width:72px;height:72px" onerror="this.outerHTML='<div class=\\'quote-headshot-placeholder\\' style=\\'width:72px;height:72px;font-size:1.8rem\\'>${initial}</div>'">`
+      : `<div class="quote-headshot-placeholder" style="width:72px;height:72px;font-size:1.8rem">${initial}</div>`;
+
+    // Quote type
+    const quoteTypeHtml = q.quoteType === 'indirect'
+      ? `<span class="quote-type-badge quote-type-indirect">Indirect</span>`
+      : '';
+
     let html = `
       <p style="margin-bottom:1.5rem;font-family:var(--font-ui);font-size:0.85rem">
         <a href="/" onclick="navigate(event, '/')" style="color:var(--accent);text-decoration:none">&larr; Back to quotes</a>
       </p>
-      <div class="quote-detail-text">${escapeHtml(q.text)}</div>
-      <div style="margin-bottom:2rem;font-family:var(--font-ui);font-size:0.9rem;color:var(--text-secondary)">
-        <span style="font-weight:600;color:var(--text-primary);cursor:pointer" onclick="navigate(event, '/author/${encodeURIComponent(q.author)}')">${escapeHtml(q.author)}</span>
-        <span style="margin:0 0.5rem">&middot;</span>
-        <span>${date}</span>
+      <div class="quote-detail-card">
+        <div class="quote-layout" style="gap:1.25rem">
+          <div class="quote-headshot-col">${headshotHtml}</div>
+          <div class="quote-content-col">
+            <div class="quote-detail-text">${escapeHtml(q.text)}</div>
+            <div class="quote-author-row" style="margin-top:0.75rem">
+              <a href="/author/${q.personId}" onclick="navigate(event, '/author/${q.personId}')" class="author-link">${escapeHtml(q.personName)}</a>
+              ${q.personDisambiguation ? `<span class="quote-category-context">${escapeHtml(q.personDisambiguation)}</span>` : ''}
+              ${quoteTypeHtml}
+            </div>
+            ${q.context ? `<div class="quote-context" style="margin-top:0.75rem">${escapeHtml(q.context)}</div>` : ''}
+            ${dateStr ? `<div class="quote-date-inline" style="margin-top:0.5rem">${dateStr}</div>` : ''}
+          </div>
+        </div>
       </div>
     `;
-    html += '<h2 style="margin-bottom:1rem;font-family:var(--font-headline);font-size:1.3rem">Sources</h2>';
-    if (data.sources.length === 0) { html += '<p style="color:var(--text-muted);font-family:var(--font-ui)">No additional sources found.</p>'; }
-    else { html += '<ul class="sources-list">'; for (const s of data.sources) { html += `<li><a href="${escapeHtml(s.source_url || '#')}" target="_blank">${escapeHtml(s.source_name || 'Source')}</a></li>`; } html += '</ul>'; }
-    if (data.relatedQuotes.length > 0) {
-      html += '<h2 style="margin:2.5rem 0 1rem;font-family:var(--font-headline);font-size:1.3rem;padding-top:1.5rem;border-top:1px solid var(--border)">More from ' + escapeHtml(q.author) + '</h2>';
-      for (const rq of data.relatedQuotes) { html += `<a href="/quote/${rq.id}" class="card-link" onclick="navigate(event, '/quote/${rq.id}')"><div class="card"><div class="quote-text">${escapeHtml(rq.text.substring(0, 150))}${rq.text.length > 150 ? '...' : ''}</div></div></a>`; }
+
+    // Articles / Sources
+    if (data.articles && data.articles.length > 0) {
+      html += '<h2 style="margin:2rem 0 1rem;font-family:var(--font-headline);font-size:1.3rem">Sources</h2>';
+      html += '<div class="quote-detail-sources">';
+      for (const a of data.articles) {
+        const sourceName = a.source_name || a.domain || 'Source';
+        const articleDate = a.published_at ? formatDateTime(a.published_at) : '';
+        html += `
+          <div class="quote-detail-source-item">
+            <a href="/article/${a.id}" onclick="navigate(event, '/article/${a.id}')" class="quote-article-title-link">${escapeHtml(a.title || 'Untitled Article')}</a>
+            <div style="display:flex;gap:0.5rem;align-items:center;margin-top:0.25rem">
+              <span class="quote-primary-source">${escapeHtml(sourceName)}</span>
+              ${articleDate ? `<span class="quote-date-inline">${articleDate}</span>` : ''}
+              ${a.url ? `<a href="${escapeHtml(a.url)}" target="_blank" rel="noopener" style="font-family:var(--font-ui);font-size:0.75rem;color:var(--accent);text-decoration:none">View original &rarr;</a>` : ''}
+            </div>
+          </div>
+        `;
+      }
+      html += '</div>';
     }
+
+    // Share buttons
+    html += `<div style="margin-top:1.5rem">${buildShareHtml(q)}</div>`;
+
+    // Related quotes from same person
+    if (data.relatedQuotes && data.relatedQuotes.length > 0) {
+      html += `<h2 style="margin:2.5rem 0 1rem;font-family:var(--font-headline);font-size:1.3rem;padding-top:1.5rem;border-top:1px solid var(--border)">More from ${escapeHtml(q.personName)}</h2>`;
+      for (const rq of data.relatedQuotes) {
+        html += `<a href="/quote/${rq.id}" class="card-link" onclick="navigate(event, '/quote/${rq.id}')"><div class="card"><div class="quote-text">${escapeHtml(rq.text)}</div><div class="quote-date-inline" style="margin-top:0.5rem">${formatDateTime(rq.createdAt)}</div></div></a>`;
+      }
+    }
+
+    // Variants
+    if (data.variants && data.variants.length > 0) {
+      html += `<h2 style="margin:2.5rem 0 1rem;font-family:var(--font-headline);font-size:1.3rem;padding-top:1.5rem;border-top:1px solid var(--border)">Variants</h2>`;
+      html += '<p style="font-family:var(--font-ui);font-size:0.85rem;color:var(--text-muted);margin-bottom:1rem">Same quote reported with different wording across sources.</p>';
+      for (const v of data.variants) {
+        html += `<div class="quote-entry" style="padding:1rem 0"><p class="quote-text">${escapeHtml(v.text)}</p></div>`;
+      }
+    }
+
     content.innerHTML = html;
-  } catch (err) { content.innerHTML = `<div class="empty-state"><h3>Error</h3><p>${escapeHtml(err.message)}</p></div>`; }
+  } catch (err) {
+    content.innerHTML = `<div class="empty-state"><h3>Error</h3><p>${escapeHtml(err.message)}</p></div>`;
+  }
 }

@@ -30,12 +30,12 @@ async function renderArticle(id) {
     } else {
       html += `<p class="quote-count">${data.quotes.length} quote${data.quotes.length !== 1 ? 's' : ''} from this article</p>`;
       for (const q of data.quotes) {
-        // Re-use buildQuoteEntryHtml — pass as non-grouped with article metadata stripped (already in header)
+        // Re-use buildQuoteEntryHtml — strip article title/source (already in header) but keep date
         html += buildQuoteEntryHtml({
           ...q,
           articleId: null,
           articleTitle: null,
-          articlePublishedAt: null,
+          articlePublishedAt: a.publishedAt,
           articleUrl: null,
           primarySourceDomain: null,
           primarySourceName: null,
