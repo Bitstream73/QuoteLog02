@@ -95,6 +95,43 @@ describe('Frontend Routes', () => {
     });
   });
 
+  describe('Quote Search API (article title)', () => {
+    it('should accept search param on quotes endpoint', async () => {
+      const response = await request(app).get('/api/quotes?search=testquery');
+      expect(response.status).toBe(200);
+      expect(response.body).toHaveProperty('quotes');
+      expect(Array.isArray(response.body.quotes)).toBe(true);
+    });
+
+    it('should accept search param on quotes search endpoint', async () => {
+      const response = await request(app).get('/api/quotes/search?q=testquery');
+      expect(response.status).toBe(200);
+      expect(response.body).toHaveProperty('quotes');
+      expect(Array.isArray(response.body.quotes)).toBe(true);
+    });
+
+    it('should reject short search on quotes search endpoint', async () => {
+      const response = await request(app).get('/api/quotes/search?q=a');
+      expect(response.status).toBe(400);
+    });
+  });
+
+  describe('SPA OG Meta Tags', () => {
+    it('should serve index.html for /quote/99999 (non-existent)', async () => {
+      const response = await request(app).get('/quote/99999');
+      expect(response.status).toBe(200);
+      expect(response.headers['content-type']).toContain('text/html');
+      // Should still serve HTML even for non-existent quotes
+      expect(response.text).toContain('Quote Log');
+    });
+
+    it('should serve index.html for non-quote SPA routes', async () => {
+      const response = await request(app).get('/article/1');
+      expect(response.status).toBe(200);
+      expect(response.headers['content-type']).toContain('text/html');
+    });
+  });
+
   describe('Authors API', () => {
     it('should get all authors', async () => {
       const response = await request(app).get('/api/authors');

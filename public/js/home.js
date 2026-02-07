@@ -298,6 +298,7 @@ function buildQuoteEntryHtml(q, insideGroup, gangOpts) {
  * Groups with 3+ quotes collapse by default, showing first 2 with fade.
  */
 function buildArticleGroupHtml(group) {
+  const groupId = group.articleId;
   const dateStr = formatDateTime(group.articlePublishedAt);
 
   const primarySource = group.primarySourceName || group.primarySourceDomain || '';
@@ -316,7 +317,6 @@ function buildArticleGroupHtml(group) {
   const shareHtml = buildShareHtml(firstQ);
 
   const collapsible = group.quotes.length >= 3;
-  const groupId = group.articleId;
 
   // Gang consecutive same-author quotes
   let quotesHtml = '';
