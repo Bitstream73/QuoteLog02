@@ -55,7 +55,7 @@ async function renderSettings() {
             <span class="setting-label">Fetch Interval (minutes)</span>
             <span class="setting-description">How often to check for new articles</span>
           </label>
-          <input type="number" id="fetch-interval" value="${settings.fetch_interval_minutes || 15}"
+          <input type="number" id="fetch-interval" value="${settings.fetch_interval_minutes || 5}"
                  min="5" max="1440" class="input-number" onchange="updateSetting('fetch_interval_minutes', this.value)">
         </div>
 
@@ -70,11 +70,11 @@ async function renderSettings() {
 
         <div class="setting-row">
           <label>
-            <span class="setting-label">Max Articles Per Cycle</span>
-            <span class="setting-description">Maximum articles to process in each fetch cycle</span>
+            <span class="setting-label">Max Articles per News Source per Cycle</span>
+            <span class="setting-description">Maximum articles to process per news source in each fetch cycle</span>
           </label>
-          <input type="number" id="max-articles" value="${settings.max_articles_per_cycle || 100}"
-                 min="1" max="1000" class="input-number" onchange="updateSetting('max_articles_per_cycle', this.value)">
+          <input type="number" id="max-articles" value="${settings.max_articles_per_source_per_cycle || 10}"
+                 min="1" max="1000" class="input-number" onchange="updateSetting('max_articles_per_source_per_cycle', this.value)">
         </div>
       </div>
 

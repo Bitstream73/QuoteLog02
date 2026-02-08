@@ -391,11 +391,11 @@ function initializeTables(db) {
   ].find(p => fs.existsSync(p));
 
   const defaultSettings = {
-    fetch_interval_minutes: '15',
+    fetch_interval_minutes: '5',
     article_lookback_hours: '24',
     auto_merge_confidence_threshold: '0.9',
     review_confidence_threshold: '0.7',
-    max_articles_per_cycle: '100',
+    max_articles_per_source_per_cycle: '10',
     min_quote_words: '5',
     theme: 'light',
     log_level: 'info',
