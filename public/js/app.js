@@ -207,6 +207,9 @@ if ('serviceWorker' in navigator) {
 function closeModal() {
   document.getElementById('modal-overlay').classList.add('hidden');
 }
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeModal();
+});
 
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {

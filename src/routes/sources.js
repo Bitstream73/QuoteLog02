@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { getDb } from '../config/database.js';
 import { discoverRssFeed } from '../services/rssFeedDiscovery.js';
 import { requireAdmin } from '../middleware/auth.js';
+import { fetchArticlesFromSource } from '../services/articleFetcher.js';
+import logger from '../services/logger.js';
 
 const router = Router();
 
@@ -78,6 +80,26 @@ router.post('/', requireAdmin, async (req, res) => {
     ).run(domain, name, rss_url);
 
     const source = db.prepare('SELECT * FROM sources WHERE id = ?').get(result.lastInsertRowid);
+
+    // Verify RSS feed works by doing a test fetch (non-blocking)
+    if (source.rss_url) {
+      fetchArticlesFromSource(source, 24).then(articles => {
+        logger.info('sources', 'source_verified', {
+          domain: source.domain,
+          name: source.name,
+          articleCount: articles.length,
+        });
+      }).catch(err => {
+        logger.warn('sources', 'source_verify_failed', {
+          domain: source.domain,
+          name: source.name,
+          error: err.message,
+        });
+        db.prepare('UPDATE sources SET consecutive_failures = consecutive_failures + 1 WHERE id = ?')
+          .run(source.id);
+      });
+    }
+
     res.status(201).json({ source });
   } catch (err) {
     res.status(500).json({ error: 'Failed to add source: ' + err.message });

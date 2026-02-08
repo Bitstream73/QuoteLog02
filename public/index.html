@@ -57,7 +57,7 @@
   </div>
 
   <!-- Modal for log details -->
-  <div id="modal-overlay" class="modal-overlay hidden">
+  <div id="modal-overlay" class="modal-overlay hidden" onclick="if(event.target===this)closeModal()">
     <div class="modal">
       <button class="modal-close" onclick="closeModal()">&times;</button>
       <div id="modal-content"></div>

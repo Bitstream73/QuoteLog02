@@ -48,7 +48,7 @@ router.patch('/', requireAdmin, (req, res) => {
   const numericSettings = {
     fetch_interval_minutes: { min: 5, max: 1440 },
     article_lookback_hours: { min: 1, max: 168 },
-    max_articles_per_cycle: { min: 1, max: 1000 },
+    max_articles_per_source_per_cycle: { min: 1, max: 1000 },
     min_quote_words: { min: 1, max: 50 },
   };
 
