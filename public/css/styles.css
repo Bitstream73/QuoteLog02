@@ -679,7 +679,7 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
 }
 
 /* ===================================
-   New Quote Layout \u2014 Headshot + Content
+   New Quote Layout — Headshot + Content
    =================================== */
 .quote-layout {
   display: flex;
@@ -2078,10 +2078,9 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
    =================================== */
 .article-sticky-header {
   position: sticky;
-  top: 0;
+  top: var(--header-height, 70px);
   z-index: 50;
   background: var(--bg-primary);
-  padding: 1rem 0 1rem;
   margin: -2rem -2rem 2rem -2rem;
   padding: 1rem 2rem;
   border-bottom: 1px solid var(--border);

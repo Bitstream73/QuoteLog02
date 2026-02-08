@@ -647,7 +647,10 @@ async function showSourceErrors(domain, failureCount) {
     const data = await API.get(`/logs?search=${encodeURIComponent(domain)}&level=error&limit=20`);
     const logs = data.logs || [];
 
-    let html = `<h3 style="margin-bottom:0.5rem">Errors for ${escapeHtml(domain)}</h3>`;
+    let html = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem">
+      <h3>Errors for ${escapeHtml(domain)}</h3>
+      <button class="btn btn-secondary btn-sm" onclick="closeModal()">Close</button>
+    </div>`;
     html += `<p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:1rem">${failureCount} consecutive failure${failureCount !== 1 ? 's' : ''}</p>`;
 
     if (logs.length === 0) {
@@ -670,9 +673,10 @@ async function showSourceErrors(domain, failureCount) {
       }
     }
 
+    html += `<div style="text-align:right;margin-top:1rem;padding-top:0.75rem;border-top:1px solid var(--border)"><button class="btn btn-secondary" onclick="closeModal()">Close</button></div>`;
     modalContent.innerHTML = html;
   } catch (err) {
-    modalContent.innerHTML = `<p style="color:var(--error)">Error loading logs: ${escapeHtml(err.message)}</p>`;
+    modalContent.innerHTML = `<p style="color:var(--error)">Error loading logs: ${escapeHtml(err.message)}</p><div style="text-align:right;margin-top:1rem"><button class="btn btn-secondary" onclick="closeModal()">Close</button></div>`;
   }
 }
 
