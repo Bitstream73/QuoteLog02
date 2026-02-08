@@ -16,7 +16,7 @@ export function startFetchScheduler(app) {
   appInstance = app;
   stopFetchScheduler(); // clear any existing timer
 
-  const intervalMinutes = parseInt(getSettingValue('fetch_interval_minutes', '15'), 10);
+  const intervalMinutes = parseInt(getSettingValue('fetch_interval_minutes', '5'), 10);
   const intervalMs = intervalMinutes * 60 * 1000;
 
   logger.info('scheduler', 'start', { intervalMinutes });
@@ -96,7 +96,7 @@ async function runFetchCycle() {
 
     const sources = db.prepare('SELECT * FROM sources WHERE enabled = 1').all();
     const lookbackHours = parseInt(getSettingValue('article_lookback_hours', '24'), 10);
-    const maxArticles = parseInt(getSettingValue('max_articles_per_cycle', '100'), 10);
+    const maxArticlesPerSource = parseInt(getSettingValue('max_articles_per_source_per_cycle', '10'), 10);
 
     logger.info('scheduler', 'sources_loaded', {
       count: sources.length,
@@ -144,14 +144,19 @@ async function runFetchCycle() {
       }
     }
 
-    // Phase 2: Process pending articles (with global limit)
+    // Phase 2: Process pending articles (per-source limit)
     const pending = db.prepare(`
       SELECT a.*, s.domain FROM articles a
       JOIN sources s ON a.source_id = s.id
       WHERE a.status = 'pending'
+        AND a.id IN (
+          SELECT id FROM (
+            SELECT id, source_id, ROW_NUMBER() OVER (PARTITION BY source_id ORDER BY created_at ASC) AS rn
+            FROM articles WHERE status = 'pending'
+          ) WHERE rn <= ?
+        )
       ORDER BY a.created_at ASC
-      LIMIT ?
-    `).all(maxArticles);
+    `).all(maxArticlesPerSource);
 
     const newQuotes = [];
     for (const article of pending) {
@@ -234,7 +239,7 @@ export function triggerFetchNow() {
  * Get scheduler status for the frontend countdown timer
  */
 export function getSchedulerStatus() {
-  const intervalMinutes = parseInt(getSettingValue('fetch_interval_minutes', '15'), 10);
+  const intervalMinutes = parseInt(getSettingValue('fetch_interval_minutes', '5'), 10);
   return {
     running: cycleRunning,
     intervalMinutes,
