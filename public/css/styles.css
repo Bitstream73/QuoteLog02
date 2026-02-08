@@ -449,14 +449,15 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
 }
 
 .modal-close {
-  position: absolute;
-  top: 1rem;
-  right: 1rem;
+  position: sticky;
+  top: 0;
+  float: right;
   background: none;
   border: none;
   color: var(--text-muted);
   font-size: 1.5rem;
   cursor: pointer;
+  z-index: 1;
 }
 
 .modal-close:hover { color: var(--text-primary); }
@@ -678,7 +679,7 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
 }
 
 /* ===================================
-   New Quote Layout — Headshot + Content
+   New Quote Layout \u2014 Headshot + Content
    =================================== */
 .quote-layout {
   display: flex;
