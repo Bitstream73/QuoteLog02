@@ -316,8 +316,6 @@ function buildArticleGroupHtml(group) {
   const firstQ = group.quotes[0];
   const shareHtml = buildShareHtml(firstQ);
 
-  const collapsible = group.quotes.length >= 3;
-
   // Gang consecutive same-author quotes
   let quotesHtml = '';
   for (let i = 0; i < group.quotes.length; i++) {
@@ -330,23 +328,14 @@ function buildArticleGroupHtml(group) {
     quotesHtml += buildQuoteEntryHtml(q, true, { hideAuthor: isConsecutiveSameAuthor, showAuthorAfter: isLastInRun && isConsecutiveSameAuthor });
   }
 
-  // Twirl caret for collapsible groups
-  const twirlHtml = collapsible
-    ? `<span class="article-group-twirl" id="twirl-${groupId}" onclick="toggleArticleGroup(event, ${groupId})">&#x25b6;</span>`
-    : '';
-
-  const collapsedClass = collapsible ? ' article-group-collapsed' : '';
-
   return `
-    <div class="article-group${collapsedClass}" id="ag-${groupId}">
+    <div class="article-group" id="ag-${groupId}">
       <div class="article-group-header">
-        ${twirlHtml}
         <a href="/article/${groupId}" onclick="navigate(event, '/article/${groupId}')" class="article-group-title-link">${escapeHtml(group.articleTitle || 'Untitled Article')}</a>
         <span class="article-group-date">${dateStr}</span>
       </div>
-      <div class="article-group-quotes" id="agq-${groupId}">
+      <div class="article-group-quotes" id="agq-${groupId}" onclick="navigateToArticle(event, ${groupId})" style="cursor:pointer">
         ${quotesHtml}
-        ${collapsible ? `<div class="article-group-fade" id="agf-${groupId}" onclick="toggleArticleGroup(event, ${groupId})"></div>` : ''}
       </div>
       <div class="article-group-footer">
         ${contextHtml}
@@ -362,6 +351,18 @@ function buildArticleGroupHtml(group) {
 /**
  * Toggle article group collapse/expand
  */
+/**
+ * Navigate to article page when clicking on quotes area (skip if clicking interactive elements)
+ */
+function navigateToArticle(event, articleId) {
+  const tag = event.target.tagName.toLowerCase();
+  if (tag === 'a' || tag === 'button' || tag === 'input' || tag === 'svg' || tag === 'path' || event.target.closest('a') || event.target.closest('button')) {
+    return;
+  }
+  event.preventDefault();
+  navigate(event, '/article/' + articleId);
+}
+
 function toggleArticleGroup(event, groupId) {
   event.preventDefault();
   const group = document.getElementById('ag-' + groupId);

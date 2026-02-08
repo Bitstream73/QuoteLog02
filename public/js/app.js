@@ -211,13 +211,25 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') closeModal();
 });
 
+// Update CSS variable for header height (used by article sticky header)
+function updateHeaderHeight() {
+  const header = document.querySelector('header');
+  if (header) {
+    document.documentElement.style.setProperty('--header-height', header.offsetHeight + 'px');
+  }
+}
+
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
   await checkAuth();
   updateNav();
   initSocket();
+  updateHeaderHeight();
   route();
 });
+
+// Update header height on window resize
+window.addEventListener('resize', updateHeaderHeight);
 
 // Also run immediately in case DOMContentLoaded already fired
 if (document.readyState !== 'loading') {
@@ -225,6 +237,7 @@ if (document.readyState !== 'loading') {
     await checkAuth();
     updateNav();
     initSocket();
+    updateHeaderHeight();
     route();
   })();
 }
