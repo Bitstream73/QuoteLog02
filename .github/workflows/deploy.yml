@@ -1,3 +1,5 @@
+# Deploys Development environment (main branch)
+# For LIVE deployment, see deploy-live.yml
 name: Deploy to Railway
 
 on:

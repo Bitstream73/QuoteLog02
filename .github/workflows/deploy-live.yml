@@ -1,0 +1,19 @@
+# Deploys LIVE environment (live branch)
+# For Development deployment, see deploy.yml
+name: Deploy LIVE to Railway
+
+on:
+  push:
+    branches: [live]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+      - name: Deploy to Railway LIVE
+        run: railway up --service ${{ secrets.RAILWAY_SERVICE_ID_LIVE }}
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
