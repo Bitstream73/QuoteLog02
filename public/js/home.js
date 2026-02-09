@@ -161,8 +161,8 @@ function shareQuote(event, quoteId, channel) {
       window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`, '_blank');
       break;
     case 'email': {
-      const subject = encodeURIComponent(`Quote from ${authorName} - Quote Log`);
-      const body = encodeURIComponent(`${fullText}${metaBlock}\n\nRead more: ${shareUrl}\n\n---\nShared from Quote Log - What, When, & Why They Said It.`);
+      const subject = encodeURIComponent(`Quote from ${authorName} - WhatTheySaid.News`);
+      const body = encodeURIComponent(`${fullText}${metaBlock}\n\nRead more: ${shareUrl}\n\n---\nShared from WhatTheySaid.News - Accountability Through Quotes`);
       window.open(`mailto:?subject=${subject}&body=${body}`, '_self');
       break;
     }
@@ -253,9 +253,15 @@ function buildQuoteEntryHtml(q, insideGroup, gangOpts) {
   const showHeadshot = !hideAuthor;
   const showAuthorRow = !hideAuthor;
 
+  // Vote controls
+  const voteHtml = typeof renderVoteControls === 'function'
+    ? renderVoteControls(q.id, q.voteScore || 0, q.userVote || 0)
+    : '';
+
   return `
     <div class="quote-entry${hiddenClass}" id="qe-${q.id}">
       <div class="quote-layout">
+        ${voteHtml}
         ${showHeadshot ? `<div class="quote-headshot-col">${headshotHtml}</div>` : `<div class="quote-headshot-col quote-headshot-spacer"></div>`}
         <div class="quote-content-col">
           <div class="quote-text-row">

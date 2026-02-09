@@ -41,6 +41,11 @@ function initSocket() {
     socket.on('disconnect', () => {
       console.log('Socket disconnected');
     });
+
+    // Initialize vote real-time updates
+    if (typeof initVoteSocket === 'function') {
+      initVoteSocket();
+    }
   }
 }
 

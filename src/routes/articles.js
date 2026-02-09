@@ -38,7 +38,8 @@ router.get('/:id', (req, res) => {
   const quotes = db.prepare(`
     SELECT q.id, q.text, q.context, q.quote_type, q.is_visible, q.created_at, q.source_urls,
            p.id AS person_id, p.canonical_name, p.photo_url, p.category AS person_category,
-           p.category_context AS person_category_context
+           p.category_context AS person_category_context,
+           COALESCE((SELECT SUM(vote_value) FROM votes WHERE votes.quote_id = q.id), 0) as vote_score
     FROM quote_articles qa
     JOIN quotes q ON qa.quote_id = q.id
     JOIN persons p ON q.person_id = p.id
@@ -69,6 +70,7 @@ router.get('/:id', (req, res) => {
       personCategoryContext: q.person_category_context || null,
       sourceUrls: JSON.parse(q.source_urls || '[]'),
       createdAt: q.created_at,
+      voteScore: q.vote_score,
     })),
   });
 });

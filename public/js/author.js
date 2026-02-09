@@ -1,5 +1,89 @@
 // Author Detail Page
 
+// Build quote HTML for author page (matches homepage metadata)
+function buildAuthorQuoteHtml(q, authorName, authorCategoryContext) {
+  const isLong = q.text.length > 280;
+  const truncatedText = isLong ? q.text.substring(0, 280) + '...' : q.text;
+
+  // Store full text for show more toggle
+  if (typeof _quoteTexts !== 'undefined') {
+    _quoteTexts[q.id] = q.text;
+  }
+
+  // Quote type indicator (direct vs indirect)
+  const quoteTypeHtml = q.quoteType === 'indirect'
+    ? `<span class="quote-type-badge quote-type-indirect">Indirect</span>`
+    : '';
+
+  // Publish date
+  const dateStr = formatDateTime(q.articlePublishedAt || q.createdAt);
+  const dateHtml = dateStr ? `<span class="quote-date-inline">${dateStr}</span>` : '';
+
+  // Primary source display — links to article page when available
+  const primarySource = q.primarySourceName || q.primarySourceDomain || '';
+  const primarySourceHtml = primarySource
+    ? (q.articleId
+      ? `<a href="/article/${q.articleId}" onclick="navigate(event, '/article/${q.articleId}')" class="quote-primary-source quote-primary-source-link">${escapeHtml(primarySource)}</a>`
+      : `<span class="quote-primary-source">${escapeHtml(primarySource)}</span>`)
+    : '';
+
+  // Article title — clickable link to article detail page
+  const articleTitleHtml = q.articleTitle && q.articleId
+    ? `<a href="/article/${q.articleId}" onclick="navigate(event, '/article/${q.articleId}')" class="quote-article-title-link">${escapeHtml(q.articleTitle)}</a>`
+    : q.articleTitle
+    ? `<span class="quote-article-title">${escapeHtml(q.articleTitle)}</span>`
+    : '';
+
+  // Context section
+  const contextHtml = q.context
+    ? `<div class="quote-context">${escapeHtml(q.context)}</div>`
+    : '';
+
+  // Share buttons — build share data with author info
+  const shareQ = {
+    id: q.id,
+    text: q.text,
+    personName: authorName,
+    personCategoryContext: authorCategoryContext || '',
+    context: q.context || '',
+    articleTitle: q.articleTitle || '',
+    primarySourceName: q.primarySourceName || q.primarySourceDomain || '',
+    articlePublishedAt: q.articlePublishedAt || q.createdAt || '',
+  };
+  const shareHtml = buildShareHtml(shareQ);
+
+  // Vote controls
+  const voteHtml = typeof renderVoteControls === 'function'
+    ? renderVoteControls(q.id, q.voteScore || 0, q.userVote || 0)
+    : '';
+
+  return `
+    <div class="quote-entry" id="qe-${q.id}">
+      <div class="quote-entry-with-vote">
+        ${voteHtml}
+        <div class="quote-entry-content">
+          <div class="quote-text-row">
+            <p class="quote-text" id="qt-${q.id}">${escapeHtml(truncatedText)}</p>
+            ${isLong ? `<a href="#" class="show-more-toggle" onclick="toggleQuoteText(event, ${q.id})">show more</a>` : ''}
+          </div>
+          <div class="quote-author-block">
+            <div class="quote-author-row">
+              ${quoteTypeHtml}
+              ${dateHtml}
+            </div>
+          </div>
+          ${contextHtml}
+          <div class="quote-sources-row">
+            ${primarySourceHtml}
+            ${articleTitleHtml}
+          </div>
+          ${shareHtml}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 async function renderAuthor(id) {
   const content = document.getElementById('content');
   content.innerHTML = '<div class="loading">Loading author...</div>';
@@ -24,7 +108,7 @@ async function renderAuthor(id) {
     const aliases = authorData.aliases || [];
     const initial = a.name.charAt(0).toUpperCase();
 
-    const avatarHtml = a.photoUrl
+    const avatarInner = a.photoUrl
       ? `<img src="${escapeHtml(a.photoUrl)}" alt="${escapeHtml(a.name)}" class="author-avatar-img" onerror="this.outerHTML='<div class=\\'author-avatar\\'>${initial}</div>'">`
       : `<div class="author-avatar">${initial}</div>`;
 
@@ -34,7 +118,7 @@ async function renderAuthor(id) {
       </p>
 
       <div class="author-header">
-        ${avatarHtml}
+        <div class="author-avatar-wrap">${avatarInner}</div>
         <div class="author-info">
           <h1 class="page-title">${escapeHtml(a.name)}</h1>
           ${a.disambiguation ? `<p class="author-disambiguation">${escapeHtml(a.disambiguation)}</p>` : ''}
@@ -61,22 +145,7 @@ async function renderAuthor(id) {
       html += '<p style="color:var(--text-muted);font-family:var(--font-ui)">No quotes found for this author.</p>';
     } else {
       for (const q of quotesData.quotes) {
-        const date = q.createdAt ? new Date(q.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '';
-        const sourceLinks = (q.sourceUrls || [])
-          .map(url => `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="source-link">${escapeHtml(extractDomain(url))}</a>`)
-          .join(' ');
-
-        html += `
-          <div class="quote-entry">
-            <blockquote>
-              <p class="quote-text">"${escapeHtml(q.text)}"</p>
-            </blockquote>
-            <div class="quote-sources">
-              ${sourceLinks}
-            </div>
-            <div class="quote-date">${date}</div>
-          </div>
-        `;
+        html += buildAuthorQuoteHtml(q, a.name, a.categoryContext);
       }
 
       // Pagination
@@ -100,28 +169,19 @@ async function loadAuthorQuotesPage(authorId, page) {
   try {
     const quotesData = await API.get(`/authors/${authorId}/quotes?page=${page}&limit=50`);
 
-    const quotesContainer = document.querySelector('.page-title').closest('.author-header').parentElement;
+    // Get author info from the header
+    const nameEl = document.querySelector('.page-title');
+    const authorName = nameEl ? nameEl.textContent : '';
+    const descEl = document.querySelector('.author-disambiguation');
+    const authorCategoryContext = descEl ? descEl.textContent : '';
+
+    const quotesContainer = nameEl.closest('.author-header').parentElement;
     const existingQuotes = quotesContainer.querySelectorAll('.quote-entry, .pagination');
     existingQuotes.forEach(el => el.remove());
 
     let html = '';
     for (const q of quotesData.quotes) {
-      const date = q.createdAt ? new Date(q.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '';
-      const sourceLinks = (q.sourceUrls || [])
-        .map(url => `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="source-link">${escapeHtml(extractDomain(url))}</a>`)
-        .join(' ');
-
-      html += `
-        <div class="quote-entry">
-          <blockquote>
-            <p class="quote-text">"${escapeHtml(q.text)}"</p>
-          </blockquote>
-          <div class="quote-sources">
-            ${sourceLinks}
-          </div>
-          <div class="quote-date">${date}</div>
-        </div>
-      `;
+      html += buildAuthorQuoteHtml(q, authorName, authorCategoryContext);
     }
 
     // Pagination

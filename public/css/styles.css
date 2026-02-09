@@ -569,7 +569,7 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
    =================================== */
 .quote-entry {
   padding: 1.5rem 0;
-  border-bottom: 1px solid var(--border);
+  border-bottom: none;
   margin-bottom: 0;
   background: transparent;
   border-radius: 0;
@@ -689,29 +689,34 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
 
 .quote-headshot-col {
   flex-shrink: 0;
+  position: relative;
+  width: 112px;
+  height: 112px;
+  overflow: hidden;
+}
+
+.quote-headshot-col::after {
+  display: none;
 }
 
 .quote-headshot {
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
+  width: 112px;
+  height: 112px;
   object-fit: cover;
-  border: 2px solid var(--border);
+  display: block;
 }
 
 .quote-headshot-placeholder {
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
+  width: 112px;
+  height: 112px;
   background: var(--bg-secondary);
   display: flex;
   align-items: center;
   justify-content: center;
   font-family: var(--font-headline);
-  font-size: 1.4rem;
+  font-size: 2.8rem;
   font-weight: 700;
   color: var(--text-primary);
-  border: 2px solid var(--border);
 }
 
 .quote-content-col {
@@ -1250,27 +1255,36 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   border-bottom: 1px solid var(--border);
 }
 
+.author-avatar-wrap {
+  position: relative;
+  width: 144px;
+  height: 144px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.author-avatar-wrap::after {
+  display: none;
+}
+
 .author-avatar {
-  width: 72px;
-  height: 72px;
-  border-radius: 50%;
+  width: 144px;
+  height: 144px;
   background: var(--bg-secondary);
   display: flex;
   align-items: center;
   justify-content: center;
   font-family: var(--font-headline);
-  font-size: 1.8rem;
+  font-size: 3.6rem;
   font-weight: 700;
   color: var(--text-primary);
-  border: 2px solid var(--border);
 }
 
 .author-avatar-img {
-  width: 72px;
-  height: 72px;
-  border-radius: 50%;
+  width: 144px;
+  height: 144px;
   object-fit: cover;
-  border: 2px solid var(--border);
+  display: block;
 }
 
 .author-info {
@@ -1713,7 +1727,7 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
    =================================== */
 .article-group {
   margin-bottom: 1.5rem;
-  border: 1px solid var(--border);
+  border: none;
   border-radius: var(--radius);
   background: var(--bg-primary);
 }
@@ -1724,7 +1738,7 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   gap: 0.5rem;
   padding: 0.75rem 1rem;
   background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border);
+  border-bottom: none;
 }
 
 .article-group-header .article-group-date {
@@ -1732,7 +1746,7 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
 }
 
 .article-group-title {
-  font-family: var(--font-ui);
+  font-family: var(--font-headline);
   font-size: 1rem;
   font-weight: 700;
   color: var(--text-primary);
@@ -1747,7 +1761,7 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
 
 .article-group .quote-entry {
   padding: 1rem 1rem;
-  border-bottom: 1px dashed var(--border);
+  border-bottom: none;
   margin-bottom: 0;
 }
 
@@ -1757,7 +1771,7 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
 
 .article-group-footer {
   padding: 0.75rem 1rem;
-  border-top: 1px solid var(--border);
+  border-top: none;
 }
 
 .article-group-sources {
@@ -1821,8 +1835,16 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
 
 /* Spacer for ganged quotes (same author, no headshot) */
 .quote-headshot-spacer {
-  width: 56px;
+  width: 112px;
+  height: auto;
+  overflow: visible;
+  border: none;
   flex-shrink: 0;
+}
+
+/* Hide fade overlay on spacer (no image) */
+.quote-headshot-spacer::after {
+  display: none;
 }
 
 /* ===================================
@@ -1942,29 +1964,34 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   display: flex;
   flex-direction: column;
   align-items: center;
+  position: relative;
+  width: 96px;
+  height: 96px;
+  overflow: hidden;
+}
+
+.admin-quote-headshot-col::after {
+  display: none;
 }
 
 .admin-quote-headshot {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
+  width: 96px;
+  height: 96px;
   object-fit: cover;
-  border: 2px solid var(--border);
+  display: block;
 }
 
 .admin-quote-headshot-placeholder {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
+  width: 96px;
+  height: 96px;
   background: var(--bg-secondary);
   display: flex;
   align-items: center;
   justify-content: center;
   font-family: var(--font-headline);
-  font-size: 1.2rem;
+  font-size: 2.4rem;
   font-weight: 700;
   color: var(--text-primary);
-  border: 2px solid var(--border);
 }
 
 .admin-quote-info {
@@ -2048,7 +2075,7 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
 
 /* Clickable article title links */
 .article-group-title-link {
-  font-family: var(--font-ui);
+  font-family: var(--font-headline);
   font-size: 1rem;
   font-weight: 700;
   color: var(--text-primary);
@@ -2097,5 +2124,87 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   .article-sticky-header {
     margin: -0.75rem -0.75rem 0.75rem -0.75rem;
     padding: 0.5rem 0.75rem;
+  }
+}
+
+/* ===================================
+   Vote Controls
+   =================================== */
+.vote-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  margin-right: 12px;
+  flex-shrink: 0;
+}
+
+.vote-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  color: var(--text-muted);
+  transition: color 0.15s;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.vote-btn:hover {
+  color: var(--accent);
+}
+
+.vote-btn.active {
+  color: var(--accent);
+}
+
+.vote-btn.active svg {
+  fill: var(--accent);
+}
+
+.vote-score {
+  font-family: 'Inter', sans-serif;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  min-width: 24px;
+  text-align: center;
+  line-height: 1;
+}
+
+.vote-score.has-votes {
+  color: var(--text-primary);
+}
+
+/* Author page vote layout */
+.quote-entry-with-vote {
+  display: flex;
+  align-items: flex-start;
+}
+
+.quote-entry-with-vote .vote-controls {
+  margin-top: 4px;
+}
+
+.quote-entry-with-vote .quote-entry-content {
+  flex: 1;
+  min-width: 0;
+}
+
+@media (max-width: 480px) {
+  .vote-controls {
+    margin-right: 8px;
+  }
+  .vote-btn {
+    padding: 3px;
+  }
+  .vote-btn svg {
+    width: 14px;
+    height: 14px;
+  }
+  .vote-score {
+    font-size: 0.75rem;
   }
 }

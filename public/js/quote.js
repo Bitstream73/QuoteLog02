@@ -13,12 +13,17 @@ async function renderQuote(id) {
     // Headshot
     const initial = (q.personName || '?').charAt(0).toUpperCase();
     const headshotHtml = q.photoUrl
-      ? `<img src="${escapeHtml(q.photoUrl)}" alt="${escapeHtml(q.personName)}" class="quote-headshot" style="width:72px;height:72px" onerror="this.outerHTML='<div class=\\'quote-headshot-placeholder\\' style=\\'width:72px;height:72px;font-size:1.8rem\\'>${initial}</div>'">`
-      : `<div class="quote-headshot-placeholder" style="width:72px;height:72px;font-size:1.8rem">${initial}</div>`;
+      ? `<img src="${escapeHtml(q.photoUrl)}" alt="${escapeHtml(q.personName)}" class="quote-headshot" onerror="this.outerHTML='<div class=\\'quote-headshot-placeholder\\'>${initial}</div>'">`
+      : `<div class="quote-headshot-placeholder">${initial}</div>`;
 
     // Quote type
     const quoteTypeHtml = q.quoteType === 'indirect'
       ? `<span class="quote-type-badge quote-type-indirect">Indirect</span>`
+      : '';
+
+    // Vote controls for detail page
+    const voteHtml = typeof renderVoteControls === 'function'
+      ? renderVoteControls(q.id, q.voteScore || 0, q.userVote || 0)
       : '';
 
     let html = `
@@ -27,6 +32,7 @@ async function renderQuote(id) {
       </p>
       <div class="quote-detail-card">
         <div class="quote-layout" style="gap:1.25rem">
+          ${voteHtml}
           <div class="quote-headshot-col">${headshotHtml}</div>
           <div class="quote-content-col">
             <div class="quote-detail-text">${escapeHtml(q.text)}</div>
