@@ -229,4 +229,233 @@ router.get('/analytics/topics', (req, res) => {
   }
 });
 
+// --- Temporal Trend Endpoints ---
+
+function getGranularity(period) {
+  const map = {
+    day: { fmt: '%Y-%m-%d %H:00:00', label: 'hour' },
+    week: { fmt: '%Y-%m-%d', label: 'day' },
+    month: { fmt: '%Y-%m-%d', label: 'day' },
+    year: { fmt: '%Y-W%W', label: 'week' },
+  };
+  return map[period] || map.week;
+}
+
+// GET /api/analytics/trends/quotes?period=month — Daily/hourly quote counts
+router.get('/analytics/trends/quotes', (req, res) => {
+  try {
+    const db = getDb();
+    const period = validatePeriod(req.query.period);
+    const periodClause = getPeriodClause(period);
+    const gran = getGranularity(period);
+
+    const buckets = db.prepare(`
+      SELECT strftime('${gran.fmt}', q.created_at) as bucket, COUNT(*) as count
+      FROM quotes q
+      WHERE q.is_visible = 1 AND q.created_at >= ${periodClause}
+      GROUP BY bucket ORDER BY bucket
+    `).all();
+
+    res.json({ period, granularity: gran.label, buckets });
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/analytics/trends/topics?period=month&limit=5 — Top N topics over time
+router.get('/analytics/trends/topics', (req, res) => {
+  try {
+    const db = getDb();
+    const period = validatePeriod(req.query.period);
+    const periodClause = getPeriodClause(period);
+    const gran = getGranularity(period);
+    const limit = Math.min(Math.max(parseInt(req.query.limit) || 5, 1), 10);
+
+    // Step 1: find top N keywords in this period
+    const topKeywords = db.prepare(`
+      SELECT qk.keyword, COUNT(*) as total
+      FROM quote_keywords qk
+      JOIN quotes q ON q.id = qk.quote_id
+      WHERE q.is_visible = 1 AND q.created_at >= ${periodClause}
+      GROUP BY qk.keyword ORDER BY total DESC LIMIT ?
+    `).all(limit);
+
+    if (topKeywords.length === 0) {
+      return res.json({ period, granularity: gran.label, series: [] });
+    }
+
+    // Step 2: get time-bucketed counts for those keywords
+    const placeholders = topKeywords.map(() => '?').join(',');
+    const keywordNames = topKeywords.map(k => k.keyword);
+
+    const rows = db.prepare(`
+      SELECT qk.keyword, strftime('${gran.fmt}', q.created_at) as bucket, COUNT(*) as count
+      FROM quote_keywords qk
+      JOIN quotes q ON q.id = qk.quote_id
+      WHERE q.is_visible = 1 AND q.created_at >= ${periodClause}
+        AND qk.keyword IN (${placeholders})
+      GROUP BY qk.keyword, bucket ORDER BY bucket
+    `).all(...keywordNames);
+
+    // Group by keyword
+    const seriesMap = {};
+    for (const kw of keywordNames) seriesMap[kw] = { keyword: kw, buckets: [] };
+    for (const r of rows) {
+      if (seriesMap[r.keyword]) seriesMap[r.keyword].buckets.push({ bucket: r.bucket, count: r.count });
+    }
+
+    res.json({ period, granularity: gran.label, series: Object.values(seriesMap) });
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/analytics/trends/sources?period=month&limit=5 — Top N sources over time
+router.get('/analytics/trends/sources', (req, res) => {
+  try {
+    const db = getDb();
+    const period = validatePeriod(req.query.period);
+    const periodClause = getPeriodClause(period);
+    const gran = getGranularity(period);
+    const limit = Math.min(Math.max(parseInt(req.query.limit) || 5, 1), 10);
+
+    // Step 1: find top N sources in this period
+    const topSources = db.prepare(`
+      SELECT s.id, s.name, COUNT(DISTINCT q.id) as total
+      FROM quotes q
+      JOIN quote_articles qa ON qa.quote_id = q.id
+      JOIN articles a ON a.id = qa.article_id
+      JOIN sources s ON s.id = a.source_id
+      WHERE q.is_visible = 1 AND q.created_at >= ${periodClause}
+      GROUP BY s.id ORDER BY total DESC LIMIT ?
+    `).all(limit);
+
+    if (topSources.length === 0) {
+      return res.json({ period, granularity: gran.label, series: [] });
+    }
+
+    // Step 2: get time-bucketed counts for those sources
+    const sourceIds = topSources.map(s => s.id);
+    const placeholders = sourceIds.map(() => '?').join(',');
+
+    const rows = db.prepare(`
+      SELECT s.id, s.name, strftime('${gran.fmt}', q.created_at) as bucket, COUNT(DISTINCT q.id) as count
+      FROM quotes q
+      JOIN quote_articles qa ON qa.quote_id = q.id
+      JOIN articles a ON a.id = qa.article_id
+      JOIN sources s ON s.id = a.source_id
+      WHERE q.is_visible = 1 AND q.created_at >= ${periodClause}
+        AND s.id IN (${placeholders})
+      GROUP BY s.id, bucket ORDER BY bucket
+    `).all(...sourceIds);
+
+    const seriesMap = {};
+    for (const s of topSources) seriesMap[s.id] = { source_id: s.id, name: s.name, buckets: [] };
+    for (const r of rows) {
+      if (seriesMap[r.id]) seriesMap[r.id].buckets.push({ bucket: r.bucket, count: r.count });
+    }
+
+    res.json({ period, granularity: gran.label, series: Object.values(seriesMap) });
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/analytics/trends/author/:id?period=month — Author timeline + peers + topics
+router.get('/analytics/trends/author/:id', (req, res) => {
+  try {
+    const db = getDb();
+    const authorId = parseInt(req.params.id);
+    if (!authorId) return res.status(400).json({ error: 'Invalid author ID' });
+
+    const period = validatePeriod(req.query.period);
+    const periodClause = getPeriodClause(period);
+    const gran = getGranularity(period);
+
+    // Author timeline
+    const timeline = db.prepare(`
+      SELECT strftime('${gran.fmt}', q.created_at) as bucket, COUNT(*) as count
+      FROM quotes q
+      WHERE q.person_id = ? AND q.is_visible = 1 AND q.created_at >= ${periodClause}
+      GROUP BY bucket ORDER BY bucket
+    `).all(authorId);
+
+    // Topic distribution (keywords for this author's quotes in period)
+    const topics = db.prepare(`
+      SELECT qk.keyword, COUNT(*) as count
+      FROM quote_keywords qk
+      JOIN quotes q ON q.id = qk.quote_id
+      WHERE q.person_id = ? AND q.is_visible = 1 AND q.created_at >= ${periodClause}
+      GROUP BY qk.keyword ORDER BY count DESC LIMIT 8
+    `).all(authorId);
+
+    // Peer comparison: find authors in same category
+    const author = db.prepare('SELECT id, canonical_name, category FROM persons WHERE id = ?').get(authorId);
+    let peers = [];
+    if (author && author.category) {
+      const peerAuthors = db.prepare(`
+        SELECT p.id, p.canonical_name
+        FROM persons p
+        JOIN quotes q ON q.person_id = p.id
+        WHERE p.category = ? AND p.id != ? AND q.is_visible = 1 AND q.created_at >= ${periodClause}
+        GROUP BY p.id ORDER BY COUNT(q.id) DESC LIMIT 3
+      `).all(author.category, authorId);
+
+      for (const peer of peerAuthors) {
+        const peerTimeline = db.prepare(`
+          SELECT strftime('${gran.fmt}', q.created_at) as bucket, COUNT(*) as count
+          FROM quotes q
+          WHERE q.person_id = ? AND q.is_visible = 1 AND q.created_at >= ${periodClause}
+          GROUP BY bucket ORDER BY bucket
+        `).all(peer.id);
+        peers.push({ id: peer.id, name: peer.canonical_name, buckets: peerTimeline });
+      }
+    }
+
+    res.json({
+      period,
+      granularity: gran.label,
+      author: author ? { id: author.id, name: author.canonical_name, category: author.category } : null,
+      timeline,
+      topics,
+      peers,
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/analytics/trends/article/:id — Per-author counts + topic distribution
+router.get('/analytics/trends/article/:id', (req, res) => {
+  try {
+    const db = getDb();
+    const articleId = parseInt(req.params.id);
+    if (!articleId) return res.status(400).json({ error: 'Invalid article ID' });
+
+    // Per-author quote counts
+    const authors = db.prepare(`
+      SELECT p.id, p.canonical_name as name, COUNT(q.id) as quote_count
+      FROM quotes q
+      JOIN quote_articles qa ON qa.quote_id = q.id
+      JOIN persons p ON p.id = q.person_id
+      WHERE qa.article_id = ? AND q.is_visible = 1
+      GROUP BY p.id ORDER BY quote_count DESC
+    `).all(articleId);
+
+    // Topic distribution
+    const topics = db.prepare(`
+      SELECT qk.keyword, COUNT(*) as count
+      FROM quote_keywords qk
+      JOIN quotes q ON q.id = qk.quote_id
+      JOIN quote_articles qa ON qa.quote_id = q.id
+      WHERE qa.article_id = ? AND q.is_visible = 1
+      GROUP BY qk.keyword ORDER BY count DESC LIMIT 10
+    `).all(articleId);
+
+    res.json({ article_id: articleId, authors, topics });
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

@@ -2648,3 +2648,54 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
     padding: 6px 8px;
   }
 }
+
+/* ===================================
+   Chart Containers & Layout
+   =================================== */
+
+.chart-container {
+  position: relative;
+  width: 100%;
+}
+
+.chart-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+.chart-panel {
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+}
+
+.chart-panel h3 {
+  font-family: var(--font-ui);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin: 0 0 0.75rem 0;
+}
+
+.author-charts-section,
+.article-charts-section {
+  margin: 1.5rem 0;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.chart-loading {
+  text-align: center;
+  padding: 2rem;
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: 0.85rem;
+}
+
+@media (max-width: 768px) {
+  .chart-row {
+    grid-template-columns: 1fr;
+  }
+}

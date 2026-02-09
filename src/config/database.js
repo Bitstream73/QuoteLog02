@@ -255,6 +255,8 @@ function initializeTables(db) {
     db.exec(`ALTER TABLE quotes ADD COLUMN rss_metadata TEXT`);
   }
   db.exec(`CREATE INDEX IF NOT EXISTS idx_quotes_visible ON quotes(is_visible)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quotes_visible_created ON quotes(is_visible, created_at)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quotes_person_visible_created ON quotes(person_id, is_visible, created_at)`);
 
   // Migration: add photo_url column to persons
   const personCols = db.prepare("PRAGMA table_info(persons)").all().map(c => c.name);

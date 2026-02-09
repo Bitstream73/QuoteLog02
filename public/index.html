@@ -69,6 +69,7 @@
         <button class="analytics-tab" data-tab="quotes" onclick="switchAnalyticsTab('quotes')">Top Quotes</button>
         <button class="analytics-tab" data-tab="authors" onclick="switchAnalyticsTab('authors')">Top Authors</button>
         <button class="analytics-tab" data-tab="topics" onclick="switchAnalyticsTab('topics')">Trending Topics</button>
+        <button class="analytics-tab" data-tab="trends" onclick="switchAnalyticsTab('trends')">Trends</button>
       </div>
       <div class="analytics-body" id="analytics-body"></div>
     </div>
@@ -85,8 +86,12 @@
   <!-- Socket.IO for real-time updates -->
   <script src="/socket.io/socket.io.js"></script>
 
+  <!-- Chart.js for analytics visualizations -->
+  <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+
   <script src="/js/api.js"></script>
   <script src="/js/vote.js"></script>
+  <script src="/js/charts.js"></script>
   <script src="/js/analytics.js"></script>
   <script src="/js/home.js"></script>
   <script src="/js/quote.js"></script>

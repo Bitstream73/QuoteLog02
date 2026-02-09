@@ -139,6 +139,26 @@ async function renderAuthor(id) {
       }
     }
 
+    // Chart section
+    html += `
+      <div class="author-charts-section" id="author-charts">
+        <div class="chart-row">
+          <div class="chart-panel">
+            <h3>Quote Activity (30 days)</h3>
+            <div class="chart-container" style="height:220px"><canvas id="chart-author-timeline"></canvas></div>
+          </div>
+          <div class="chart-panel">
+            <h3>Topic Distribution</h3>
+            <div class="chart-container" style="height:220px"><canvas id="chart-author-topics"></canvas></div>
+          </div>
+        </div>
+        <div class="chart-panel" id="chart-author-peers-panel" style="display:none">
+          <h3>vs. Peers</h3>
+          <div class="chart-container" style="height:220px"><canvas id="chart-author-peers"></canvas></div>
+        </div>
+      </div>
+    `;
+
     html += '<h2 style="margin:2rem 0 1rem;font-family:var(--font-headline);font-size:1.3rem">Quotes</h2>';
 
     if (quotesData.quotes.length === 0) {
@@ -160,8 +180,63 @@ async function renderAuthor(id) {
     }
 
     content.innerHTML = html;
+
+    // Load charts after DOM is set
+    loadAuthorCharts(id);
   } catch (err) {
     content.innerHTML = `<div class="empty-state"><h3>Error</h3><p>${escapeHtml(err.message)}</p></div>`;
+  }
+}
+
+async function loadAuthorCharts(authorId) {
+  if (typeof initChartDefaults === 'function') initChartDefaults();
+  try {
+    const data = await API.get(`/analytics/trends/author/${authorId}?period=month`);
+
+    // Timeline chart
+    if (data.timeline && data.timeline.length > 0 && typeof createTimelineChart === 'function') {
+      const labels = data.timeline.map(b => b.bucket.slice(5));
+      const values = data.timeline.map(b => b.count);
+      createTimelineChart('chart-author-timeline', labels, [{ label: 'Quotes', data: values }]);
+    }
+
+    // Topic doughnut
+    if (data.topics && data.topics.length > 0 && typeof createDoughnutChart === 'function') {
+      const topicLabels = data.topics.map(t => t.keyword);
+      const topicValues = data.topics.map(t => t.count);
+      createDoughnutChart('chart-author-topics', topicLabels, topicValues);
+    }
+
+    // Peer comparison
+    if (data.peers && data.peers.length > 0 && typeof createTimelineChart === 'function') {
+      const peersPanel = document.getElementById('chart-author-peers-panel');
+      if (peersPanel) peersPanel.style.display = '';
+
+      // Merge all buckets from author + peers
+      const bucketSet = new Set();
+      for (const b of data.timeline) bucketSet.add(b.bucket);
+      for (const peer of data.peers) {
+        for (const b of peer.buckets) bucketSet.add(b.bucket);
+      }
+      const allBuckets = Array.from(bucketSet).sort();
+      const peerLabels = allBuckets.map(b => b.slice(5));
+
+      // Author dataset
+      const authorMap = {};
+      for (const b of data.timeline) authorMap[b.bucket] = b.count;
+      const datasets = [{ label: data.author.name, data: allBuckets.map(b => authorMap[b] || 0) }];
+
+      // Peer datasets
+      for (const peer of data.peers) {
+        const peerMap = {};
+        for (const b of peer.buckets) peerMap[b.bucket] = b.count;
+        datasets.push({ label: peer.name, data: allBuckets.map(b => peerMap[b] || 0) });
+      }
+
+      createTimelineChart('chart-author-peers', peerLabels, datasets);
+    }
+  } catch (err) {
+    console.error('Failed to load author charts:', err);
   }
 }
 

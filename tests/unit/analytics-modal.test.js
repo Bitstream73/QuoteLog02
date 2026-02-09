@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+const chartsJsSrc = fs.readFileSync(path.join(__dirname, '../../public/js/charts.js'), 'utf-8');
 const analyticsJsSrc = fs.readFileSync(path.join(__dirname, '../../public/js/analytics.js'), 'utf-8');
 
 describe('Analytics Modal', () => {
@@ -41,8 +42,17 @@ describe('Analytics Modal', () => {
     };
 
     global.escapeHtml = (s) => s || '';
+    global.console = { ...console, error: vi.fn() };
 
-    // Evaluate
+    // Mock Chart.js
+    const mockChartInstance = { destroy: vi.fn(), update: vi.fn() };
+    global.Chart = vi.fn(() => mockChartInstance);
+    global.Chart.defaults = { font: {}, color: '', plugins: { tooltip: {}, legend: { labels: {} } } };
+
+    // Evaluate charts.js first (provides destroyAllCharts, initChartDefaults, etc.)
+    new Function('Chart', 'document', chartsJsSrc)(global.Chart, global.document);
+
+    // Evaluate analytics.js
     const module = {};
     const fn = new Function('module', 'document', 'API', 'escapeHtml',
       analyticsJsSrc + '\nmodule.openAnalytics = openAnalytics; module.closeAnalytics = closeAnalytics; module.switchAnalyticsTab = switchAnalyticsTab; module.renderPeriodSelector = renderPeriodSelector;');
@@ -118,5 +128,13 @@ describe('Analytics Modal', () => {
     openAnalytics();
     await new Promise(r => setTimeout(r, 100));
     expect(mockBody.innerHTML).toContain('sparkline-bar');
+  });
+
+  it('switchAnalyticsTab loads trends tab', async () => {
+    global.API.get.mockResolvedValue({ period: 'week', granularity: 'day', buckets: [], series: [] });
+    switchAnalyticsTab('trends');
+    await new Promise(r => setTimeout(r, 100));
+    expect(global.API.get).toHaveBeenCalledWith('/analytics/trends/quotes?period=week');
+    expect(mockBody.innerHTML).toContain('chart-trend-quotes');
   });
 });

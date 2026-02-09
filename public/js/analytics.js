@@ -15,6 +15,7 @@ function openAnalytics(e) {
 }
 
 function closeAnalytics() {
+  if (typeof destroyAllCharts === 'function') destroyAllCharts();
   const modal = document.getElementById('analytics-modal');
   if (modal) modal.style.display = 'none';
   document.body.style.overflow = '';
@@ -22,6 +23,9 @@ function closeAnalytics() {
 
 function switchAnalyticsTab(tab) {
   _analyticsCurrentTab = tab;
+
+  // Destroy any active charts before switching tabs
+  if (typeof destroyAllCharts === 'function') destroyAllCharts();
 
   // Update tab buttons
   document.querySelectorAll('.analytics-tab').forEach(btn => {
@@ -37,6 +41,7 @@ function switchAnalyticsTab(tab) {
   else if (tab === 'quotes') loadTopQuotes(_analyticsCurrentPeriod);
   else if (tab === 'authors') loadTopAuthors(_analyticsCurrentPeriod);
   else if (tab === 'topics') loadTrendingTopics(_analyticsCurrentPeriod);
+  else if (tab === 'trends') loadTrends(_analyticsCurrentPeriod);
 }
 
 function renderPeriodSelector(activePeriod, onChangeFn) {
@@ -266,5 +271,112 @@ async function loadTrendingTopics(period) {
     body.innerHTML = html;
   } catch (err) {
     body.innerHTML = `<div class="analytics-error">Failed to load topics: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+// --- Trends Tab ---
+
+async function loadTrends(period) {
+  _analyticsCurrentPeriod = period;
+  const body = document.getElementById('analytics-body');
+  if (!body) return;
+
+  let html = renderPeriodSelector(period, 'loadTrends');
+  html += `
+    <div class="analytics-section">
+      <h3 class="analytics-section-title">Quotes Over Time</h3>
+      <div class="chart-container" style="height:260px"><canvas id="chart-trend-quotes"></canvas></div>
+    </div>
+    <div class="chart-row">
+      <div class="chart-panel">
+        <h3>Top Topics Over Time</h3>
+        <div class="chart-container" style="height:240px"><canvas id="chart-trend-topics"></canvas></div>
+      </div>
+      <div class="chart-panel">
+        <h3>Top Sources Over Time</h3>
+        <div class="chart-container" style="height:240px"><canvas id="chart-trend-sources"></canvas></div>
+      </div>
+    </div>
+  `;
+  body.innerHTML = html;
+
+  // Initialize Chart.js defaults
+  if (typeof initChartDefaults === 'function') initChartDefaults();
+
+  // Load all three charts in parallel
+  await Promise.all([
+    loadTrendQuotesTimeline(period),
+    loadTrendTopicsSeries(period),
+    loadTrendSourcesSeries(period),
+  ]);
+}
+
+async function loadTrendQuotesTimeline(period) {
+  try {
+    const data = await API.get(`/analytics/trends/quotes?period=${period}`);
+    if (!data.buckets || data.buckets.length === 0) return;
+    if (typeof createTimelineChart !== 'function') return;
+
+    const labels = data.buckets.map(b => {
+      if (data.granularity === 'hour') return b.bucket.slice(11, 16);
+      if (data.granularity === 'week') return b.bucket;
+      return b.bucket.slice(5); // MM-DD
+    });
+    const values = data.buckets.map(b => b.count);
+
+    createTimelineChart('chart-trend-quotes', labels, [{ label: 'Quotes', data: values }]);
+  } catch (err) {
+    console.error('Failed to load quotes timeline:', err);
+  }
+}
+
+async function loadTrendTopicsSeries(period) {
+  try {
+    const data = await API.get(`/analytics/trends/topics?period=${period}&limit=5`);
+    if (!data.series || data.series.length === 0) return;
+    if (typeof createTimelineChart !== 'function') return;
+
+    // Collect all unique buckets
+    const bucketSet = new Set();
+    for (const s of data.series) {
+      for (const b of s.buckets) bucketSet.add(b.bucket);
+    }
+    const allBuckets = Array.from(bucketSet).sort();
+    const labels = allBuckets.map(b => b.slice(5));
+
+    const datasets = data.series.map(s => {
+      const countMap = {};
+      for (const b of s.buckets) countMap[b.bucket] = b.count;
+      return { label: s.keyword, data: allBuckets.map(b => countMap[b] || 0) };
+    });
+
+    createTimelineChart('chart-trend-topics', labels, datasets);
+  } catch (err) {
+    console.error('Failed to load topics series:', err);
+  }
+}
+
+async function loadTrendSourcesSeries(period) {
+  try {
+    const data = await API.get(`/analytics/trends/sources?period=${period}&limit=5`);
+    if (!data.series || data.series.length === 0) return;
+    if (typeof createTimelineChart !== 'function') return;
+
+    const bucketSet = new Set();
+    for (const s of data.series) {
+      for (const b of s.buckets) bucketSet.add(b.bucket);
+    }
+    const allBuckets = Array.from(bucketSet).sort();
+    const labels = allBuckets.map(b => b.slice(5));
+
+    const datasets = data.series.map(s => {
+      const countMap = {};
+      for (const b of s.buckets) countMap[b.bucket] = b.count;
+      return { label: s.name, data: allBuckets.map(b => countMap[b] || 0) };
+    });
+
+    createTimelineChart('chart-trend-sources', labels, datasets);
+  } catch (err) {
+    console.error('Failed to load sources series:', err);
   }
 }

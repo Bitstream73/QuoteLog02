@@ -31,6 +31,25 @@ async function renderArticle(id) {
       html += '<div class="empty-state"><h3>No quotes from this article</h3></div>';
     } else {
       html += `<p class="quote-count">${data.quotes.length} quote${data.quotes.length !== 1 ? 's' : ''} from this article</p>`;
+
+      // Chart section (only if 2+ quotes)
+      if (data.quotes.length >= 2) {
+        html += `
+          <div class="article-charts-section" id="article-charts">
+            <div class="chart-row">
+              <div class="chart-panel">
+                <h3>Quotes by Author</h3>
+                <div class="chart-container" style="height:200px"><canvas id="chart-article-authors"></canvas></div>
+              </div>
+              <div class="chart-panel">
+                <h3>Topic Distribution</h3>
+                <div class="chart-container" style="height:200px"><canvas id="chart-article-topics"></canvas></div>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
       for (const q of data.quotes) {
         // Re-use buildQuoteEntryHtml — strip article title/source (already in header) but keep date
         html += buildQuoteEntryHtml({
@@ -46,7 +65,35 @@ async function renderArticle(id) {
     }
 
     content.innerHTML = html;
+
+    // Load charts after DOM is set (only if 2+ quotes)
+    if (data.quotes.length >= 2) {
+      loadArticleCharts(id);
+    }
   } catch (err) {
     content.innerHTML = `<div class="empty-state"><h3>Error</h3><p>${escapeHtml(err.message)}</p></div>`;
+  }
+}
+
+async function loadArticleCharts(articleId) {
+  if (typeof initChartDefaults === 'function') initChartDefaults();
+  try {
+    const data = await API.get(`/analytics/trends/article/${articleId}`);
+
+    // Horizontal bar chart: quotes per author (only if 2+ authors)
+    if (data.authors && data.authors.length >= 2 && typeof createBarChart === 'function') {
+      const authorLabels = data.authors.map(a => a.name);
+      const authorValues = data.authors.map(a => a.quote_count);
+      createBarChart('chart-article-authors', authorLabels, authorValues);
+    }
+
+    // Doughnut: topic distribution (only if 2+ topics)
+    if (data.topics && data.topics.length >= 2 && typeof createDoughnutChart === 'function') {
+      const topicLabels = data.topics.map(t => t.keyword);
+      const topicValues = data.topics.map(t => t.count);
+      createDoughnutChart('chart-article-topics', topicLabels, topicValues);
+    }
+  } catch (err) {
+    console.error('Failed to load article charts:', err);
   }
 }

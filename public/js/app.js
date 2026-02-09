@@ -100,6 +100,8 @@ function navigateBackToQuotes(event) {
 }
 
 function route() {
+  if (typeof destroyAllCharts === 'function') destroyAllCharts();
+
   const path = window.location.pathname;
   const params = new URLSearchParams(window.location.search);
 
