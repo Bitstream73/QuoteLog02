@@ -326,6 +326,35 @@ function initializeTables(db) {
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_disam_status ON disambiguation_queue(status)`);
 
+  // --- Upvote System ---
+
+  // Votes - Anonymous upvotes/downvotes on quotes
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS votes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      quote_id INTEGER NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,
+      voter_hash TEXT NOT NULL,
+      vote_value INTEGER NOT NULL CHECK(vote_value IN (-1, 1)),
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(quote_id, voter_hash)
+    )
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_votes_quote_id ON votes(quote_id)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_votes_voter_hash ON votes(voter_hash)`);
+
+  // Quote keywords - Extracted keywords for analytics aggregation
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS quote_keywords (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      quote_id INTEGER NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,
+      keyword TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quote_keywords_keyword ON quote_keywords(keyword)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quote_keywords_quote_id ON quote_keywords(quote_id)`);
+
   // App settings (key-value)
   db.exec(`
     CREATE TABLE IF NOT EXISTS settings (
