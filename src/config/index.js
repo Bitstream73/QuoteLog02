@@ -25,6 +25,7 @@ const config = {
   geminiApiKey: process.env.GEMINI_API_KEY || '',
   pineconeApiKey: process.env.PINECONE_API_KEY || '',
   pineconeIndexHost: process.env.PINECONE_INDEX_HOST || '',
+  pineconeNamespace: process.env.PINECONE_NAMESPACE || 'quotes',
   // Auth configuration
   jwtSecret: process.env.JWT_SECRET || crypto.randomBytes(32).toString('hex'),
   resendApiKey: process.env.RESEND_API_KEY || '',

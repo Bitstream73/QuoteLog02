@@ -35,7 +35,7 @@ export async function embedQuote(quoteId, text, personId) {
   }
 
   try {
-    const ns = idx.namespace('quotes');
+    const ns = idx.namespace(config.pineconeNamespace);
 
     await ns.upsertRecords({
       records: [{
@@ -64,7 +64,7 @@ export async function queryQuotes(text, personId, topK = 10) {
   }
 
   try {
-    const ns = idx.namespace('quotes');
+    const ns = idx.namespace(config.pineconeNamespace);
 
     const response = await ns.searchRecords({
       query: {
