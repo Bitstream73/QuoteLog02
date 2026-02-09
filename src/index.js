@@ -26,6 +26,7 @@ import logsRouter from './routes/logs.js';
 import adminRouter from './routes/admin.js';
 import articlesRouter from './routes/articles.js';
 import votesRouter from './routes/votes.js';
+import analyticsRouter from './routes/analytics.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -105,6 +106,7 @@ export function createApp({ skipDbInit = false } = {}) {
   app.use('/api/admin', adminRouter);
   app.use('/api/articles', articlesRouter);
   app.use('/api', votesRouter);
+  app.use('/api', analyticsRouter);
 
   // SPA fallback - serve index.html for all non-API routes
   // For /quote/:id, inject OG/Twitter meta tags for social sharing

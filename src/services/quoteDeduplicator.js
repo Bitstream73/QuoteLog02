@@ -2,6 +2,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import config from '../config/index.js';
 import { getDb } from '../config/database.js';
 import { embedQuote, queryQuotes } from './vectorDb.js';
+import { indexQuoteKeywords } from './keywordExtractor.js';
 import logger from './logger.js';
 
 /**
@@ -384,6 +385,13 @@ function insertNewQuote(text, quoteType, context, sourceUrl, personId, articleId
   const person = db.prepare('SELECT canonical_name FROM persons WHERE id = ?').get(personId);
 
   logger.debug('deduplicator', 'new_quote_inserted', { quoteId, personId });
+
+  // Extract and store keywords for analytics
+  try {
+    indexQuoteKeywords(quoteId, context, text);
+  } catch (err) {
+    logger.debug('deduplicator', 'keyword_extraction_failed', { quoteId, error: err.message });
+  }
 
   // Try to index in Pinecone (async, don't await)
   if (config.pineconeApiKey && config.pineconeIndexHost) {
