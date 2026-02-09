@@ -1,4 +1,4 @@
-const CACHE_NAME = 'quotelog-v14';
+const CACHE_NAME = 'quotelog-v15';
 const STATIC_ASSETS = ['/', '/css/styles.css', '/js/app.js', '/js/api.js', '/js/home.js', '/js/quote.js', '/js/article.js', '/js/author.js', '/js/settings.js', '/js/review.js', '/js/logs.js', '/js/login.js', '/js/resetPassword.js', '/js/analytics.js', '/js/vote.js', '/js/charts.js', '/manifest.json'];
 
 self.addEventListener('install', (event) => {

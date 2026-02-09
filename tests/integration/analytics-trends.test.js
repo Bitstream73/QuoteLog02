@@ -24,10 +24,10 @@ describe('Analytics Trends API', () => {
     db.prepare("INSERT INTO articles (url, source_id, title, status, created_at) VALUES (?, ?, ?, 'completed', datetime('now', '-2 days'))").run('https://cnn.com/article1', 1, 'Economy Article', );
     db.prepare("INSERT INTO articles (url, source_id, title, status, created_at) VALUES (?, ?, ?, 'completed', datetime('now', '-5 days'))").run('https://bbc.com/article2', 2, 'Politics Article');
 
-    // Create persons
-    db.prepare('INSERT INTO persons (canonical_name, category) VALUES (?, ?)').run('Politician A', 'Politician');
-    db.prepare('INSERT INTO persons (canonical_name, category) VALUES (?, ?)').run('Politician B', 'Politician');
-    db.prepare('INSERT INTO persons (canonical_name, category) VALUES (?, ?)').run('CEO Alpha', 'Business Leader');
+    // Create persons (quote_count set to match seeded quotes below)
+    db.prepare('INSERT INTO persons (canonical_name, category, quote_count) VALUES (?, ?, ?)').run('Politician A', 'Politician', 4);
+    db.prepare('INSERT INTO persons (canonical_name, category, quote_count) VALUES (?, ?, ?)').run('Politician B', 'Politician', 2);
+    db.prepare('INSERT INTO persons (canonical_name, category, quote_count) VALUES (?, ?, ?)').run('CEO Alpha', 'Business Leader', 2);
 
     // Create quotes spanning 14 days
     const insertQuote = db.prepare("INSERT INTO quotes (person_id, text, is_visible, created_at) VALUES (?, ?, 1, datetime('now', ?))");
@@ -182,6 +182,118 @@ describe('Analytics Trends API', () => {
     it('returns 400 for invalid article ID', async () => {
       const res = await request(app).get('/api/analytics/trends/article/abc');
       expect(res.status).toBe(400);
+    });
+  });
+
+  // --- Dashboard Endpoints ---
+
+  describe('GET /api/analytics/categories', () => {
+    it('returns category breakdown with series', async () => {
+      const res = await request(app).get('/api/analytics/categories?period=month');
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body.categories)).toBe(true);
+      expect(res.body.categories.length).toBeGreaterThan(0);
+      expect(res.body.categories[0]).toHaveProperty('category');
+      expect(res.body.categories[0]).toHaveProperty('quote_count');
+      expect(res.body.categories[0]).toHaveProperty('author_count');
+      expect(Array.isArray(res.body.series)).toBe(true);
+    });
+  });
+
+  describe('GET /api/analytics/compare/authors', () => {
+    it('returns comparison data for selected authors', async () => {
+      const res = await request(app).get('/api/analytics/compare/authors?ids=1,2&period=month');
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body.authors)).toBe(true);
+      expect(res.body.authors.length).toBe(2);
+      expect(res.body.authors[0]).toHaveProperty('id');
+      expect(res.body.authors[0]).toHaveProperty('name');
+      expect(res.body.authors[0]).toHaveProperty('total');
+      expect(Array.isArray(res.body.authors[0].buckets)).toBe(true);
+    });
+
+    it('returns empty for no IDs', async () => {
+      const res = await request(app).get('/api/analytics/compare/authors?period=month');
+      expect(res.body.authors).toEqual([]);
+    });
+  });
+
+  describe('GET /api/analytics/compare/topics', () => {
+    it('returns comparison data for selected topics', async () => {
+      const res = await request(app).get('/api/analytics/compare/topics?keywords=economy,policy&period=month');
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body.topics)).toBe(true);
+      expect(res.body.topics.length).toBe(2);
+      expect(res.body.topics[0]).toHaveProperty('keyword');
+      expect(res.body.topics[0]).toHaveProperty('total');
+      expect(Array.isArray(res.body.topics[0].buckets)).toBe(true);
+    });
+
+    it('returns empty for no keywords', async () => {
+      const res = await request(app).get('/api/analytics/compare/topics?period=month');
+      expect(res.body.topics).toEqual([]);
+    });
+  });
+
+  describe('GET /api/analytics/sources/breakdown', () => {
+    it('returns source volume data', async () => {
+      const res = await request(app).get('/api/analytics/sources/breakdown?period=month');
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body.sources)).toBe(true);
+      if (res.body.sources.length > 0) {
+        expect(res.body.sources[0]).toHaveProperty('id');
+        expect(res.body.sources[0]).toHaveProperty('name');
+        expect(res.body.sources[0]).toHaveProperty('quote_count');
+        expect(res.body.sources[0]).toHaveProperty('article_count');
+      }
+    });
+  });
+
+  describe('GET /api/analytics/heatmap', () => {
+    it('returns day-of-week x hour cells', async () => {
+      const res = await request(app).get('/api/analytics/heatmap?period=month');
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body.cells)).toBe(true);
+      if (res.body.cells.length > 0) {
+        expect(res.body.cells[0]).toHaveProperty('day_of_week');
+        expect(res.body.cells[0]).toHaveProperty('hour');
+        expect(res.body.cells[0]).toHaveProperty('count');
+      }
+    });
+  });
+
+  describe('GET /api/analytics/authors/search', () => {
+    it('returns matching authors', async () => {
+      const res = await request(app).get('/api/analytics/authors/search?q=Politician');
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body.authors)).toBe(true);
+      expect(res.body.authors.length).toBeGreaterThan(0);
+      expect(res.body.authors[0]).toHaveProperty('id');
+      expect(res.body.authors[0]).toHaveProperty('name');
+    });
+
+    it('returns empty for short query', async () => {
+      const res = await request(app).get('/api/analytics/authors/search?q=P');
+      expect(res.body.authors).toEqual([]);
+    });
+  });
+
+  describe('GET /api/analytics/topics/list', () => {
+    it('returns keyword list', async () => {
+      const res = await request(app).get('/api/analytics/topics/list?period=month');
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body.topics)).toBe(true);
+      expect(res.body.topics.length).toBeGreaterThan(0);
+      expect(res.body.topics[0]).toHaveProperty('keyword');
+      expect(res.body.topics[0]).toHaveProperty('count');
+    });
+
+    it('filters by search query', async () => {
+      const res = await request(app).get('/api/analytics/topics/list?period=month&q=econ');
+      expect(res.status).toBe(200);
+      if (res.body.topics.length > 0) {
+        expect(res.body.topics[0].keyword).toContain('econ');
+      }
     });
   });
 });

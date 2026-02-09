@@ -458,4 +458,217 @@ router.get('/analytics/trends/article/:id', (req, res) => {
   }
 });
 
+// --- Dashboard Endpoints ---
+
+// GET /api/analytics/categories?period=week — Quote counts per person category
+router.get('/analytics/categories', (req, res) => {
+  try {
+    const db = getDb();
+    const period = validatePeriod(req.query.period);
+    const periodClause = getPeriodClause(period);
+    const gran = getGranularity(period);
+
+    const categories = db.prepare(`
+      SELECT COALESCE(p.category, 'Other') as category,
+             COUNT(DISTINCT q.id) as quote_count,
+             COUNT(DISTINCT p.id) as author_count
+      FROM quotes q
+      JOIN persons p ON q.person_id = p.id
+      WHERE q.is_visible = 1 AND q.created_at >= ${periodClause}
+      GROUP BY category
+      ORDER BY quote_count DESC
+    `).all();
+
+    // Time series per category (top 6)
+    const topCats = categories.slice(0, 6).map(c => c.category);
+    let series = [];
+    if (topCats.length > 0) {
+      const placeholders = topCats.map(() => '?').join(',');
+      const rows = db.prepare(`
+        SELECT COALESCE(p.category, 'Other') as category,
+               strftime('${gran.fmt}', q.created_at) as bucket,
+               COUNT(*) as count
+        FROM quotes q JOIN persons p ON q.person_id = p.id
+        WHERE q.is_visible = 1 AND q.created_at >= ${periodClause}
+          AND COALESCE(p.category, 'Other') IN (${placeholders})
+        GROUP BY category, bucket ORDER BY bucket
+      `).all(...topCats);
+
+      const seriesMap = {};
+      for (const cat of topCats) seriesMap[cat] = { category: cat, buckets: [] };
+      for (const r of rows) {
+        if (seriesMap[r.category]) seriesMap[r.category].buckets.push({ bucket: r.bucket, count: r.count });
+      }
+      series = Object.values(seriesMap);
+    }
+
+    res.json({ period, granularity: gran.label, categories, series });
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/analytics/compare/authors?ids=1,2,3&period=month — Compare selected authors
+router.get('/analytics/compare/authors', (req, res) => {
+  try {
+    const db = getDb();
+    const period = validatePeriod(req.query.period);
+    const periodClause = getPeriodClause(period);
+    const gran = getGranularity(period);
+    const ids = (req.query.ids || '').split(',').map(Number).filter(n => n > 0).slice(0, 8);
+
+    if (ids.length === 0) return res.json({ period, granularity: gran.label, authors: [] });
+
+    const authors = [];
+    for (const id of ids) {
+      const person = db.prepare('SELECT id, canonical_name as name, category FROM persons WHERE id = ?').get(id);
+      if (!person) continue;
+
+      const buckets = db.prepare(`
+        SELECT strftime('${gran.fmt}', q.created_at) as bucket, COUNT(*) as count
+        FROM quotes q
+        WHERE q.person_id = ? AND q.is_visible = 1 AND q.created_at >= ${periodClause}
+        GROUP BY bucket ORDER BY bucket
+      `).all(id);
+
+      const totalQuotes = buckets.reduce((s, b) => s + b.count, 0);
+      authors.push({ id: person.id, name: person.name, category: person.category, total: totalQuotes, buckets });
+    }
+
+    res.json({ period, granularity: gran.label, authors });
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/analytics/compare/topics?keywords=economy,politics&period=month — Compare selected topics
+router.get('/analytics/compare/topics', (req, res) => {
+  try {
+    const db = getDb();
+    const period = validatePeriod(req.query.period);
+    const periodClause = getPeriodClause(period);
+    const gran = getGranularity(period);
+    const keywords = (req.query.keywords || '').split(',').map(k => k.trim()).filter(Boolean).slice(0, 8);
+
+    if (keywords.length === 0) return res.json({ period, granularity: gran.label, topics: [] });
+
+    const topics = [];
+    for (const keyword of keywords) {
+      const buckets = db.prepare(`
+        SELECT strftime('${gran.fmt}', q.created_at) as bucket, COUNT(*) as count
+        FROM quote_keywords qk
+        JOIN quotes q ON q.id = qk.quote_id
+        WHERE qk.keyword = ? AND q.is_visible = 1 AND q.created_at >= ${periodClause}
+        GROUP BY bucket ORDER BY bucket
+      `).all(keyword);
+
+      const total = buckets.reduce((s, b) => s + b.count, 0);
+      topics.push({ keyword, total, buckets });
+    }
+
+    res.json({ period, granularity: gran.label, topics });
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/analytics/sources/breakdown?period=week — Source volume and diversity
+router.get('/analytics/sources/breakdown', (req, res) => {
+  try {
+    const db = getDb();
+    const period = validatePeriod(req.query.period);
+    const periodClause = getPeriodClause(period);
+
+    const sources = db.prepare(`
+      SELECT s.id, s.name, s.domain,
+             COUNT(DISTINCT q.id) as quote_count,
+             COUNT(DISTINCT a.id) as article_count
+      FROM quotes q
+      JOIN quote_articles qa ON qa.quote_id = q.id
+      JOIN articles a ON a.id = qa.article_id
+      JOIN sources s ON s.id = a.source_id
+      WHERE q.is_visible = 1 AND q.created_at >= ${periodClause}
+      GROUP BY s.id ORDER BY quote_count DESC
+      LIMIT 20
+    `).all();
+
+    res.json({ period, sources });
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/analytics/heatmap?period=month — Activity heatmap (day-of-week x hour)
+router.get('/analytics/heatmap', (req, res) => {
+  try {
+    const db = getDb();
+    const period = validatePeriod(req.query.period);
+    const periodClause = getPeriodClause(period);
+
+    const cells = db.prepare(`
+      SELECT CAST(strftime('%w', q.created_at) AS INTEGER) as day_of_week,
+             CAST(strftime('%H', q.created_at) AS INTEGER) as hour,
+             COUNT(*) as count
+      FROM quotes q
+      WHERE q.is_visible = 1 AND q.created_at >= ${periodClause}
+      GROUP BY day_of_week, hour
+    `).all();
+
+    res.json({ period, cells });
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/analytics/authors/search?q=trump — Autocomplete for author comparison
+router.get('/analytics/authors/search', (req, res) => {
+  try {
+    const db = getDb();
+    const q = (req.query.q || '').trim();
+    if (q.length < 2) return res.json({ authors: [] });
+
+    const authors = db.prepare(`
+      SELECT p.id, p.canonical_name as name, p.category, p.photo_url, p.quote_count
+      FROM persons p
+      WHERE p.canonical_name LIKE ? AND p.quote_count > 0
+      ORDER BY p.quote_count DESC
+      LIMIT 10
+    `).all(`%${q}%`);
+
+    res.json({ authors });
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/analytics/topics/list?period=week&limit=50 — List keywords for topic picker
+router.get('/analytics/topics/list', (req, res) => {
+  try {
+    const db = getDb();
+    const period = validatePeriod(req.query.period);
+    const periodClause = getPeriodClause(period);
+    const limit = Math.min(Math.max(parseInt(req.query.limit) || 50, 1), 100);
+    const q = (req.query.q || '').trim();
+
+    let sql = `
+      SELECT qk.keyword, COUNT(*) as count
+      FROM quote_keywords qk
+      JOIN quotes qu ON qu.id = qk.quote_id
+      WHERE qu.is_visible = 1 AND qu.created_at >= ${periodClause}
+    `;
+    const params = [];
+    if (q.length >= 2) {
+      sql += ' AND qk.keyword LIKE ?';
+      params.push(`%${q}%`);
+    }
+    sql += ' GROUP BY qk.keyword ORDER BY count DESC LIMIT ?';
+    params.push(limit);
+
+    const topics = db.prepare(sql).all(...params);
+    res.json({ period, topics });
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

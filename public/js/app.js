@@ -116,6 +116,8 @@ function route() {
   } else if (path.startsWith('/author/')) {
     const id = path.split('/')[2];
     renderAuthor(id);
+  } else if (path === '/analytics') {
+    renderAnalyticsPage();
   } else if (path === '/admin') {
     if (isAdmin) { navigate(null, '/settings'); return; }
     renderLogin();
@@ -165,7 +167,7 @@ function updateAdVisibility(path) {
   const adContainer = document.getElementById('ad-container');
   if (!adContainer) return;
 
-  const isPublicPage = path === '/' || path === '' ||
+  const isPublicPage = path === '/' || path === '' || path === '/analytics' ||
     path.startsWith('/quote/') || path.startsWith('/author/') || path.startsWith('/article/');
 
   if (isPublicPage && !isStandalone) {
@@ -217,7 +219,6 @@ function closeModal() {
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     closeModal();
-    if (typeof closeAnalytics === 'function') closeAnalytics();
   }
 });
 
