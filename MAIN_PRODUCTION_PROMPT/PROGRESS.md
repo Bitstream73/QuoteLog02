@@ -1,9 +1,9 @@
 # Build Progress — Two-Environment Pipeline
 
 ## Current Status
-- **Current Phase:** 4
+- **Current Phase:** 5
 - **Last Updated:** 2026-02-09
-- **Last Commit:** 04c7cd4 phase-2: add CI/CD workflows for live branch
+- **Last Commit:** 3673b52 phase-4: add LIVE setup checklist documentation
 
 ## Phase 0: Prerequisites ✅
 - [x] Railway CLI authenticated (`railway whoami`)
@@ -30,11 +30,11 @@
 - [x] Push `live` branch to origin
 - [x] Verify both branches exist on remote: `git branch -r`
 
-## Phase 4: Documentation
-- [ ] Create `MAIN_PRODUCTION_PROMPT.md/docs/ENVIRONMENTS.md` — environment architecture, Railway setup commands, env var reference (see spec)
-- [ ] Create `MAIN_PRODUCTION_PROMPT.md/docs/CI_CD.md` — GitHub Actions workflow docs and secrets reference (see spec)
-- [ ] Create `MAIN_PRODUCTION_PROMPT.md/docs/DATA_MIGRATION.md` — database copy procedure and Pinecone namespace notes (see spec)
-- [ ] Create `docs/LIVE_SETUP_CHECKLIST.md` in project root — step-by-step human instructions for Railway LIVE service creation
+## Phase 4: Documentation ✅
+- [x] Create `MAIN_PRODUCTION_PROMPT/docs/ENVIRONMENTS.md` — environment architecture, Railway setup commands, env var reference (pre-existing spec)
+- [x] Create `MAIN_PRODUCTION_PROMPT/docs/CI_CD.md` — GitHub Actions workflow docs and secrets reference (pre-existing spec)
+- [x] Create `MAIN_PRODUCTION_PROMPT/docs/DATA_MIGRATION.md` — database copy procedure and Pinecone namespace notes (pre-existing spec)
+- [x] Create `docs/LIVE_SETUP_CHECKLIST.md` in project root — step-by-step human instructions for Railway LIVE service creation
 
 ## Phase 5: Final Verification
 - [ ] Verify `package-lock.json` is current (`npm install --package-lock-only` if needed)
