@@ -213,7 +213,10 @@ function closeModal() {
   document.getElementById('modal-overlay').classList.add('hidden');
 }
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') closeModal();
+  if (e.key === 'Escape') {
+    closeModal();
+    if (typeof closeAnalytics === 'function') closeAnalytics();
+  }
 });
 
 // Update CSS variable for header height (used by article sticky header)

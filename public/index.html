@@ -25,6 +25,7 @@
         </div>
         <div class="nav-links">
           <a href="/" onclick="navigate(event, '/')">Home</a>
+          <a href="#" id="nav-analytics" onclick="openAnalytics(event)">Analytics</a>
           <a href="/review" id="nav-review" onclick="navigate(event, '/review')" class="nav-link-review" style="display: none;">
             Review
             <span class="review-badge" id="review-badge" style="display: none;">0</span>
@@ -56,6 +57,23 @@
     </footer>
   </div>
 
+  <!-- Analytics Modal -->
+  <div id="analytics-modal" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeAnalytics()">
+    <div class="analytics-modal-content">
+      <div class="analytics-modal-header">
+        <h2>Analytics</h2>
+        <button class="modal-close analytics-modal-close" onclick="closeAnalytics()">&times;</button>
+      </div>
+      <div class="analytics-tabs">
+        <button class="analytics-tab active" data-tab="overview" onclick="switchAnalyticsTab('overview')">Overview</button>
+        <button class="analytics-tab" data-tab="quotes" onclick="switchAnalyticsTab('quotes')">Top Quotes</button>
+        <button class="analytics-tab" data-tab="authors" onclick="switchAnalyticsTab('authors')">Top Authors</button>
+        <button class="analytics-tab" data-tab="topics" onclick="switchAnalyticsTab('topics')">Trending Topics</button>
+      </div>
+      <div class="analytics-body" id="analytics-body"></div>
+    </div>
+  </div>
+
   <!-- Modal for log details -->
   <div id="modal-overlay" class="modal-overlay hidden" onclick="if(event.target===this)closeModal()">
     <div class="modal">
@@ -69,6 +87,7 @@
 
   <script src="/js/api.js"></script>
   <script src="/js/vote.js"></script>
+  <script src="/js/analytics.js"></script>
   <script src="/js/home.js"></script>
   <script src="/js/quote.js"></script>
   <script src="/js/article.js"></script>
