@@ -1,7 +1,7 @@
 {
-  "name": "The Quote Log",
-  "short_name": "QuoteLog",
-  "description": "AI-powered quote extraction from news articles",
+  "name": "WhatTheySaid.News",
+  "short_name": "WhatTheySaid",
+  "description": "Accountability Through Quotes",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
