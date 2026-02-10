@@ -616,6 +616,9 @@ async function renderHome() {
     if (quotesData.quotes.length === 0) {
       html += `
         <div class="empty-state">
+          <svg width="64" height="64" viewBox="0 0 24 24" fill="var(--border)" style="margin-bottom:1rem">
+            <path d="M6 17h3l2-4V7H5v6h3zm8 0h3l2-4V7h-6v6h3z"/>
+          </svg>
           <h3>No quotes yet</h3>
           <p>Quotes will appear here as they are extracted from news articles.</p>
           <p>Add news sources in <a href="/settings" onclick="navigate(event, '/settings')" style="color:var(--accent)">Settings</a> to start extracting quotes.</p>
