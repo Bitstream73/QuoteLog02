@@ -203,6 +203,59 @@ describe('Frontend JS files', () => {
     });
   });
 
+  describe('admin-actions.js shared module', () => {
+    const adminActionsJs = fs.readFileSync(path.join(process.cwd(), 'public/js/admin-actions.js'), 'utf-8');
+
+    it('should define adminEditQuoteText function', () => {
+      expect(adminActionsJs).toContain('async function adminEditQuoteText');
+    });
+
+    it('should define adminEditContext function', () => {
+      expect(adminActionsJs).toContain('async function adminEditContext');
+    });
+
+    it('should define adminToggleVis function', () => {
+      expect(adminActionsJs).toContain('async function adminToggleVis');
+    });
+
+    it('should define adminEditCategory function', () => {
+      expect(adminActionsJs).toContain('async function adminEditCategory');
+    });
+
+    it('should define adminEditAuthorName function', () => {
+      expect(adminActionsJs).toContain('async function adminEditAuthorName');
+    });
+
+    it('should define adminChangeHeadshot function', () => {
+      expect(adminActionsJs).toContain('async function adminChangeHeadshot');
+    });
+
+    it('should define buildAdminActionsHtml function', () => {
+      expect(adminActionsJs).toContain('function buildAdminActionsHtml');
+    });
+
+    it('should define ADMIN_CATEGORIES list', () => {
+      expect(adminActionsJs).toContain('ADMIN_CATEGORIES');
+      expect(adminActionsJs).toContain('Politician');
+    });
+  });
+
+  describe('home.js admin inline actions', () => {
+    const homeJs = fs.readFileSync(path.join(process.cwd(), 'public/js/home.js'), 'utf-8');
+
+    it('should call buildAdminActionsHtml in buildQuoteEntryHtml', () => {
+      expect(homeJs).toContain('buildAdminActionsHtml');
+    });
+  });
+
+  describe('index.html admin-actions.js script tag', () => {
+    const indexHtml = fs.readFileSync(path.join(process.cwd(), 'public/index.html'), 'utf-8');
+
+    it('should include admin-actions.js script', () => {
+      expect(indexHtml).toContain('admin-actions.js');
+    });
+  });
+
   describe('styles.css Top Stories tab styling', () => {
     const css = fs.readFileSync(path.join(process.cwd(), 'public/css/styles.css'), 'utf-8');
 

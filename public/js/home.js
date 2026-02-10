@@ -343,6 +343,7 @@ function buildQuoteEntryHtml(q, insideGroup, gangOpts) {
             ${articleTitleHtml}
           </div>
           ${shareHtml}
+          ${typeof buildAdminActionsHtml === 'function' ? buildAdminActionsHtml(q) : ''}
         </div>
       </div>
     </div>

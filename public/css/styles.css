@@ -1542,6 +1542,32 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   font-weight: 600;
 }
 
+/* Admin inline action toolbar */
+.admin-inline-actions {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+.admin-inline-actions button {
+  font-family: var(--font-ui);
+  font-size: 0.65rem;
+  padding: 2px 6px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: all 0.15s;
+}
+.admin-inline-actions button:hover {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
 /* ===================================
    Toggle Switch
    =================================== */
