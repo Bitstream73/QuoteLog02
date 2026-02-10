@@ -59,8 +59,10 @@ router.get('/', (req, res) => {
   const category = req.query.category || null;
   const subFilter = req.query.subFilter || null;
   const search = req.query.search || null;
+  const tab = req.query.tab || null;
 
   const visibilityFilter = admin ? '' : 'AND q.is_visible = 1';
+  const topStoriesFilter = tab === 'top-stories' ? 'AND (a.is_top_story = 1 OR s.is_top_story = 1)' : '';
   const { sql: categoryFilter, params: categoryParams } = getBroadCategoryFilter(category);
   const subFilterSql = subFilter ? 'AND (p.category_context LIKE ? OR p.category LIKE ? OR q.context LIKE ?)' : '';
   const searchFilter = search ? 'AND (q.text LIKE ? OR p.canonical_name LIKE ? OR p.category LIKE ? OR q.context LIKE ? OR a.title LIKE ?)' : '';
@@ -81,7 +83,8 @@ router.get('/', (req, res) => {
      JOIN persons p ON q.person_id = p.id
      LEFT JOIN quote_articles qa ON qa.quote_id = q.id
      LEFT JOIN articles a ON qa.article_id = a.id
-     WHERE q.canonical_quote_id IS NULL ${visibilityFilter} ${categoryFilter} ${subFilterSql} ${searchFilter}`
+     LEFT JOIN sources s ON a.source_id = s.id
+     WHERE q.canonical_quote_id IS NULL ${visibilityFilter} ${topStoriesFilter} ${categoryFilter} ${subFilterSql} ${searchFilter}`
   ).get(...params).count;
 
   // Get quotes with person info + first linked article/source + vote score
@@ -98,7 +101,7 @@ router.get('/', (req, res) => {
     LEFT JOIN quote_articles qa ON qa.quote_id = q.id
     LEFT JOIN articles a ON qa.article_id = a.id
     LEFT JOIN sources s ON a.source_id = s.id
-    WHERE q.canonical_quote_id IS NULL ${visibilityFilter} ${categoryFilter} ${subFilterSql} ${searchFilter}
+    WHERE q.canonical_quote_id IS NULL ${visibilityFilter} ${topStoriesFilter} ${categoryFilter} ${subFilterSql} ${searchFilter}
     GROUP BY q.id
     ORDER BY q.created_at DESC
     LIMIT ? OFFSET ?
@@ -161,7 +164,19 @@ router.get('/', (req, res) => {
     else otherCount += c.count;
   }
 
+  // Count top stories quotes
+  const topStoriesCount = db.prepare(`
+    SELECT COUNT(DISTINCT q.id) as count FROM quotes q
+    JOIN persons p ON q.person_id = p.id
+    LEFT JOIN quote_articles qa ON qa.quote_id = q.id
+    LEFT JOIN articles a ON qa.article_id = a.id
+    LEFT JOIN sources s ON a.source_id = s.id
+    WHERE q.canonical_quote_id IS NULL ${admin ? '' : 'AND q.is_visible = 1'}
+    AND (a.is_top_story = 1 OR s.is_top_story = 1)
+  `).get().count;
+
   const broadCategories = [
+    { category: 'Top Stories', count: topStoriesCount },
     { category: 'All', count: allCount },
     { category: 'Politicians', count: politiciansCount },
     { category: 'Professionals', count: professionalsCount },
