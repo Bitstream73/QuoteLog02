@@ -1529,6 +1529,19 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   gap: 1rem;
 }
 
+.top-story-label {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  cursor: pointer;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+.top-story-label input:checked + .top-story-label-text {
+  color: var(--accent);
+  font-weight: 600;
+}
+
 /* ===================================
    Toggle Switch
    =================================== */

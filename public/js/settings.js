@@ -215,6 +215,10 @@ function renderSourceRow(source) {
         ${source.consecutive_failures > 0 ? `<span class="source-warning" title="${source.consecutive_failures} failures" style="cursor:pointer" onclick="showSourceErrors('${escapeHtml(source.domain)}', ${source.consecutive_failures})">!</span>` : ''}
       </div>
       <div class="source-actions">
+        <label class="top-story-label" title="Include in Top Stories">
+          <input type="checkbox" ${source.is_top_story ? 'checked' : ''} onchange="toggleTopStory(${source.id}, this.checked)">
+          <span class="top-story-label-text">Top</span>
+        </label>
         <label class="toggle">
           <input type="checkbox" ${source.enabled ? 'checked' : ''} onchange="toggleSource(${source.id}, this.checked)">
           <span class="toggle-slider"></span>
@@ -271,6 +275,19 @@ async function toggleSource(sourceId, enabled) {
     const row = document.querySelector(`.source-row[data-id="${sourceId}"]`);
     const checkbox = row.querySelector('input[type="checkbox"]');
     checkbox.checked = !enabled;
+  }
+}
+
+async function toggleTopStory(sourceId, isTopStory) {
+  try {
+    await API.patch(`/sources/${sourceId}`, { is_top_story: isTopStory ? 1 : 0 });
+    showToast(isTopStory ? 'Source marked as top story' : 'Source removed from top stories', 'success');
+  } catch (err) {
+    showToast('Error updating source: ' + err.message, 'error', 5000);
+    // Revert checkbox
+    const row = document.querySelector(`.source-row[data-id="${sourceId}"]`);
+    const checkbox = row.querySelector('.top-story-label input[type="checkbox"]');
+    if (checkbox) checkbox.checked = !isTopStory;
   }
 }
 

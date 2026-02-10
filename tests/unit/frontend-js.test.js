@@ -194,6 +194,23 @@ describe('Frontend JS files', () => {
     });
   });
 
+  describe('settings.js Top Stories checkbox in source rows', () => {
+    const settingsJs = fs.readFileSync(path.join(process.cwd(), 'public/js/settings.js'), 'utf-8');
+
+    it('should include top-story-label checkbox in renderSourceRow', () => {
+      expect(settingsJs).toContain('top-story-label');
+      expect(settingsJs).toContain('toggleTopStory');
+    });
+
+    it('should define toggleTopStory function', () => {
+      expect(settingsJs).toContain('async function toggleTopStory');
+    });
+
+    it('should check is_top_story state from source data', () => {
+      expect(settingsJs).toContain('source.is_top_story');
+    });
+  });
+
   describe('settings.js source errors modal', () => {
     it('should define showSourceErrors function', () => {
       const settingsJs = fs.readFileSync(path.join(process.cwd(), 'public/js/settings.js'), 'utf-8');
