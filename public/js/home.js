@@ -7,7 +7,7 @@ const _quoteTexts = {};
 const _quoteMeta = {};
 
 // Current active category filter
-let _activeCategory = 'Politicians';
+let _activeCategory = 'Top Stories';
 let _activeSubFilter = '';
 let _currentSearch = '';
 
@@ -526,7 +526,7 @@ function buildCategoryTabsHtml(categories, activeCategory) {
     catMap[c.category] = c.count;
   }
 
-  const broadOrder = ['All', 'Politicians', 'Professionals', 'Other'];
+  const broadOrder = ['Top Stories', 'All', 'Politicians', 'Professionals', 'Other'];
 
   let tabs = `<div class="category-tabs">`;
   for (const cat of broadOrder) {
@@ -585,8 +585,12 @@ async function renderHome() {
     const queryParams = new URLSearchParams({
       page: '1',
       limit: '50',
-      category: _activeCategory,
     });
+    if (_activeCategory === 'Top Stories') {
+      queryParams.set('tab', 'top-stories');
+    } else {
+      queryParams.set('category', _activeCategory);
+    }
     if (_activeSubFilter) queryParams.set('subFilter', _activeSubFilter);
     if (_currentSearch) queryParams.set('search', _currentSearch);
 
@@ -614,14 +618,15 @@ async function renderHome() {
     }
 
     if (quotesData.quotes.length === 0) {
+      const emptyMessage = _activeCategory === 'Top Stories'
+        ? '<h3>No top stories yet</h3><p>Top stories will appear here when sources or articles are marked as top stories in Settings.</p>'
+        : '<h3>No quotes yet</h3><p>Quotes will appear here as they are extracted from news articles.</p><p>Add news sources in <a href="/settings" onclick="navigate(event, \'/settings\')" style="color:var(--accent)">Settings</a> to start extracting quotes.</p>';
       html += `
         <div class="empty-state">
           <svg width="64" height="64" viewBox="0 0 24 24" fill="var(--border)" style="margin-bottom:1rem">
             <path d="M6 17h3l2-4V7H5v6h3zm8 0h3l2-4V7h-6v6h3z"/>
           </svg>
-          <h3>No quotes yet</h3>
-          <p>Quotes will appear here as they are extracted from news articles.</p>
-          <p>Add news sources in <a href="/settings" onclick="navigate(event, '/settings')" style="color:var(--accent)">Settings</a> to start extracting quotes.</p>
+          ${emptyMessage}
         </div>
       `;
     } else {
@@ -690,8 +695,12 @@ async function loadQuotesPage(page) {
     const queryParams = new URLSearchParams({
       page: String(page),
       limit: '50',
-      category: _activeCategory,
     });
+    if (_activeCategory === 'Top Stories') {
+      queryParams.set('tab', 'top-stories');
+    } else {
+      queryParams.set('category', _activeCategory);
+    }
     if (_activeSubFilter) queryParams.set('subFilter', _activeSubFilter);
     if (_currentSearch) queryParams.set('search', _currentSearch);
 

@@ -2033,6 +2033,15 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   font-weight: 400;
 }
 
+/* Top Stories tab accent */
+.category-tab.active[onclick*="Top Stories"] {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.category-tab.active[onclick*="Top Stories"]::after {
+  background: var(--accent);
+}
+
 /* ===================================
    Sub-Filter Pills
    =================================== */

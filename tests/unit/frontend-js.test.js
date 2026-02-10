@@ -163,6 +163,37 @@ describe('Frontend JS files', () => {
     });
   });
 
+  describe('home.js Top Stories tab', () => {
+    const homeJs = fs.readFileSync(path.join(process.cwd(), 'public/js/home.js'), 'utf-8');
+
+    it('should default active category to Top Stories', () => {
+      expect(homeJs).toContain("let _activeCategory = 'Top Stories'");
+    });
+
+    it('should include Top Stories in broadOrder tab list', () => {
+      expect(homeJs).toContain("'Top Stories'");
+      // Verify it comes before 'All'
+      const tsIdx = homeJs.indexOf("'Top Stories', 'All'");
+      expect(tsIdx).toBeGreaterThan(-1);
+    });
+
+    it('should use tab=top-stories query param when Top Stories is active', () => {
+      expect(homeJs).toContain("queryParams.set('tab', 'top-stories')");
+    });
+
+    it('should show empty state message specific to Top Stories', () => {
+      expect(homeJs).toContain('No top stories yet');
+    });
+  });
+
+  describe('styles.css Top Stories tab styling', () => {
+    const css = fs.readFileSync(path.join(process.cwd(), 'public/css/styles.css'), 'utf-8');
+
+    it('should have Top Stories tab accent styling', () => {
+      expect(css).toContain('Top Stories');
+    });
+  });
+
   describe('settings.js source errors modal', () => {
     it('should define showSourceErrors function', () => {
       const settingsJs = fs.readFileSync(path.join(process.cwd(), 'public/js/settings.js'), 'utf-8');
