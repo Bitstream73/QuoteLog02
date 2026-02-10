@@ -270,6 +270,18 @@ function initializeTables(db) {
     db.exec(`ALTER TABLE persons ADD COLUMN category_context TEXT`);
   }
 
+  // Migration: add is_top_story column to sources
+  const sourceCols = db.prepare("PRAGMA table_info(sources)").all().map(c => c.name);
+  if (!sourceCols.includes('is_top_story')) {
+    db.exec(`ALTER TABLE sources ADD COLUMN is_top_story INTEGER NOT NULL DEFAULT 0`);
+  }
+
+  // Migration: add is_top_story column to articles
+  const articleCols = db.prepare("PRAGMA table_info(articles)").all().map(c => c.name);
+  if (!articleCols.includes('is_top_story')) {
+    db.exec(`ALTER TABLE articles ADD COLUMN is_top_story INTEGER NOT NULL DEFAULT 0`);
+  }
+
   // Quote-to-article link (many-to-many)
   db.exec(`
     CREATE TABLE IF NOT EXISTS quote_articles (

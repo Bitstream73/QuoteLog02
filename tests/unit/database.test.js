@@ -111,6 +111,46 @@ describe('Database Setup', () => {
     expect(updated.photo_url).toBe('https://example.com/photo.jpg');
   });
 
+  it('should support is_top_story column on sources table', () => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS sources_test (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        domain TEXT NOT NULL,
+        name TEXT,
+        rss_url TEXT,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        is_top_story INTEGER NOT NULL DEFAULT 0
+      )
+    `);
+
+    db.prepare('INSERT INTO sources_test (domain, name) VALUES (?, ?)').run('example.com', 'Example');
+    const source = db.prepare('SELECT is_top_story FROM sources_test WHERE id = 1').get();
+    expect(source.is_top_story).toBe(0);
+
+    db.prepare('UPDATE sources_test SET is_top_story = 1 WHERE id = 1').run();
+    const updated = db.prepare('SELECT is_top_story FROM sources_test WHERE id = 1').get();
+    expect(updated.is_top_story).toBe(1);
+  });
+
+  it('should support is_top_story column on articles table', () => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS articles_test (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        url TEXT NOT NULL UNIQUE,
+        title TEXT,
+        is_top_story INTEGER NOT NULL DEFAULT 0
+      )
+    `);
+
+    db.prepare('INSERT INTO articles_test (url, title) VALUES (?, ?)').run('https://example.com/article', 'Test Article');
+    const article = db.prepare('SELECT is_top_story FROM articles_test WHERE id = 1').get();
+    expect(article.is_top_story).toBe(0);
+
+    db.prepare('UPDATE articles_test SET is_top_story = 1 WHERE id = 1').run();
+    const updated = db.prepare('SELECT is_top_story FROM articles_test WHERE id = 1').get();
+    expect(updated.is_top_story).toBe(1);
+  });
+
   it('should create application_logs table with correct schema', () => {
     db.exec(`
       CREATE TABLE IF NOT EXISTS application_logs (
