@@ -296,6 +296,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 // Update header height on window resize
 window.addEventListener('resize', updateHeaderHeight);
 
+// Show/hide scroll-to-top button based on scroll position
+window.addEventListener('scroll', () => {
+  const btn = document.getElementById('scroll-top-btn');
+  if (btn) btn.style.display = window.scrollY > 400 ? 'flex' : 'none';
+}, { passive: true });
+
 // Live-update relative timestamps every 60 seconds
 setInterval(() => {
   document.querySelectorAll('time[datetime]').forEach(el => {

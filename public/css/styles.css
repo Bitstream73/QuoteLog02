@@ -96,6 +96,17 @@ body {
   min-height: 100vh;
 }
 
+/* Keyboard navigation focus outlines (only for keyboard users, not mouse clicks) */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+button:focus:not(:focus-visible),
+a:focus:not(:focus-visible) {
+  outline: none;
+}
+
 /* ===================================
    Header & Navigation - News Masthead
    =================================== */
@@ -675,6 +686,42 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   }
   .toast {
     max-width: 100%;
+  }
+}
+
+/* ===================================
+   Scroll-to-Top Button
+   =================================== */
+.scroll-top-btn {
+  position: fixed;
+  bottom: 2rem;
+  left: 2rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+  transition: opacity 0.2s, color 0.2s, border-color 0.2s;
+  color: var(--text-secondary);
+  z-index: 50;
+}
+
+.scroll-top-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+@media (max-width: 480px) {
+  .scroll-top-btn {
+    bottom: 1rem;
+    left: 1rem;
+    width: 36px;
+    height: 36px;
   }
 }
 
@@ -1739,7 +1786,8 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   .logo { font-size: 1.5rem; white-space: nowrap; }
   .logo-subhead { white-space: nowrap; font-size: 0.6rem; }
   .header-search { max-width: 100%; order: 3; flex-basis: 100%; }
-  .nav-links { gap: 1rem; font-size: 0.75rem; }
+  .nav-links { gap: 1rem; font-size: 0.75rem; justify-content: center; }
+  .theme-toggle { order: 2; margin-left: auto; }
   .category-tabs { gap: 0.15rem; }
   .category-tab { font-size: 0.65rem; padding: 0.25rem 0.5rem; }
   main { padding: 1rem; }
@@ -1783,6 +1831,8 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   .logo { font-size: 1.3rem; }
   .logo-subhead { font-size: 0.55rem; }
   .nav-links { gap: 0.75rem; font-size: 0.7rem; }
+  .theme-toggle { padding: 0.25rem 0.4rem; }
+  .theme-toggle svg { width: 14px; height: 14px; }
   main { padding: 0.75rem; }
   .quote-headshot, .quote-headshot-placeholder {
     width: 40px;
