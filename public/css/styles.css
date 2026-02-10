@@ -1447,6 +1447,25 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   font-family: var(--font-ui);
 }
 
+.settings-subsection {
+  padding-top: 1.25rem;
+  margin-top: 1.25rem;
+  border-top: 1px solid var(--border);
+}
+
+.settings-subsection:first-child {
+  padding-top: 0;
+  margin-top: 0;
+  border-top: none;
+}
+
+.subsection-title {
+  font-family: var(--font-headline);
+  font-size: 1rem;
+  margin-bottom: 0.5rem;
+  color: var(--text-primary);
+}
+
 .setting-row {
   display: flex;
   justify-content: space-between;

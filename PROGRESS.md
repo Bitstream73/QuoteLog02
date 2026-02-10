@@ -1,9 +1,9 @@
 # Build Progress
 
 ## Current Status
-- **Current Phase:** 9
+- **Current Phase:** 10
 - **Last Updated:** 2026-02-10
-- **Last Commit:** 33b020b
+- **Last Commit:** a2d0190
 
 ## Phase 0: Environment & Credentials ✅
 - [x] Existing project — all credentials, dependencies, and services already configured
@@ -63,9 +63,9 @@
 - [x] No index.html changes needed — review.js already loaded
 - [x] Write tests verifying quote management renders on review page and is absent from settings
 
-## Phase 10: Reorganize Settings — Move News Sources Under Database
-- [ ] Restructure settings page in `public/js/settings.js` — move the "News Sources" section to render inside/under the "Database" section as a subsection. Database section becomes "Data Management" with subsections: News Sources, Backup/Restore, Backfill Headshots
-- [ ] Update section navigation/headers in settings page to reflect new hierarchy
-- [ ] Update CSS in `public/css/styles.css` if subsection styling is needed
-- [ ] Write tests verifying settings page structure shows news sources under data management
-- [ ] Run full test suite (`npx vitest run`) and verify ALL tests pass — final verification
+## Phase 10: Reorganize Settings — Move News Sources Under Database ✅
+- [x] Restructure settings page in `public/js/settings.js` — move the "News Sources" section to render inside/under the "Database" section as a subsection. Database section becomes "Data Management" with subsections: News Sources, Backup/Restore, Backfill Headshots
+- [x] Update section navigation/headers in settings page to reflect new hierarchy
+- [x] Update CSS in `public/css/styles.css` — added settings-subsection and subsection-title styles
+- [x] Write tests verifying settings page structure shows news sources under data management
+- [x] Run full test suite (`npx vitest run`) and verify ALL 309 tests pass — final verification

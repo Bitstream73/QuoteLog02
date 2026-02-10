@@ -19,25 +19,6 @@ async function renderSettings() {
       <h1 class="page-title">Settings</h1>
       <p class="page-subtitle">Manage news sources and application configuration</p>
 
-      <!-- Source Management Section -->
-      <div class="settings-section">
-        <h2>News Sources</h2>
-        <p class="section-description">Add reputable news sources to extract quotes from.</p>
-
-        <div class="add-source-form">
-          <input type="text" id="new-source-domain" placeholder="e.g., reuters.com" class="input-text">
-          <input type="text" id="new-source-name" placeholder="Display name (optional)" class="input-text">
-          <input type="text" id="new-source-rss" placeholder="RSS feed URL (optional, auto-detected)" class="input-text">
-          <button class="btn btn-primary" onclick="addSource()">Add Source</button>
-        </div>
-
-        <div id="sources-list" class="sources-list">
-          ${sources.length === 0 ? `
-            <p class="empty-message">No sources configured. Add a news source to start extracting quotes.</p>
-          ` : sources.map(s => renderSourceRow(s)).join('')}
-        </div>
-      </div>
-
       <!-- Fetch Settings Section -->
       <div class="settings-section">
         <h2>Fetch Settings</h2>
@@ -124,36 +105,64 @@ async function renderSettings() {
         </div>
       </div>
 
-      <!-- Database Backup Section -->
+      <!-- Data Management Section -->
       <div class="settings-section">
-        <h2>Database</h2>
-        <p class="section-description">Export and import your database for backup and recovery.</p>
+        <h2>Data Management</h2>
 
-        <div class="setting-row" style="align-items:center">
-          <label>
-            <span class="setting-label">Export Backup</span>
-            <span class="setting-description">Download all data as a JSON file</span>
-          </label>
-          <button class="btn btn-primary" id="export-db-btn" onclick="exportDatabase()">Export JSON</button>
-        </div>
+        <!-- News Sources Subsection -->
+        <div class="settings-subsection">
+          <h3 class="subsection-title">News Sources</h3>
+          <p class="section-description">Add reputable news sources to extract quotes from.</p>
 
-        <div class="setting-row" style="align-items:center">
-          <label>
-            <span class="setting-label">Import Backup</span>
-            <span class="setting-description">Restore from a previously exported JSON file</span>
-          </label>
-          <div>
-            <input type="file" id="import-db-file" accept=".json" style="display:none" onchange="importDatabase(this)">
-            <button class="btn btn-secondary" onclick="document.getElementById('import-db-file').click()">Import JSON</button>
+          <div class="add-source-form">
+            <input type="text" id="new-source-domain" placeholder="e.g., reuters.com" class="input-text">
+            <input type="text" id="new-source-name" placeholder="Display name (optional)" class="input-text">
+            <input type="text" id="new-source-rss" placeholder="RSS feed URL (optional, auto-detected)" class="input-text">
+            <button class="btn btn-primary" onclick="addSource()">Add Source</button>
+          </div>
+
+          <div id="sources-list" class="sources-list">
+            ${sources.length === 0 ? `
+              <p class="empty-message">No sources configured. Add a news source to start extracting quotes.</p>
+            ` : sources.map(s => renderSourceRow(s)).join('')}
           </div>
         </div>
 
-        <div class="setting-row" style="align-items:center">
-          <label>
-            <span class="setting-label">Backfill Headshots</span>
-            <span class="setting-description">Fetch headshot photos from Wikipedia for persons without one</span>
-          </label>
-          <button class="btn btn-secondary" id="backfill-headshots-btn" onclick="backfillHeadshots()">Backfill Headshots</button>
+        <!-- Backup & Restore Subsection -->
+        <div class="settings-subsection">
+          <h3 class="subsection-title">Backup &amp; Restore</h3>
+          <p class="section-description">Export and import your database for backup and recovery.</p>
+
+          <div class="setting-row" style="align-items:center">
+            <label>
+              <span class="setting-label">Export Backup</span>
+              <span class="setting-description">Download all data as a JSON file</span>
+            </label>
+            <button class="btn btn-primary" id="export-db-btn" onclick="exportDatabase()">Export JSON</button>
+          </div>
+
+          <div class="setting-row" style="align-items:center">
+            <label>
+              <span class="setting-label">Import Backup</span>
+              <span class="setting-description">Restore from a previously exported JSON file</span>
+            </label>
+            <div>
+              <input type="file" id="import-db-file" accept=".json" style="display:none" onchange="importDatabase(this)">
+              <button class="btn btn-secondary" onclick="document.getElementById('import-db-file').click()">Import JSON</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Backfill Headshots Subsection -->
+        <div class="settings-subsection">
+          <h3 class="subsection-title">Backfill Headshots</h3>
+          <div class="setting-row" style="align-items:center">
+            <label>
+              <span class="setting-label">Fetch Missing Photos</span>
+              <span class="setting-description">Fetch headshot photos from Wikipedia for persons without one</span>
+            </label>
+            <button class="btn btn-secondary" id="backfill-headshots-btn" onclick="backfillHeadshots()">Backfill Headshots</button>
+          </div>
         </div>
       </div>
 

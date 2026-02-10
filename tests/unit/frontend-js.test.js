@@ -403,4 +403,50 @@ describe('Frontend JS files', () => {
       expect(css).toContain('.review-tab.active');
     });
   });
+
+  describe('settings.js Data Management structure', () => {
+    const settingsJs = fs.readFileSync(path.join(process.cwd(), 'public/js/settings.js'), 'utf-8');
+
+    it('should have Data Management section instead of separate Database', () => {
+      expect(settingsJs).toContain('Data Management');
+    });
+
+    it('should have News Sources as a subsection under Data Management', () => {
+      // News Sources should appear AFTER Data Management heading
+      const dmIdx = settingsJs.indexOf('Data Management');
+      const nsIdx = settingsJs.indexOf('News Sources', dmIdx);
+      expect(dmIdx).toBeGreaterThan(-1);
+      expect(nsIdx).toBeGreaterThan(dmIdx);
+    });
+
+    it('should have Backup & Restore as a subsection', () => {
+      expect(settingsJs).toContain('Backup &amp; Restore');
+    });
+
+    it('should have Backfill Headshots as a subsection', () => {
+      expect(settingsJs).toContain('Backfill Headshots');
+    });
+
+    it('should use settings-subsection class for subsections', () => {
+      expect(settingsJs).toContain('settings-subsection');
+    });
+
+    it('should not have standalone News Sources section', () => {
+      // News Sources should NOT be its own settings-section (h2), only a subsection (h3)
+      const nsAsH2 = settingsJs.match(/<h2>News Sources<\/h2>/);
+      expect(nsAsH2).toBeNull();
+    });
+  });
+
+  describe('styles.css settings subsection styles', () => {
+    const css = fs.readFileSync(path.join(process.cwd(), 'public/css/styles.css'), 'utf-8');
+
+    it('should have settings-subsection styles', () => {
+      expect(css).toContain('.settings-subsection');
+    });
+
+    it('should have subsection-title styles', () => {
+      expect(css).toContain('.subsection-title');
+    });
+  });
 });
