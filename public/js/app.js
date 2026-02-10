@@ -266,6 +266,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 // Update header height on window resize
 window.addEventListener('resize', updateHeaderHeight);
 
+// Live-update relative timestamps every 60 seconds
+setInterval(() => {
+  document.querySelectorAll('time[datetime]').forEach(el => {
+    const iso = el.getAttribute('datetime');
+    if (iso && typeof formatRelativeTime === 'function') {
+      const newText = formatRelativeTime(iso);
+      if (newText && el.textContent !== newText) {
+        el.textContent = newText;
+      }
+    }
+  });
+}, 60000);
+
 // Also run immediately in case DOMContentLoaded already fired
 if (document.readyState !== 'loading') {
   (async () => {

@@ -37,6 +37,51 @@ function formatDateTime(timestamp) {
 }
 
 /**
+ * Format a timestamp as a relative time string (e.g., "5m ago", "3h ago")
+ * Falls back to formatDateTime() for dates older than 7 days.
+ */
+function formatRelativeTime(timestamp) {
+  if (!timestamp) return '';
+  const now = Date.now();
+  const then = new Date(timestamp).getTime();
+  if (isNaN(then)) return '';
+  const diff = now - then;
+
+  if (diff < 0) return formatDateTime(timestamp);
+
+  const minutes = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+
+  if (minutes < 1) return 'Just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  if (days < 7) return `${days}d ago`;
+
+  return formatDateTime(timestamp);
+}
+
+/**
+ * Generate skeleton loading placeholder cards
+ */
+function buildSkeletonHtml(count = 5) {
+  let html = '';
+  for (let i = 0; i < count; i++) {
+    html += `
+      <div class="skeleton-card">
+        <div class="skeleton skeleton-avatar"></div>
+        <div style="flex:1">
+          <div class="skeleton skeleton-text skeleton-text-long"></div>
+          <div class="skeleton skeleton-text skeleton-text-long"></div>
+          <div class="skeleton skeleton-text skeleton-text-short"></div>
+          <div class="skeleton skeleton-text skeleton-text-medium" style="margin-top:0.75rem;height:0.9rem"></div>
+        </div>
+      </div>`;
+  }
+  return html;
+}
+
+/**
  * Extract domain from URL for display
  */
 function extractDomain(url) {
@@ -226,9 +271,11 @@ function buildQuoteEntryHtml(q, insideGroup, gangOpts) {
     ? `<span class="quote-article-title">${escapeHtml(q.articleTitle)}</span>`
     : '';
 
-  // Publish date
-  const dateStr = formatDateTime(q.articlePublishedAt);
-  const dateHtml = !insideGroup && dateStr ? `<span class="quote-date-inline">${dateStr}</span>` : '';
+  // Publish date (relative format with full date tooltip)
+  const dateStr = formatRelativeTime(q.articlePublishedAt);
+  const dateHtml = !insideGroup && dateStr
+    ? `<time class="quote-date-inline" datetime="${q.articlePublishedAt ? new Date(q.articlePublishedAt).toISOString() : ''}" title="${formatDateTime(q.articlePublishedAt)}">${dateStr}</time>`
+    : '';
 
   // Visibility toggle (admin only)
   const hiddenClass = q.isVisible === 0 ? ' quote-hidden' : '';
@@ -305,7 +352,7 @@ function buildQuoteEntryHtml(q, insideGroup, gangOpts) {
  */
 function buildArticleGroupHtml(group) {
   const groupId = group.articleId;
-  const dateStr = formatDateTime(group.articlePublishedAt);
+  const dateStr = formatRelativeTime(group.articlePublishedAt);
 
   const primarySource = group.primarySourceName || group.primarySourceDomain || '';
   const primarySourceHtml = primarySource
@@ -338,7 +385,7 @@ function buildArticleGroupHtml(group) {
     <div class="article-group" id="ag-${groupId}">
       <div class="article-group-header">
         <a href="/article/${groupId}" onclick="navigate(event, '/article/${groupId}')" class="article-group-title-link">${escapeHtml(group.articleTitle || 'Untitled Article')}</a>
-        <span class="article-group-date">${dateStr}</span>
+        <time class="article-group-date" datetime="${group.articlePublishedAt ? new Date(group.articlePublishedAt).toISOString() : ''}" title="${formatDateTime(group.articlePublishedAt)}">${dateStr}</time>
       </div>
       <div class="article-group-quotes" id="agq-${groupId}" onclick="navigateToArticle(event, ${groupId})" style="cursor:pointer">
         ${quotesHtml}
@@ -519,7 +566,7 @@ function filterBySub(sub) {
  */
 async function renderHome() {
   const content = document.getElementById('content');
-  content.innerHTML = '<div class="loading">Loading quotes...</div>';
+  content.innerHTML = buildSkeletonHtml(6);
 
   // Check for search query param
   const params = new URLSearchParams(window.location.search);
