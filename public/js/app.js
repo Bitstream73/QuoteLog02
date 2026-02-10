@@ -256,6 +256,12 @@ function updateHeaderHeight() {
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
   applyTheme();
+  const dateRibbon = document.getElementById('date-ribbon-text');
+  if (dateRibbon) {
+    dateRibbon.textContent = new Date().toLocaleDateString('en-US', {
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+    });
+  }
   await checkAuth();
   updateNav();
   initSocket();
@@ -283,6 +289,12 @@ setInterval(() => {
 if (document.readyState !== 'loading') {
   (async () => {
     applyTheme();
+    const dateRibbon = document.getElementById('date-ribbon-text');
+    if (dateRibbon) {
+      dateRibbon.textContent = new Date().toLocaleDateString('en-US', {
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+      });
+    }
     await checkAuth();
     updateNav();
     initSocket();
