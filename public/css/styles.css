@@ -1568,6 +1568,18 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   border-color: var(--accent);
 }
 
+.admin-headshot-search {
+  text-decoration: none;
+  display: block;
+  border: 2px dashed var(--accent);
+  border-radius: 50%;
+}
+
+.admin-headshot-search:hover {
+  border-color: var(--accent-hover);
+  opacity: 0.8;
+}
+
 /* ===================================
    Toggle Switch
    =================================== */

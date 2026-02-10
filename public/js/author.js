@@ -114,9 +114,12 @@ async function renderAuthor(id) {
     const aliases = authorData.aliases || [];
     const initial = a.name.charAt(0).toUpperCase();
 
+    const avatarPlaceholder = `<div class="author-avatar">${initial}</div>`;
     const avatarInner = a.photoUrl
       ? `<img src="${escapeHtml(a.photoUrl)}" alt="${escapeHtml(a.name)}" class="author-avatar-img" onerror="this.outerHTML='<div class=\\'author-avatar\\'>${initial}</div>'">`
-      : `<div class="author-avatar">${initial}</div>`;
+      : (typeof isAdmin !== 'undefined' && isAdmin
+        ? `<a href="https://www.google.com/search?tbm=isch&q=${encodeURIComponent((a.name || '') + ' ' + (a.disambiguation || ''))}" target="_blank" rel="noopener" class="admin-headshot-search" title="Search Google Images">${avatarPlaceholder}</a>`
+        : avatarPlaceholder);
 
     let html = `
       <p style="margin-bottom:1.5rem;font-family:var(--font-ui);font-size:0.85rem">

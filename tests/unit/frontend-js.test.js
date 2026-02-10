@@ -314,4 +314,38 @@ describe('Frontend JS files', () => {
       expect(settingsJs).toContain('onclick="showSourceErrors');
     });
   });
+
+  describe('Google Image search for missing author photos', () => {
+    it('should have admin-headshot-search link in home.js for missing photos', () => {
+      const homeJs = fs.readFileSync(path.join(process.cwd(), 'public/js/home.js'), 'utf-8');
+      expect(homeJs).toContain('admin-headshot-search');
+      expect(homeJs).toContain('google.com/search?tbm=isch');
+    });
+
+    it('should have admin-headshot-search link in quote.js for missing photos', () => {
+      const quoteJs = fs.readFileSync(path.join(process.cwd(), 'public/js/quote.js'), 'utf-8');
+      expect(quoteJs).toContain('admin-headshot-search');
+      expect(quoteJs).toContain('google.com/search?tbm=isch');
+    });
+
+    it('should have admin-headshot-search link in author.js for missing photos', () => {
+      const authorJs = fs.readFileSync(path.join(process.cwd(), 'public/js/author.js'), 'utf-8');
+      expect(authorJs).toContain('admin-headshot-search');
+      expect(authorJs).toContain('google.com/search?tbm=isch');
+    });
+
+    it('should use encodeURIComponent for Google Image search URL', () => {
+      const homeJs = fs.readFileSync(path.join(process.cwd(), 'public/js/home.js'), 'utf-8');
+      expect(homeJs).toContain('encodeURIComponent(');
+      // Verify the search includes person name
+      const searchPattern = homeJs.match(/google\.com\/search\?tbm=isch&q=\$\{encodeURIComponent\(([^)]+)\)/);
+      expect(searchPattern).not.toBeNull();
+      expect(searchPattern[1]).toContain('personName');
+    });
+
+    it('should have admin-headshot-search styles in CSS', () => {
+      const css = fs.readFileSync(path.join(process.cwd(), 'public/css/styles.css'), 'utf-8');
+      expect(css).toContain('.admin-headshot-search');
+    });
+  });
 });
