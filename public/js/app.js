@@ -125,6 +125,14 @@ function navigateBackToQuotes(event) {
 function route() {
   if (typeof destroyAllCharts === 'function') destroyAllCharts();
 
+  // Re-trigger page fade-in animation
+  const content = document.getElementById('content');
+  if (content) {
+    content.style.animation = 'none';
+    content.offsetHeight; // force reflow
+    content.style.animation = '';
+  }
+
   const path = window.location.pathname;
   const params = new URLSearchParams(window.location.search);
 
