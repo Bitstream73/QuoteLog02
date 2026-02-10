@@ -1,5 +1,28 @@
 // Simple SPA router
 
+// Theme management
+function applyTheme(theme) {
+  if (!theme) {
+    theme = localStorage.getItem('ql-theme')
+      || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  }
+  document.documentElement.setAttribute('data-theme', theme);
+  localStorage.setItem('ql-theme', theme);
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.content = theme === 'dark' ? '#1a1a1a' : '#ffffff';
+}
+
+function toggleTheme() {
+  const current = document.documentElement.getAttribute('data-theme') || 'light';
+  applyTheme(current === 'dark' ? 'light' : 'dark');
+}
+
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+  if (!localStorage.getItem('ql-theme')) {
+    applyTheme(e.matches ? 'dark' : 'light');
+  }
+});
+
 // Auth state
 let isAdmin = false;
 
@@ -232,6 +255,7 @@ function updateHeaderHeight() {
 
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
+  applyTheme();
   await checkAuth();
   updateNav();
   initSocket();
@@ -245,6 +269,7 @@ window.addEventListener('resize', updateHeaderHeight);
 // Also run immediately in case DOMContentLoaded already fired
 if (document.readyState !== 'loading') {
   (async () => {
+    applyTheme();
     await checkAuth();
     updateNav();
     initSocket();

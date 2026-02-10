@@ -117,9 +117,9 @@ async function renderSettings() {
           <label>
             <span class="setting-label">Theme</span>
           </label>
-          <select id="theme-select" onchange="updateSetting('theme', this.value)" class="input-select">
-            <option value="light" ${settings.theme === 'light' ? 'selected' : ''}>Light</option>
-            <option value="dark" ${settings.theme === 'dark' ? 'selected' : ''}>Dark</option>
+          <select id="theme-select" onchange="updateSetting('theme', this.value); applyTheme(this.value)" class="input-select">
+            <option value="light" ${(localStorage.getItem('ql-theme') || settings.theme || 'light') === 'light' ? 'selected' : ''}>Light</option>
+            <option value="dark" ${(localStorage.getItem('ql-theme') || settings.theme || 'light') === 'dark' ? 'selected' : ''}>Dark</option>
           </select>
         </div>
       </div>

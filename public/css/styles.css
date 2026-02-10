@@ -30,6 +30,54 @@
   --max-width: 960px;
 }
 
+[data-theme="dark"] {
+  --bg-primary: #1a1a1a;
+  --bg-secondary: #242424;
+  --bg-card: #1e1e1e;
+  --text-primary: #e8e6e3;
+  --text-secondary: #a8a5a0;
+  --text-muted: #6b6966;
+  --accent: #e85d75;
+  --accent-hover: #d44a62;
+  --accent-light: #2d1f22;
+  --error: #e85d75;
+  --warning: #e8a830;
+  --info: #5b8def;
+  --success: #3dba6a;
+  --border: #333330;
+  --border-dark: #444440;
+  --shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
+
+/* Dark mode: fade gradient for collapsed article groups */
+[data-theme="dark"] .article-group-collapsed .article-group-fade {
+  background: linear-gradient(to bottom, rgba(26,26,26,0), rgba(26,26,26,1));
+}
+
+/* Dark mode: auth feedback backgrounds */
+[data-theme="dark"] .auth-error { background: #2d1f22; color: #e85d75; }
+[data-theme="dark"] .auth-success { background: #1a2d1f; color: #3dba6a; }
+
+/* Dark mode: input backgrounds */
+[data-theme="dark"] input,
+[data-theme="dark"] select,
+[data-theme="dark"] textarea {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border-color: var(--border);
+}
+
+/* Dark mode: modal */
+[data-theme="dark"] .modal {
+  background: var(--bg-card);
+}
+
+/* Dark mode: code/pre blocks */
+[data-theme="dark"] pre,
+[data-theme="dark"] code {
+  background: var(--bg-secondary);
+}
+
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
@@ -161,6 +209,26 @@ nav {
   color: var(--accent);
   border-bottom: 1px solid var(--accent);
 }
+
+.theme-toggle {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.35rem 0.5rem;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: color 0.2s, border-color 0.2s;
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+}
+.theme-toggle:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.theme-icon-dark { display: none; }
+[data-theme="dark"] .theme-icon-light { display: none; }
+[data-theme="dark"] .theme-icon-dark { display: block; }
 
 /* Search Results Header */
 .search-results-header {
