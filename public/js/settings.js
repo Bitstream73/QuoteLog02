@@ -235,7 +235,7 @@ async function addSource() {
   const rss_url = rssInput.value.trim();
 
   if (!domain) {
-    alert('Please enter a domain');
+    showToast('Please enter a domain', 'error');
     return;
   }
 
@@ -258,7 +258,7 @@ async function addSource() {
     nameInput.value = '';
     rssInput.value = '';
   } catch (err) {
-    alert('Error adding source: ' + err.message);
+    showToast('Error adding source: ' + err.message, 'error', 5000);
   }
 }
 
@@ -266,7 +266,7 @@ async function toggleSource(sourceId, enabled) {
   try {
     await API.patch(`/sources/${sourceId}`, { enabled });
   } catch (err) {
-    alert('Error updating source: ' + err.message);
+    showToast('Error updating source: ' + err.message, 'error', 5000);
     // Revert checkbox
     const row = document.querySelector(`.source-row[data-id="${sourceId}"]`);
     const checkbox = row.querySelector('input[type="checkbox"]');
@@ -290,7 +290,7 @@ async function removeSource(sourceId) {
       sourcesList.innerHTML = '<p class="empty-message">No sources configured. Add a news source to start extracting quotes.</p>';
     }
   } catch (err) {
-    alert('Error removing source: ' + err.message);
+    showToast('Error removing source: ' + err.message, 'error', 5000);
   }
 }
 
@@ -298,7 +298,7 @@ async function updateSetting(key, value) {
   try {
     await API.patch('/settings', { [key]: value });
   } catch (err) {
-    alert('Error updating setting: ' + err.message);
+    showToast('Error updating setting: ' + err.message, 'error', 5000);
   }
 }
 
@@ -388,7 +388,7 @@ async function fetchNow() {
   } catch (err) {
     btn.disabled = false;
     btn.textContent = 'Fetch Now';
-    alert('Error: ' + err.message);
+    showToast('Error: ' + err.message, 'error', 5000);
   }
 }
 
@@ -409,7 +409,7 @@ async function exportDatabase() {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   } catch (err) {
-    alert('Export failed: ' + err.message);
+    showToast('Export failed: ' + err.message, 'error', 5000);
   } finally {
     btn.disabled = false;
     btn.textContent = 'Export JSON';
@@ -423,9 +423,9 @@ async function backfillHeadshots() {
 
   try {
     const result = await API.post('/admin/backfill-headshots', { limit: 50 });
-    alert(`Backfill complete: ${result.found} headshots found out of ${result.processed} persons processed.`);
+    showToast(`Backfill complete: ${result.found} headshots found out of ${result.processed} processed`, 'success', 5000);
   } catch (err) {
-    alert('Backfill failed: ' + err.message);
+    showToast('Backfill failed: ' + err.message, 'error', 5000);
   } finally {
     btn.disabled = false;
     btn.textContent = 'Backfill Headshots';
@@ -445,11 +445,11 @@ async function importDatabase(input) {
     const text = await file.text();
     const data = JSON.parse(text);
     const result = await API.post('/admin/restore', data);
-    alert('Restore complete! Imported: ' + Object.entries(result.imported || {}).map(([k, v]) => `${k}: ${v}`).join(', '));
+    showToast('Restore complete! Imported: ' + Object.entries(result.imported || {}).map(([k, v]) => `${k}: ${v}`).join(', '), 'success', 5000);
     // Reload settings page to reflect new data
     renderSettings();
   } catch (err) {
-    alert('Import failed: ' + err.message);
+    showToast('Import failed: ' + err.message, 'error', 5000);
   } finally {
     input.value = '';
   }
@@ -576,7 +576,7 @@ async function adminEditQuote(quoteId) {
     await API.patch(`/quotes/${quoteId}`, { text: newText.trim() });
     loadAdminQuotes(_adminQuotePage);
   } catch (err) {
-    alert('Error: ' + err.message);
+    showToast('Error: ' + err.message, 'error', 5000);
   }
 }
 
@@ -588,7 +588,7 @@ async function adminEditContext(quoteId) {
     await API.patch(`/quotes/${quoteId}`, { context: newContext.trim() || null });
     loadAdminQuotes(_adminQuotePage);
   } catch (err) {
-    alert('Error: ' + err.message);
+    showToast('Error: ' + err.message, 'error', 5000);
   }
 }
 
@@ -597,7 +597,7 @@ async function adminToggleVisibility(quoteId, newVisible) {
     await API.patch(`/quotes/${quoteId}/visibility`, { isVisible: newVisible });
     loadAdminQuotes(_adminQuotePage);
   } catch (err) {
-    alert('Error: ' + err.message);
+    showToast('Error: ' + err.message, 'error', 5000);
   }
 }
 
@@ -609,7 +609,7 @@ async function changeHeadshot(personId, personName) {
     await API.patch(`/authors/${personId}`, { photoUrl: newUrl.trim() || null });
     loadAdminQuotes(_adminQuotePage);
   } catch (err) {
-    alert('Error: ' + err.message);
+    showToast('Error: ' + err.message, 'error', 5000);
   }
 }
 
@@ -633,7 +633,7 @@ async function adminEditAuthor(personId, personName) {
     await API.patch(`/authors/${personId}`, updates);
     loadAdminQuotes(_adminQuotePage);
   } catch (err) {
-    alert('Error: ' + err.message);
+    showToast('Error: ' + err.message, 'error', 5000);
   }
 }
 
@@ -692,7 +692,7 @@ async function adminEditCategory(personId, personName) {
   }
 
   if (!categories.includes(selectedCategory)) {
-    alert('Invalid category. Please choose from the list.');
+    showToast('Invalid category. Please choose from the list.', 'error');
     return;
   }
 
@@ -705,6 +705,6 @@ async function adminEditCategory(personId, personName) {
     });
     loadAdminQuotes(_adminQuotePage);
   } catch (err) {
-    alert('Error: ' + err.message);
+    showToast('Error: ' + err.message, 'error', 5000);
   }
 }
