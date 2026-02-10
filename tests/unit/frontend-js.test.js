@@ -101,6 +101,23 @@ describe('Frontend JS files', () => {
     });
   });
 
+  describe('article.js Top Stories checkbox', () => {
+    const articleJs = fs.readFileSync(path.join(process.cwd(), 'public/js/article.js'), 'utf-8');
+
+    it('should include top-story-label in article header for admin', () => {
+      expect(articleJs).toContain('top-story-label');
+      expect(articleJs).toContain('toggleArticleTopStory');
+    });
+
+    it('should define toggleArticleTopStory function', () => {
+      expect(articleJs).toContain('async function toggleArticleTopStory');
+    });
+
+    it('should check isTopStory from article data', () => {
+      expect(articleJs).toContain('a.isTopStory');
+    });
+  });
+
   describe('article.js sticky header', () => {
     it('should use article-sticky-header class', () => {
       const articleJs = fs.readFileSync(path.join(process.cwd(), 'public/js/article.js'), 'utf-8');

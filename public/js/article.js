@@ -23,6 +23,10 @@ async function renderArticle(id) {
           ${sourceLabel ? `<span class="quote-primary-source">${escapeHtml(sourceLabel)}</span>` : ''}
           ${dateStr ? `<span>${dateStr}</span>` : ''}
           ${a.url ? `<a href="${escapeHtml(a.url)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">View original article &rarr;</a>` : ''}
+          ${isAdmin ? `<label class="top-story-label" title="Mark as Top Story">
+            <input type="checkbox" ${a.isTopStory ? 'checked' : ''} onchange="toggleArticleTopStory(${a.id}, this.checked)">
+            <span class="top-story-label-text">Top Story</span>
+          </label>` : ''}
         </div>
       </div>
     `;
@@ -72,6 +76,15 @@ async function renderArticle(id) {
     }
   } catch (err) {
     content.innerHTML = `<div class="empty-state"><h3>Error</h3><p>${escapeHtml(err.message)}</p></div>`;
+  }
+}
+
+async function toggleArticleTopStory(articleId, isTopStory) {
+  try {
+    await API.patch(`/articles/${articleId}`, { is_top_story: isTopStory ? 1 : 0 });
+    showToast(isTopStory ? 'Article marked as top story' : 'Article removed from top stories', 'success');
+  } catch (err) {
+    showToast('Error: ' + err.message, 'error', 5000);
   }
 }
 
