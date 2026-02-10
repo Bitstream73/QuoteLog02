@@ -107,6 +107,21 @@ header {
   z-index: 100;
 }
 
+.date-ribbon {
+  text-align: center;
+  font-family: var(--font-ui);
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+@media (max-width: 768px) {
+  .date-ribbon { display: none; }
+}
+
 nav {
   max-width: var(--max-width);
   margin: 0 auto;
@@ -260,12 +275,59 @@ main {
    Footer
    =================================== */
 footer {
+  border-top: 3px double var(--border-dark);
+  padding: 2.5rem 2rem;
+  background: var(--bg-secondary);
+  margin-top: auto;
+}
+
+.footer-inner {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
   text-align: center;
-  padding: 2rem;
-  color: var(--text-muted);
-  border-top: 1px solid var(--border);
+}
+
+.footer-logo {
+  font-family: var(--font-headline);
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  display: block;
+}
+
+.footer-tagline {
   font-family: var(--font-ui);
-  font-size: 0.8rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.footer-links {
+  display: flex;
+  gap: 1.5rem;
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.footer-links a {
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+
+.footer-links a:hover {
+  color: var(--accent);
+}
+
+.footer-copyright {
+  font-family: var(--font-ui);
+  font-size: 0.7rem;
+  color: var(--text-muted);
 }
 
 /* ===================================

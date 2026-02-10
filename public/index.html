@@ -14,6 +14,9 @@
 <body>
   <div id="app">
     <header>
+      <div class="date-ribbon">
+        <span id="date-ribbon-text"></span>
+      </div>
       <nav>
         <div class="logo-group">
           <a href="/" class="logo" onclick="navigate(event, '/')">WhatTheySaid.News</a>
@@ -21,7 +24,11 @@
         </div>
         <div class="header-search">
           <input type="search" id="header-search-input" placeholder="Search quotes, authors, topics..." class="search-input" onkeydown="if(event.key==='Enter')doHeaderSearch()">
-          <button class="search-btn" onclick="doHeaderSearch()" aria-label="Search">&#x1F50D;</button>
+          <button class="search-btn" onclick="doHeaderSearch()" aria-label="Search">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+            </svg>
+          </button>
         </div>
         <div class="nav-links">
           <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle dark mode" title="Toggle dark mode">
@@ -61,7 +68,19 @@
     </div>
 
     <footer>
-      <p>&copy; 2026 WhatTheySaid.News / GGM, LLC.</p>
+      <div class="footer-inner">
+        <div class="footer-brand">
+          <span class="footer-logo">WhatTheySaid.News</span>
+          <span class="footer-tagline">Accountability Through Quotes</span>
+        </div>
+        <div class="footer-links">
+          <a href="/" onclick="navigate(event, '/')">Home</a>
+          <a href="/login" onclick="navigate(event, '/login')">Admin</a>
+        </div>
+        <div class="footer-copyright">
+          &copy; 2026 WhatTheySaid.News / GGM, LLC.
+        </div>
+      </div>
     </footer>
   </div>
 
