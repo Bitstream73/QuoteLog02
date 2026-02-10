@@ -150,9 +150,9 @@ function loadDashboard(period) {
   loadCategoryTrends(period);
   loadHeatmap(period);
   loadCustomPie(period);
-  // Reload comparisons if items selected
-  if (_authorCompareIds.length > 0) loadAuthorComparison();
-  if (_topicCompareKeywords.length > 0) loadTopicComparison();
+  // Load comparisons (renders hint text when empty, chart when items selected)
+  loadAuthorComparison();
+  loadTopicComparison();
 }
 
 // --- KPIs ---
@@ -239,7 +239,7 @@ async function loadTopAuthorsRanking(period) {
       var pct = Math.round((a.quote_count / maxQ) * 100);
       var initial = (a.name || '?').charAt(0).toUpperCase();
       var avatar = a.photo_url
-        ? '<img src="' + escapeHtml(a.photo_url) + '" alt="" class="dash-rank-avatar" onerror="this.outerHTML=\'<div class=dash-rank-initial>' + initial + '</div>\'">'
+        ? '<img src="' + escapeHtml(a.photo_url) + '" alt="" class="dash-rank-avatar" onerror="this.outerHTML=\'<div class=dash-rank-initial>' + initial + '</div>\'">' 
         : '<div class="dash-rank-initial">' + initial + '</div>';
       html += '<div class="dash-rank-item">\
         <span class="dash-rank-num">' + (i + 1) + '</span>' +
@@ -402,21 +402,21 @@ async function searchAuthors() {
     var data = await API.get('/analytics/authors/search?q=' + encodeURIComponent(q));
     if (!data.authors || data.authors.length === 0) {
       dropdown.innerHTML = '<div class="dash-dropdown-empty">No authors found</div>';
-      dropdown.style.display = '';
+      dropdown.style.display = 'block';
       return;
     }
     dropdown.innerHTML = data.authors.map(function(a) {
       var disabled = _authorCompareIds.indexOf(a.id) >= 0;
       var initial = (a.name || '?').charAt(0).toUpperCase();
       var avatar = a.photo_url
-        ? '<img src="' + escapeHtml(a.photo_url) + '" alt="" class="dash-dd-avatar" onerror="this.outerHTML=\'<span class=dash-dd-initial>' + initial + '</span>\'">'
+        ? '<img src="' + escapeHtml(a.photo_url) + '" alt="" class="dash-dd-avatar" onerror="this.outerHTML=\'<span class=dash-dd-initial>' + initial + '</span>\'">' 
         : '<span class="dash-dd-initial">' + initial + '</span>';
       return '<div class="dash-dropdown-item' + (disabled ? ' disabled' : '') + '"' +
         (disabled ? '' : ' onclick="addAuthorToCompare(' + a.id + ',\'' + escapeHtml(a.name).replace(/'/g, "\\'") + '\')"') + '>' +
         avatar + '<span class="dash-dd-name">' + escapeHtml(a.name) + '</span>' +
         '<span class="dash-dd-meta">' + (a.quote_count || 0) + ' quotes</span></div>';
     }).join('');
-    dropdown.style.display = '';
+    dropdown.style.display = 'block';
   } catch (err) { dropdown.style.display = 'none'; }
 }
 
@@ -513,7 +513,7 @@ async function searchTopics() {
     var data = await API.get('/analytics/topics/list?period=' + _dashPeriod + '&q=' + encodeURIComponent(q) + '&limit=10');
     if (!data.topics || data.topics.length === 0) {
       dropdown.innerHTML = '<div class="dash-dropdown-empty">No topics found</div>';
-      dropdown.style.display = '';
+      dropdown.style.display = 'block';
       return;
     }
     dropdown.innerHTML = data.topics.map(function(t) {
@@ -523,7 +523,7 @@ async function searchTopics() {
         '<span class="dash-dd-name">' + escapeHtml(t.keyword) + '</span>' +
         '<span class="dash-dd-meta">' + t.count + ' mentions</span></div>';
     }).join('');
-    dropdown.style.display = '';
+    dropdown.style.display = 'block';
   } catch (err) { dropdown.style.display = 'none'; }
 }
 
