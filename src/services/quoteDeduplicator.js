@@ -260,14 +260,14 @@ function mergeQuotes(canonicalId, variantIds, db) {
  * Main deduplication and insert function
  */
 export async function insertAndDeduplicateQuote(quoteData, personId, article, db) {
-  const { text, quoteType, context, sourceUrl, rssMetadata } = quoteData;
+  const { text, quoteType, context, sourceUrl, rssMetadata, topics, keywords } = quoteData;
 
   // Find duplicate candidates
   const candidates = await findDuplicateCandidates(text, personId, db);
 
   if (candidates.length === 0) {
     // No duplicates - insert new quote
-    return insertNewQuote(text, quoteType, context, sourceUrl, personId, article.id, db, rssMetadata);
+    return insertNewQuote(text, quoteType, context, sourceUrl, personId, article.id, db, rssMetadata, topics, keywords);
   }
 
   // Check each candidate
@@ -354,13 +354,86 @@ export async function insertAndDeduplicateQuote(quoteData, personId, article, db
   }
 
   // No strong duplicate found - insert as new
-  return insertNewQuote(text, quoteType, context, sourceUrl, personId, article.id, db, rssMetadata);
+  return insertNewQuote(text, quoteType, context, sourceUrl, personId, article.id, db, rssMetadata, topics, keywords);
+}
+
+/**
+ * Store topics and keywords for a quote
+ */
+function storeTopicsAndKeywords(quoteId, topics, keywords, db) {
+  if (topics && topics.length > 0) {
+    const upsertTopic = db.prepare(
+      `INSERT INTO topics (name, slug) VALUES (?, ?)
+       ON CONFLICT(name) DO NOTHING`
+    );
+    const getTopic = db.prepare('SELECT id FROM topics WHERE name = ?');
+    const linkTopic = db.prepare(
+      'INSERT OR IGNORE INTO quote_topics (quote_id, topic_id) VALUES (?, ?)'
+    );
+
+    for (const topicName of topics) {
+      if (!topicName || typeof topicName !== 'string') continue;
+      const trimmed = topicName.trim();
+      if (!trimmed) continue;
+      const slug = trimmed.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      upsertTopic.run(trimmed, slug);
+      const topic = getTopic.get(trimmed);
+      if (topic) {
+        linkTopic.run(quoteId, topic.id);
+      }
+    }
+  }
+
+  if (keywords && keywords.length > 0) {
+    const upsertKeyword = db.prepare(
+      `INSERT INTO keywords (name, name_normalized, keyword_type) VALUES (?, ?, ?)
+       ON CONFLICT(name) DO NOTHING`
+    );
+    const getKeyword = db.prepare('SELECT id FROM keywords WHERE name = ?');
+    const linkKeyword = db.prepare(
+      'INSERT OR IGNORE INTO quote_keywords (quote_id, keyword_id) VALUES (?, ?)'
+    );
+
+    for (const kw of keywords) {
+      if (!kw || typeof kw !== 'string') continue;
+      const trimmed = kw.trim();
+      if (!trimmed) continue;
+      const normalized = trimmed.toLowerCase();
+      // Infer keyword type from simple heuristics
+      const kwType = inferKeywordType(trimmed);
+      upsertKeyword.run(trimmed, normalized, kwType);
+      const keyword = getKeyword.get(trimmed);
+      if (keyword) {
+        linkKeyword.run(quoteId, keyword.id);
+      }
+    }
+  }
+}
+
+/**
+ * Infer keyword type from the keyword text
+ */
+function inferKeywordType(keyword) {
+  const lower = keyword.toLowerCase();
+  // Common patterns for different types
+  const orgPatterns = /\b(congress|senate|house|committee|department|agency|fbi|cia|nato|united nations|un|eu|who|imf|nfl|nba|mlb|nhl|court|council|commission|administration|bureau|foundation|institute|association|corporation|inc|llc|party|group)\b/i;
+  const locationPatterns = /\b(city|state|country|county|province|region|island|river|mountain|ocean|sea|lake|street|avenue|district|territory|gaza|ukraine|taiwan|israel|russia|china|iran|iraq|syria|afghanistan|north korea)\b/i;
+  const eventPatterns = /\b(war|crisis|scandal|election|summit|trial|hearing|investigation|attack|shooting|hurricane|earthquake|pandemic|protest|riot|coup|files|gate|accord|deal|agreement|act)\b/i;
+  const legislationPatterns = /\b(act|bill|amendment|law|order|resolution|proposition|regulation|directive|treaty|protocol)\b/i;
+
+  if (orgPatterns.test(keyword)) return 'organization';
+  if (locationPatterns.test(keyword)) return 'location';
+  if (legislationPatterns.test(keyword) && /^[A-Z]/.test(keyword)) return 'legislation';
+  if (eventPatterns.test(keyword)) return 'event';
+  // If it looks like a person name (2-3 capitalized words)
+  if (/^[A-Z][a-z]+ [A-Z][a-z]+( [A-Z][a-z]+)?$/.test(keyword)) return 'person';
+  return 'concept';
 }
 
 /**
  * Insert a new quote
  */
-function insertNewQuote(text, quoteType, context, sourceUrl, personId, articleId, db, rssMetadata) {
+function insertNewQuote(text, quoteType, context, sourceUrl, personId, articleId, db, rssMetadata, topics, keywords) {
   const sourceUrls = JSON.stringify([sourceUrl]);
 
   const result = db.prepare(`INSERT INTO quotes
@@ -373,6 +446,9 @@ function insertNewQuote(text, quoteType, context, sourceUrl, personId, articleId
   // Link to article
   db.prepare('INSERT OR IGNORE INTO quote_articles (quote_id, article_id) VALUES (?, ?)')
     .run(quoteId, articleId);
+
+  // Store topics and keywords
+  storeTopicsAndKeywords(quoteId, topics, keywords, db);
 
   // Update person quote count and last seen
   db.prepare(`UPDATE persons SET
@@ -403,4 +479,5 @@ function insertNewQuote(text, quoteType, context, sourceUrl, personId, articleId
   };
 }
 
-export default { insertAndDeduplicateQuote };
+export { storeTopicsAndKeywords };
+export default { insertAndDeduplicateQuote, storeTopicsAndKeywords };
