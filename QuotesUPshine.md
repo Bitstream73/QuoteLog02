@@ -1,4 +1,4 @@
-Complete the following items. Test them. If they fail, fix them:
+heres a changeComplete the following items. Test them. If they fail, fix them:
 
 To quotes: Add the title of the corresponding article where the first instance of the quote was found. 
 To quotes: Add an "isvisible" boolean to each quote that is only editable and visible in admin mode. When isvisible is true, the quote is displayed to users. When isvisible is false, it's not visible to users and shows in admin mode as greyed out with the option to re-set it to visible.
