@@ -679,12 +679,13 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
 }
 
 /* ===================================
-   New Quote Layout — Headshot + Content
+   Quote Layout — Full-width text + Author row
    =================================== */
-.quote-layout {
+.quote-meta-layout {
   display: flex;
-  gap: 1rem;
+  gap: 0.75rem;
   align-items: flex-start;
+  margin-top: 0.5rem;
 }
 
 .quote-headshot-col {
@@ -692,29 +693,29 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
 }
 
 .quote-headshot {
-  width: 56px;
-  height: 56px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   object-fit: cover;
-  border: 2px solid var(--border);
+  border: none;
 }
 
 .quote-headshot-placeholder {
-  width: 56px;
-  height: 56px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   background: var(--bg-secondary);
   display: flex;
   align-items: center;
   justify-content: center;
   font-family: var(--font-headline);
-  font-size: 1.4rem;
+  font-size: 1.2rem;
   font-weight: 700;
   color: var(--text-primary);
-  border: 2px solid var(--border);
+  border: none;
 }
 
-.quote-content-col {
+.quote-meta-col {
   flex: 1;
   min-width: 0;
 }
@@ -1310,6 +1311,18 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   color: var(--text-primary);
 }
 
+/* Quote detail page layout (headshot beside text) */
+.quote-layout {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.quote-content-col {
+  flex: 1;
+  min-width: 0;
+}
+
 .quote-detail-card {
   margin-bottom: 1.5rem;
 }
@@ -1411,11 +1424,11 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
    Responsive Design
    =================================== */
 @media (max-width: 360px) {
-  .quote-layout {
+  .quote-meta-layout {
     flex-direction: column;
   }
   .quote-headshot-col {
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.25rem;
   }
 }
 
@@ -1477,12 +1490,9 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   .nav-links { gap: 0.75rem; font-size: 0.7rem; }
   main { padding: 0.75rem; }
   .quote-headshot, .quote-headshot-placeholder {
-    width: 40px;
-    height: 40px;
-    font-size: 1.1rem;
-  }
-  .quote-headshot-spacer {
-    width: 40px;
+    width: 36px;
+    height: 36px;
+    font-size: 1rem;
   }
   .quote-text { font-size: 0.95rem; }
   .article-group-title { font-size: 0.85rem; }
@@ -1821,7 +1831,7 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
 
 /* Spacer for ganged quotes (same author, no headshot) */
 .quote-headshot-spacer {
-  width: 56px;
+  width: 44px;
   flex-shrink: 0;
 }
 

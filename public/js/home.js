@@ -255,13 +255,13 @@ function buildQuoteEntryHtml(q, insideGroup, gangOpts) {
 
   return `
     <div class="quote-entry${hiddenClass}" id="qe-${q.id}">
-      <div class="quote-layout">
-        ${showHeadshot ? `<div class="quote-headshot-col">${headshotHtml}</div>` : `<div class="quote-headshot-col quote-headshot-spacer"></div>`}
-        <div class="quote-content-col">
-          <div class="quote-text-row">
-            <p class="quote-text" id="qt-${q.id}">${escapeHtml(truncatedText)}</p>
-            ${isLong ? `<a href="#" class="show-more-toggle" onclick="toggleQuoteText(event, ${q.id})">show more</a>` : ''}
-          </div>
+      <div class="quote-text-row">
+        <p class="quote-text" id="qt-${q.id}">${escapeHtml(truncatedText)}</p>
+        ${isLong ? `<a href="#" class="show-more-toggle" onclick="toggleQuoteText(event, ${q.id})">show more</a>` : ''}
+      </div>
+      <div class="quote-meta-layout">
+        ${showHeadshot ? `<div class="quote-headshot-col">${headshotHtml}</div>` : ''}
+        <div class="quote-meta-col">
           ${showAuthorRow ? `<div class="quote-author-block">
             <div class="quote-author-row">
               <a href="/author/${q.personId}" onclick="navigate(event, '/author/${q.personId}')" class="author-link">${escapeHtml(q.personName)}</a>
