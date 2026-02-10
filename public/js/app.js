@@ -41,6 +41,11 @@ function initSocket() {
     socket.on('disconnect', () => {
       console.log('Socket disconnected');
     });
+
+    // Initialize vote real-time updates
+    if (typeof initVoteSocket === 'function') {
+      initVoteSocket();
+    }
   }
 }
 
@@ -95,6 +100,8 @@ function navigateBackToQuotes(event) {
 }
 
 function route() {
+  if (typeof destroyAllCharts === 'function') destroyAllCharts();
+
   const path = window.location.pathname;
   const params = new URLSearchParams(window.location.search);
 
@@ -216,7 +223,9 @@ function closeModal() {
   document.getElementById('modal-overlay').classList.add('hidden');
 }
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') closeModal();
+  if (e.key === 'Escape') {
+    closeModal();
+  }
 });
 
 // Update CSS variable for header height (used by article sticky header)

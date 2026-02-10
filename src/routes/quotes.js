@@ -1,10 +1,17 @@
 import { Router } from 'express';
 import jwt from 'jsonwebtoken';
+import { createHash } from 'crypto';
 import { getDb } from '../config/database.js';
 import { requireAdmin } from '../middleware/auth.js';
 import config from '../config/index.js';
 
 const router = Router();
+
+function getVoterHash(req) {
+  const ip = req.ip || req.connection.remoteAddress;
+  const ua = req.get('User-Agent') || '';
+  return createHash('sha256').update(`${ip}:${ua}`).digest('hex');
+}
 
 /**
  * Detect admin from JWT cookie (non-blocking — no auth required)
@@ -77,14 +84,15 @@ router.get('/', (req, res) => {
      WHERE q.canonical_quote_id IS NULL ${visibilityFilter} ${categoryFilter} ${subFilterSql} ${searchFilter}`
   ).get(...params).count;
 
-  // Get quotes with person info + first linked article/source
+  // Get quotes with person info + first linked article/source + vote score
   const quotes = db.prepare(`
     SELECT q.id, q.text, q.source_urls, q.created_at, q.context, q.quote_type, q.is_visible,
            q.rss_metadata,
            p.id AS person_id, p.canonical_name, p.photo_url, p.category AS person_category,
            p.category_context AS person_category_context,
            a.id AS article_id, a.title AS article_title, a.published_at AS article_published_at, a.url AS article_url,
-           s.domain AS primary_source_domain, s.name AS primary_source_name
+           s.domain AS primary_source_domain, s.name AS primary_source_name,
+           COALESCE((SELECT SUM(vote_value) FROM votes WHERE votes.quote_id = q.id), 0) as vote_score
     FROM quotes q
     JOIN persons p ON q.person_id = p.id
     LEFT JOIN quote_articles qa ON qa.quote_id = q.id
@@ -97,6 +105,19 @@ router.get('/', (req, res) => {
   `).all(...params, limit, offset);
 
   // Parse source_urls JSON and format
+  const voterHash = getVoterHash(req);
+  const quoteIds = quotes.map(q => q.id);
+  const userVotes = {};
+  if (quoteIds.length > 0) {
+    const placeholders = quoteIds.map(() => '?').join(',');
+    const rows = db.prepare(
+      `SELECT quote_id, vote_value FROM votes WHERE voter_hash = ? AND quote_id IN (${placeholders})`
+    ).all(voterHash, ...quoteIds);
+    for (const row of rows) {
+      userVotes[row.quote_id] = row.vote_value;
+    }
+  }
+
   const formattedQuotes = quotes.map(q => ({
     id: q.id,
     text: q.text,
@@ -117,6 +138,8 @@ router.get('/', (req, res) => {
     sourceUrls: JSON.parse(q.source_urls || '[]'),
     rssMetadata: q.rss_metadata ? JSON.parse(q.rss_metadata) : null,
     createdAt: q.created_at,
+    voteScore: q.vote_score,
+    userVote: userVotes[q.id] || 0,
   }));
 
   // Get broad category counts for tab rendering
@@ -231,7 +254,8 @@ router.get('/:id', (req, res) => {
   const admin = isAdminRequest(req);
 
   const quote = db.prepare(`
-    SELECT q.*, p.canonical_name, p.disambiguation, p.photo_url
+    SELECT q.*, p.canonical_name, p.disambiguation, p.photo_url,
+           COALESCE((SELECT SUM(vote_value) FROM votes WHERE votes.quote_id = q.id), 0) as vote_score
     FROM quotes q
     JOIN persons p ON q.person_id = p.id
     WHERE q.id = ?
@@ -271,6 +295,10 @@ router.get('/:id', (req, res) => {
     WHERE q.canonical_quote_id = ?
   `).all(quote.id);
 
+  // Get current voter's vote for this quote
+  const voterHash = getVoterHash(req);
+  const userVoteRow = db.prepare('SELECT vote_value FROM votes WHERE quote_id = ? AND voter_hash = ?').get(quote.id, voterHash);
+
   res.json({
     quote: {
       id: quote.id,
@@ -284,6 +312,8 @@ router.get('/:id', (req, res) => {
       photoUrl: quote.photo_url || null,
       sourceUrls: JSON.parse(quote.source_urls || '[]'),
       createdAt: quote.created_at,
+      voteScore: quote.vote_score,
+      userVote: userVoteRow ? userVoteRow.vote_value : 0,
     },
     articles,
     relatedQuotes: relatedQuotes.map(q => ({

@@ -255,6 +255,8 @@ function initializeTables(db) {
     db.exec(`ALTER TABLE quotes ADD COLUMN rss_metadata TEXT`);
   }
   db.exec(`CREATE INDEX IF NOT EXISTS idx_quotes_visible ON quotes(is_visible)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quotes_visible_created ON quotes(is_visible, created_at)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quotes_person_visible_created ON quotes(person_id, is_visible, created_at)`);
 
   // Migration: add photo_url column to persons
   const personCols = db.prepare("PRAGMA table_info(persons)").all().map(c => c.name);
@@ -326,50 +328,34 @@ function initializeTables(db) {
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_disam_status ON disambiguation_queue(status)`);
 
-  // Topics - Broad subject categories (semi-closed vocabulary)
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS topics (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL UNIQUE,
-      slug TEXT NOT NULL UNIQUE,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )
-  `);
+  // --- Upvote System ---
 
-  // Keywords - Specific entities, events, concepts (open vocabulary, multi-word aware)
+  // Votes - Anonymous upvotes/downvotes on quotes
   db.exec(`
-    CREATE TABLE IF NOT EXISTS keywords (
+    CREATE TABLE IF NOT EXISTS votes (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL UNIQUE,
-      name_normalized TEXT NOT NULL,
-      keyword_type TEXT NOT NULL DEFAULT 'concept'
-        CHECK(keyword_type IN ('person', 'organization', 'event', 'legislation', 'location', 'concept')),
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )
-  `);
-  db.exec(`CREATE INDEX IF NOT EXISTS idx_keywords_normalized ON keywords(name_normalized)`);
-  db.exec(`CREATE INDEX IF NOT EXISTS idx_keywords_type ON keywords(keyword_type)`);
-
-  // Quote-to-topic mapping (many-to-many)
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS quote_topics (
       quote_id INTEGER NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,
-      topic_id INTEGER NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
-      PRIMARY KEY (quote_id, topic_id)
+      voter_hash TEXT NOT NULL,
+      vote_value INTEGER NOT NULL CHECK(vote_value IN (-1, 1)),
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(quote_id, voter_hash)
     )
   `);
-  db.exec(`CREATE INDEX IF NOT EXISTS idx_quote_topics_topic ON quote_topics(topic_id)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_votes_quote_id ON votes(quote_id)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_votes_voter_hash ON votes(voter_hash)`);
 
-  // Quote-to-keyword mapping (many-to-many)
+  // Quote keywords - Extracted keywords for analytics aggregation
   db.exec(`
     CREATE TABLE IF NOT EXISTS quote_keywords (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
       quote_id INTEGER NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,
-      keyword_id INTEGER NOT NULL REFERENCES keywords(id) ON DELETE CASCADE,
-      relevance REAL NOT NULL DEFAULT 1.0,
-      PRIMARY KEY (quote_id, keyword_id)
+      keyword TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now'))
     )
   `);
-  db.exec(`CREATE INDEX IF NOT EXISTS idx_quote_keywords_keyword ON quote_keywords(keyword_id)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quote_keywords_keyword ON quote_keywords(keyword)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quote_keywords_quote_id ON quote_keywords(quote_id)`);
 
   // App settings (key-value)
   db.exec(`
