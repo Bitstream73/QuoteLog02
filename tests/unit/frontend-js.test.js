@@ -101,6 +101,28 @@ describe('Frontend JS files', () => {
     });
   });
 
+  describe('quote.js admin inline actions', () => {
+    const quoteJs = fs.readFileSync(path.join(process.cwd(), 'public/js/quote.js'), 'utf-8');
+
+    it('should call buildAdminActionsHtml in quote detail page', () => {
+      expect(quoteJs).toContain('buildAdminActionsHtml');
+    });
+  });
+
+  describe('author.js admin inline actions', () => {
+    const authorJs = fs.readFileSync(path.join(process.cwd(), 'public/js/author.js'), 'utf-8');
+
+    it('should call buildAdminActionsHtml in author quote cards', () => {
+      expect(authorJs).toContain('buildAdminActionsHtml');
+    });
+
+    it('should have admin edit controls in author header', () => {
+      expect(authorJs).toContain('adminEditAuthorName');
+      expect(authorJs).toContain('adminEditCategory');
+      expect(authorJs).toContain('adminChangeHeadshot');
+    });
+  });
+
   describe('article.js Top Stories checkbox', () => {
     const articleJs = fs.readFileSync(path.join(process.cwd(), 'public/js/article.js'), 'utf-8');
 

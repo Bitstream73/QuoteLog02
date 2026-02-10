@@ -78,6 +78,12 @@ function buildAuthorQuoteHtml(q, authorName, authorCategoryContext) {
             ${articleTitleHtml}
           </div>
           ${shareHtml}
+          ${typeof buildAdminActionsHtml === 'function' ? buildAdminActionsHtml({
+            id: q.id, personId: q.personId, personName: authorName,
+            text: q.text, context: q.context, isVisible: q.isVisible,
+            personCategory: null, personCategoryContext: authorCategoryContext,
+            disambiguation: authorCategoryContext
+          }) : ''}
         </div>
       </div>
     </div>
@@ -123,6 +129,13 @@ async function renderAuthor(id) {
           <h1 class="page-title">${escapeHtml(a.name)}</h1>
           ${a.disambiguation ? `<p class="author-disambiguation">${escapeHtml(a.disambiguation)}</p>` : ''}
           <p class="page-subtitle" style="border-bottom:none;padding-bottom:0;margin-bottom:0">${a.quoteCount} quote${a.quoteCount !== 1 ? 's' : ''}</p>
+          ${typeof isAdmin !== 'undefined' && isAdmin && typeof buildAdminActionsHtml === 'function' ? `
+            <div class="admin-inline-actions" style="margin-top:0.5rem">
+              <button onclick="adminEditAuthorName(${a.id}, '${escapeHtml(a.name)}', '${escapeHtml(a.disambiguation || '')}')" title="Edit name">Edit Name</button>
+              <button onclick="adminEditCategory(${a.id}, '${escapeHtml(a.name)}')" title="Edit category">Category</button>
+              <button onclick="adminChangeHeadshot(${a.id}, '${escapeHtml(a.name)}')" title="Change photo">Photo</button>
+            </div>
+          ` : ''}
         </div>
       </div>
     `;

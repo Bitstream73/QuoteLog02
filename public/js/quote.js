@@ -45,6 +45,12 @@ async function renderQuote(id) {
             </div>
             ${q.context ? `<div class="quote-context" style="margin-top:0.75rem">${escapeHtml(q.context)}</div>` : ''}
             ${dateStr ? `<div class="quote-date-inline" style="margin-top:0.5rem">${dateStr}</div>` : ''}
+            ${typeof buildAdminActionsHtml === 'function' ? buildAdminActionsHtml({
+              id: q.id, personId: q.personId, personName: q.personName,
+              text: q.text, context: q.context, isVisible: q.isVisible,
+              personCategory: null, personCategoryContext: null,
+              disambiguation: q.personDisambiguation
+            }) : ''}
           </div>
         </div>
       </div>
