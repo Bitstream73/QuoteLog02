@@ -243,9 +243,13 @@ function buildQuoteEntryHtml(q, insideGroup, gangOpts) {
   // Headshot or initial placeholder
   const initial = (q.personName || '?').charAt(0).toUpperCase();
   const placeholderDiv = `<div class="quote-headshot-placeholder">${initial}</div>`;
+  const _isAdm = typeof isAdmin !== 'undefined' && isAdmin;
+  const _safeName = escapeHtml((q.personName || '').replace(/'/g, "\\'"));
   const headshotHtml = q.photoUrl
-    ? `<img src="${escapeHtml(q.photoUrl)}" alt="${escapeHtml(q.personName)}" class="quote-headshot" onerror="this.outerHTML='<div class=\\'quote-headshot-placeholder\\'>${initial}</div>'">`
-    : (typeof isAdmin !== 'undefined' && isAdmin
+    ? (_isAdm
+      ? `<img src="${escapeHtml(q.photoUrl)}" alt="${escapeHtml(q.personName)}" class="quote-headshot admin-headshot-clickable" onclick="adminChangeHeadshot(${q.personId}, '${_safeName}')" title="Click to change photo" style="cursor:pointer" onerror="this.outerHTML='<div class=\\'quote-headshot-placeholder\\'>${initial}</div>'">`
+      : `<img src="${escapeHtml(q.photoUrl)}" alt="${escapeHtml(q.personName)}" class="quote-headshot" onerror="this.outerHTML='<div class=\\'quote-headshot-placeholder\\'>${initial}</div>'">`)
+    : (_isAdm
       ? `<a href="https://www.google.com/search?tbm=isch&q=${encodeURIComponent((q.personName || '') + ' ' + (q.personDisambiguation || q.personCategoryContext || ''))}" target="_blank" rel="noopener" class="admin-headshot-search" title="Search Google Images">${placeholderDiv}</a>`
       : placeholderDiv);
 

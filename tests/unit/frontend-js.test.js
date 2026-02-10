@@ -322,6 +322,12 @@ describe('Frontend JS files', () => {
       expect(homeJs).toContain('google.com/search?tbm=isch');
     });
 
+    it('should make existing headshot clickable for admin to change photo on home.js', () => {
+      const homeJs = fs.readFileSync(path.join(process.cwd(), 'public/js/home.js'), 'utf-8');
+      expect(homeJs).toContain('admin-headshot-clickable');
+      expect(homeJs).toContain('adminChangeHeadshot');
+    });
+
     it('should have admin-headshot-search link in quote.js for missing photos', () => {
       const quoteJs = fs.readFileSync(path.join(process.cwd(), 'public/js/quote.js'), 'utf-8');
       expect(quoteJs).toContain('admin-headshot-search');
