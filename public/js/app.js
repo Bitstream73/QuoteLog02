@@ -148,7 +148,13 @@ function route() {
     const id = path.split('/')[2];
     renderAuthor(id);
   } else if (path === '/analytics') {
-    renderAnalyticsPage();
+    renderAnalytics();
+  } else if (path.startsWith('/analytics/topic/')) {
+    const slug = path.split('/analytics/topic/')[1];
+    renderTopicDetail(slug);
+  } else if (path.startsWith('/analytics/keyword/')) {
+    const id = path.split('/analytics/keyword/')[1];
+    renderKeywordDetail(id);
   } else if (path === '/admin') {
     if (isAdmin) { navigate(null, '/settings'); return; }
     renderLogin();
@@ -198,8 +204,8 @@ function updateAdVisibility(path) {
   const adContainer = document.getElementById('ad-container');
   if (!adContainer) return;
 
-  const isPublicPage = path === '/' || path === '' || path === '/analytics' ||
-    path.startsWith('/quote/') || path.startsWith('/author/') || path.startsWith('/article/');
+  const isPublicPage = path === '/' || path === '' ||
+    path.startsWith('/quote/') || path.startsWith('/author/') || path.startsWith('/article/') || path.startsWith('/analytics');
 
   if (isPublicPage && !isStandalone) {
     adContainer.style.display = '';
