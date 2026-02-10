@@ -1,8 +1,51 @@
-// Disambiguation Review Page
+// Disambiguation Review & Quote Management Page
+
+let _reviewActiveTab = 'disambiguation';
 
 async function renderReview() {
   const content = document.getElementById('content');
-  content.innerHTML = '<div class="loading">Loading review queue...</div>';
+  content.innerHTML = '<div class="loading">Loading...</div>';
+
+  // Tab bar
+  let html = `
+    <p style="margin-bottom:1rem">
+      <a href="/" onclick="navigate(event, '/')" style="color:var(--accent)">&larr; Back to quotes</a>
+    </p>
+    <h1 class="page-title">Review</h1>
+    <div class="review-tab-bar">
+      <button class="review-tab ${_reviewActiveTab === 'disambiguation' ? 'active' : ''}" onclick="switchReviewTab('disambiguation')">Disambiguation Review</button>
+      <button class="review-tab ${_reviewActiveTab === 'quotes' ? 'active' : ''}" onclick="switchReviewTab('quotes')">Quote Management</button>
+    </div>
+    <div id="review-tab-content"></div>
+  `;
+  content.innerHTML = html;
+
+  if (_reviewActiveTab === 'disambiguation') {
+    await renderDisambiguationTab();
+  } else {
+    await renderQuoteManagementTab();
+  }
+}
+
+function switchReviewTab(tab) {
+  _reviewActiveTab = tab;
+  // Update tab bar active state
+  document.querySelectorAll('.review-tab').forEach(btn => {
+    btn.classList.toggle('active', btn.textContent.toLowerCase().includes(tab === 'disambiguation' ? 'disambiguation' : 'quote'));
+  });
+  const container = document.getElementById('review-tab-content');
+  if (!container) return;
+  container.innerHTML = '<div class="loading">Loading...</div>';
+  if (tab === 'disambiguation') {
+    renderDisambiguationTab();
+  } else {
+    renderQuoteManagementTab();
+  }
+}
+
+async function renderDisambiguationTab() {
+  const container = document.getElementById('review-tab-content');
+  if (!container) return;
 
   try {
     const [reviewData, stats] = await Promise.all([
@@ -13,7 +56,6 @@ async function renderReview() {
     updateReviewBadge(stats.pending);
 
     let html = `
-      <h1 class="page-title">Disambiguation Review</h1>
       <p class="page-subtitle">Review potential name matches to improve quote attribution accuracy</p>
       <div class="review-stats">
         <span class="stat"><strong>${stats.pending}</strong> items pending</span>
@@ -55,11 +97,147 @@ async function renderReview() {
       }
     }
 
-    content.innerHTML = html;
+    container.innerHTML = html;
   } catch (err) {
-    content.innerHTML = `<div class="empty-state"><h3>Error</h3><p>${escapeHtml(err.message)}</p></div>`;
+    container.innerHTML = `<div class="empty-state"><h3>Error</h3><p>${escapeHtml(err.message)}</p></div>`;
   }
 }
+
+// ===================================
+// Quote Management Tab
+// ===================================
+
+let _adminQuotePage = 1;
+let _adminQuoteSearch = '';
+
+async function renderQuoteManagementTab() {
+  const container = document.getElementById('review-tab-content');
+  if (!container) return;
+
+  container.innerHTML = `
+    <p class="page-subtitle">View, edit, and manage extracted quotes.</p>
+    <div style="display:flex;gap:0.5rem;margin-bottom:1rem">
+      <input type="search" id="admin-quote-search" placeholder="Search quotes, authors..." class="input-text" style="flex:1;width:auto" value="${escapeHtml(_adminQuoteSearch)}" onkeydown="if(event.key==='Enter')searchAdminQuotes()">
+      <button class="btn btn-primary btn-sm" onclick="searchAdminQuotes()">Search</button>
+      <button class="btn btn-secondary btn-sm" onclick="clearAdminSearch()">Clear</button>
+    </div>
+    <div id="admin-quotes-list">
+      <div class="loading">Loading quotes...</div>
+    </div>
+    <div id="admin-quotes-pagination"></div>
+  `;
+
+  await loadAdminQuotes();
+}
+
+function searchAdminQuotes() {
+  const input = document.getElementById('admin-quote-search');
+  _adminQuoteSearch = input ? input.value.trim() : '';
+  _adminQuotePage = 1;
+  loadAdminQuotes();
+}
+
+function clearAdminSearch() {
+  _adminQuoteSearch = '';
+  const input = document.getElementById('admin-quote-search');
+  if (input) input.value = '';
+  _adminQuotePage = 1;
+  loadAdminQuotes();
+}
+
+async function loadAdminQuotes(page) {
+  _adminQuotePage = page || _adminQuotePage || 1;
+  const container = document.getElementById('admin-quotes-list');
+  const paginationEl = document.getElementById('admin-quotes-pagination');
+  if (!container) return;
+
+  try {
+    let url = `/quotes?page=${_adminQuotePage}&limit=20`;
+    if (_adminQuoteSearch) url += `&search=${encodeURIComponent(_adminQuoteSearch)}`;
+    const data = await API.get(url);
+    if (data.quotes.length === 0) {
+      container.innerHTML = '<p class="empty-message">No quotes found.</p>';
+      if (paginationEl) paginationEl.innerHTML = '';
+      return;
+    }
+
+    let html = '';
+    for (const q of data.quotes) {
+      const dateStr = q.articlePublishedAt
+        ? new Date(q.articlePublishedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+        : '';
+      const createdStr = q.createdAt
+        ? new Date(q.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+        : '';
+      const initial = (q.personName || '?').charAt(0).toUpperCase();
+      const headshotHtml = q.photoUrl
+        ? `<img src="${escapeHtml(q.photoUrl)}" class="admin-quote-headshot" onerror="this.style.display='none'">`
+        : `<div class="admin-quote-headshot-placeholder">${initial}</div>`;
+
+      const sourceUrls = (q.sourceUrls || []).map(u => {
+        try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; }
+      });
+
+      html += `
+        <div class="admin-quote-card" id="aqc-${q.id}">
+          <div class="admin-quote-top">
+            <div class="admin-quote-headshot-col">
+              ${headshotHtml}
+              <button class="btn btn-secondary btn-sm" onclick="adminChangeHeadshot(${q.personId}, '${escapeHtml(q.personName)}')" style="margin-top:0.25rem;font-size:0.65rem">Photo</button>
+            </div>
+            <div class="admin-quote-info">
+              <div class="admin-quote-text">${escapeHtml(q.text)}</div>
+              <div class="admin-quote-meta">
+                <strong>${escapeHtml(q.personName)}</strong>
+                <span class="badge badge-info" style="font-size:0.6rem">${escapeHtml(q.personCategory || 'Other')}</span>
+                ${q.personCategoryContext ? `<span style="font-size:0.75rem;color:var(--text-muted)">${escapeHtml(q.personCategoryContext)}</span>` : ''}
+              </div>
+              <div class="admin-quote-details">
+                ${q.articleTitle ? `<div><strong>Article:</strong> ${escapeHtml(q.articleTitle)}</div>` : ''}
+                ${dateStr ? `<div><strong>Published:</strong> ${dateStr}</div>` : ''}
+                ${createdStr ? `<div><strong>Extracted:</strong> ${createdStr}</div>` : ''}
+                ${q.primarySourceName ? `<div><strong>Source:</strong> ${escapeHtml(q.primarySourceName)}</div>` : ''}
+                ${sourceUrls.length > 0 ? `<div><strong>URLs:</strong> ${sourceUrls.map(u => escapeHtml(u)).join(', ')}</div>` : ''}
+                ${q.context ? `<div><strong>Context:</strong> ${escapeHtml(q.context)}</div>` : ''}
+                <div><strong>Type:</strong> ${q.quoteType || 'direct'} &middot; <strong>Visible:</strong> ${q.isVisible ? 'Yes' : 'No'} &middot; <strong>ID:</strong> ${q.id}</div>
+              </div>
+              ${typeof buildAdminActionsHtml === 'function' ? buildAdminActionsHtml({
+                id: q.id, personId: q.personId, personName: q.personName,
+                text: q.text, context: q.context, isVisible: q.isVisible,
+                personCategory: q.personCategory, personCategoryContext: q.personCategoryContext,
+                disambiguation: q.personDisambiguation
+              }) : ''}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    container.innerHTML = html;
+
+    // Pagination
+    if (data.totalPages > 1 && paginationEl) {
+      let pHtml = '<div class="pagination">';
+      for (let i = 1; i <= Math.min(data.totalPages, 10); i++) {
+        pHtml += `<button class="page-btn ${i === _adminQuotePage ? 'active' : ''}" onclick="loadAdminQuotes(${i})">${i}</button>`;
+      }
+      if (data.totalPages > 10) {
+        pHtml += `<span class="pagination-ellipsis">...</span>`;
+        pHtml += `<button class="page-btn" onclick="loadAdminQuotes(${data.totalPages})">${data.totalPages}</button>`;
+      }
+      pHtml += '</div>';
+      paginationEl.innerHTML = pHtml;
+    } else if (paginationEl) {
+      paginationEl.innerHTML = '';
+    }
+  } catch (err) {
+    container.innerHTML = `<p class="empty-message">Error loading quotes: ${escapeHtml(err.message)}</p>`;
+  }
+}
+
+// ===================================
+// Disambiguation Review Functions
+// ===================================
 
 function groupByCandidate(items) {
   const groups = {};
@@ -174,7 +352,7 @@ async function handleMerge(reviewId) {
     updateReviewCount(-1);
   } catch (err) {
     card.classList.remove('processing');
-    alert('Error: ' + err.message);
+    showToast('Error: ' + err.message, 'error', 5000);
   }
 }
 
@@ -189,7 +367,7 @@ async function handleReject(reviewId) {
     updateReviewCount(-1);
   } catch (err) {
     card.classList.remove('processing');
-    alert('Error: ' + err.message);
+    showToast('Error: ' + err.message, 'error', 5000);
   }
 }
 
@@ -203,7 +381,7 @@ async function handleSkip(reviewId) {
     setTimeout(() => card.remove(), 500);
   } catch (err) {
     card.classList.remove('processing');
-    alert('Error: ' + err.message);
+    showToast('Error: ' + err.message, 'error', 5000);
   }
 }
 
@@ -213,7 +391,7 @@ async function handleBatchMerge(button) {
   const ids = Array.from(checkboxes).map(cb => parseInt(cb.value));
 
   if (ids.length === 0) {
-    alert('Please select at least one item to merge');
+    showToast('Please select at least one item to merge', 'error');
     return;
   }
 
@@ -226,7 +404,7 @@ async function handleBatchMerge(button) {
     updateReviewCount(-ids.length);
   } catch (err) {
     card.classList.remove('processing');
-    alert('Error: ' + err.message);
+    showToast('Error: ' + err.message, 'error', 5000);
   }
 }
 
@@ -244,7 +422,7 @@ async function handleBatchReject(button) {
     updateReviewCount(-ids.length);
   } catch (err) {
     card.classList.remove('processing');
-    alert('Error: ' + err.message);
+    showToast('Error: ' + err.message, 'error', 5000);
   }
 }
 

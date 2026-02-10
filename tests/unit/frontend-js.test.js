@@ -348,4 +348,59 @@ describe('Frontend JS files', () => {
       expect(css).toContain('.admin-headshot-search');
     });
   });
+
+  describe('review.js tab bar and quote management', () => {
+    const reviewJs = fs.readFileSync(path.join(process.cwd(), 'public/js/review.js'), 'utf-8');
+
+    it('should have review tab bar with disambiguation and quote management tabs', () => {
+      expect(reviewJs).toContain('review-tab-bar');
+      expect(reviewJs).toContain('Disambiguation Review');
+      expect(reviewJs).toContain('Quote Management');
+    });
+
+    it('should define switchReviewTab function', () => {
+      expect(reviewJs).toContain('function switchReviewTab');
+    });
+
+    it('should define renderQuoteManagementTab function', () => {
+      expect(reviewJs).toContain('async function renderQuoteManagementTab');
+    });
+
+    it('should define loadAdminQuotes function in review.js', () => {
+      expect(reviewJs).toContain('async function loadAdminQuotes');
+    });
+
+    it('should use buildAdminActionsHtml in quote management', () => {
+      expect(reviewJs).toContain('buildAdminActionsHtml');
+    });
+  });
+
+  describe('settings.js should not contain quote management', () => {
+    const settingsJs = fs.readFileSync(path.join(process.cwd(), 'public/js/settings.js'), 'utf-8');
+
+    it('should not have Quote Management section', () => {
+      expect(settingsJs).not.toContain('Quote Management');
+    });
+
+    it('should not have loadAdminQuotes function', () => {
+      expect(settingsJs).not.toContain('function loadAdminQuotes');
+    });
+
+    it('should not have admin-quotes-list container', () => {
+      expect(settingsJs).not.toContain('admin-quotes-list');
+    });
+  });
+
+  describe('styles.css review tab bar', () => {
+    const css = fs.readFileSync(path.join(process.cwd(), 'public/css/styles.css'), 'utf-8');
+
+    it('should have review-tab-bar styles', () => {
+      expect(css).toContain('.review-tab-bar');
+    });
+
+    it('should have review-tab styles', () => {
+      expect(css).toContain('.review-tab');
+      expect(css).toContain('.review-tab.active');
+    });
+  });
 });

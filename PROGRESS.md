@@ -1,9 +1,9 @@
 # Build Progress
 
 ## Current Status
-- **Current Phase:** 8
+- **Current Phase:** 9
 - **Last Updated:** 2026-02-10
-- **Last Commit:** aaa17e4
+- **Last Commit:** 33b020b
 
 ## Phase 0: Environment & Credentials ✅
 - [x] Existing project — all credentials, dependencies, and services already configured
@@ -56,12 +56,12 @@
 - [x] Apply same Google Image search link to quote detail page in `public/js/quote.js` when no photo and admin
 - [x] Write test verifying Google Image search link is generated with correct URL encoding
 
-## Phase 9: Move Quote Management to Review Page
-- [ ] Add "Quote Management" tab/section to review page in `public/js/review.js` — add a tab bar with "Disambiguation Review" (existing) and "Quote Management" (new) tabs
-- [ ] Move quote management rendering logic from `public/js/settings.js` into `public/js/review.js` — search, pagination, quote cards with all admin actions (uses shared admin-actions.js)
-- [ ] Remove quote management section from `public/js/settings.js` settings page — delete the section HTML generation and related functions that were moved
-- [ ] Update `public/index.html` if any nav or section IDs need adjustment
-- [ ] Write tests verifying quote management renders on review page and is absent from settings
+## Phase 9: Move Quote Management to Review Page ✅
+- [x] Add "Quote Management" tab/section to review page in `public/js/review.js` — add a tab bar with "Disambiguation Review" (existing) and "Quote Management" (new) tabs
+- [x] Move quote management rendering logic from `public/js/settings.js` into `public/js/review.js` — search, pagination, quote cards with all admin actions (uses shared admin-actions.js)
+- [x] Remove quote management section from `public/js/settings.js` settings page — delete the section HTML generation and related functions that were moved
+- [x] No index.html changes needed — review.js already loaded
+- [x] Write tests verifying quote management renders on review page and is absent from settings
 
 ## Phase 10: Reorganize Settings — Move News Sources Under Database
 - [ ] Restructure settings page in `public/js/settings.js` — move the "News Sources" section to render inside/under the "Database" section as a subsection. Database section becomes "Data Management" with subsections: News Sources, Backup/Restore, Backfill Headshots
