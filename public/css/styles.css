@@ -574,6 +574,63 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
 .page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* ===================================
+   Skeleton Loading States
+   =================================== */
+@keyframes skeleton-pulse {
+  0% { opacity: 0.6; }
+  50% { opacity: 0.3; }
+  100% { opacity: 0.6; }
+}
+
+.skeleton {
+  background: var(--bg-secondary);
+  border-radius: var(--radius);
+  animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+.skeleton-text {
+  height: 1rem;
+  margin-bottom: 0.5rem;
+  border-radius: 2px;
+}
+
+.skeleton-text-short { width: 60%; }
+.skeleton-text-long { width: 90%; }
+.skeleton-text-medium { width: 75%; }
+
+.skeleton-heading {
+  height: 1.5rem;
+  width: 70%;
+  margin-bottom: 0.75rem;
+  border-radius: 2px;
+}
+
+.skeleton-avatar {
+  width: 112px;
+  height: 112px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.skeleton-card {
+  display: flex;
+  gap: 1rem;
+  padding: 1.5rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.skeleton-card:last-child {
+  border-bottom: none;
+}
+
+@media (max-width: 400px) {
+  .skeleton-avatar {
+    width: 40px;
+    height: 40px;
+  }
+}
+
+/* ===================================
    Section Dividers
    =================================== */
 .section-rule {

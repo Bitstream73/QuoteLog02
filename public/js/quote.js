@@ -1,6 +1,6 @@
 async function renderQuote(id) {
   const content = document.getElementById('content');
-  content.innerHTML = '<div class="loading">Loading quote...</div>';
+  content.innerHTML = typeof buildSkeletonHtml === 'function' ? buildSkeletonHtml(1) : '<div class="loading">Loading quote...</div>';
   try {
     const data = await API.get(`/quotes/${id}`);
     if (!data.quote) {

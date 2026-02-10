@@ -1,6 +1,6 @@
 async function renderArticle(id) {
   const content = document.getElementById('content');
-  content.innerHTML = '<div class="loading">Loading article...</div>';
+  content.innerHTML = typeof buildSkeletonHtml === 'function' ? buildSkeletonHtml(3) : '<div class="loading">Loading article...</div>';
 
   try {
     const data = await API.get(`/articles/${id}`);

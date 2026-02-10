@@ -86,7 +86,7 @@ function buildAuthorQuoteHtml(q, authorName, authorCategoryContext) {
 
 async function renderAuthor(id) {
   const content = document.getElementById('content');
-  content.innerHTML = '<div class="loading">Loading author...</div>';
+  content.innerHTML = typeof buildSkeletonHtml === 'function' ? buildSkeletonHtml(3) : '<div class="loading">Loading author...</div>';
 
   try {
     const [authorData, quotesData] = await Promise.all([
