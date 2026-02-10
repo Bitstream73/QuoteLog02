@@ -271,6 +271,15 @@ main {
   width: 100%;
 }
 
+@keyframes page-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+#content {
+  animation: page-fade-in 0.2s ease-out;
+}
+
 /* ===================================
    Footer
    =================================== */
@@ -792,6 +801,11 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   background: transparent;
   border-radius: 0;
   box-shadow: none;
+  transition: background-color 0.15s;
+}
+
+.quote-entry:hover {
+  background: var(--bg-secondary);
 }
 
 .quote-entry:last-of-type {
@@ -1948,8 +1962,14 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   padding-bottom: 1.5rem;
   border: none;
   border-bottom: 1px solid var(--border);
+  border-left: 3px solid transparent;
   border-radius: var(--radius);
   background: var(--bg-primary);
+  transition: border-color 0.2s;
+}
+
+.article-group:hover {
+  border-left-color: var(--accent);
 }
 
 .article-group:last-child {
@@ -2123,6 +2143,21 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   display: flex;
   gap: 0.5rem;
   margin-top: 0.5rem;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.quote-entry:hover .share-row,
+.article-group-footer:hover .share-row,
+.article-group:hover .share-row {
+  opacity: 1;
+}
+
+/* Always visible on touch devices (no hover capability) */
+@media (hover: none) {
+  .share-row {
+    opacity: 1;
+  }
 }
 
 .share-btn {
@@ -2265,36 +2300,47 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
 
 /* New quotes notification banner */
 .new-quotes-banner {
-  background: var(--accent-light);
-  border: 1px solid var(--accent);
-  color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  font-family: var(--font-ui);
+  font-weight: 600;
+  font-size: 0.85rem;
+  letter-spacing: 0.02em;
+  text-align: center;
   padding: 0.6rem 1rem;
   margin-bottom: 1rem;
   border-radius: var(--radius);
-  font-family: var(--font-ui);
-  font-size: 0.85rem;
-  font-weight: 500;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 0.75rem;
+  animation: banner-slide-in 0.3s ease-out;
 }
 
+@keyframes banner-slide-in {
+  from { transform: translateY(-100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.new-quotes-banner button,
 .new-quotes-refresh-btn {
-  background: var(--accent);
+  background: rgba(255,255,255,0.2);
   color: #fff;
-  border: none;
-  padding: 0.3rem 0.8rem;
+  border: 1px solid rgba(255,255,255,0.4);
   border-radius: var(--radius);
+  padding: 0.25rem 0.75rem;
+  cursor: pointer;
   font-family: var(--font-ui);
   font-size: 0.8rem;
   font-weight: 600;
-  cursor: pointer;
+  margin-left: 0.5rem;
   transition: background 0.2s;
 }
 
+.new-quotes-banner button:hover,
 .new-quotes-refresh-btn:hover {
-  background: var(--accent-hover);
+  background: rgba(255,255,255,0.35);
 }
 
 /* Clickable article title links */
