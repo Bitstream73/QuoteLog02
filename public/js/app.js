@@ -65,9 +65,9 @@ function initSocket() {
       console.log('Socket disconnected');
     });
 
-    // Initialize vote real-time updates
-    if (typeof initVoteSocket === 'function') {
-      initVoteSocket();
+    // Initialize important? real-time updates
+    if (typeof initImportantSocket === 'function') {
+      initImportantSocket();
     }
   }
 }
@@ -149,6 +149,13 @@ function route() {
     renderAuthor(id);
   } else if (path === '/analytics') {
     renderAnalytics();
+  } else if (path.startsWith('/topic/')) {
+    const slug = path.split('/topic/')[1];
+    if (typeof renderTopicPage === 'function') {
+      renderTopicPage(slug);
+    } else if (typeof renderTopicDetail === 'function') {
+      renderTopicDetail(slug);
+    }
   } else if (path.startsWith('/analytics/topic/')) {
     const slug = path.split('/analytics/topic/')[1];
     renderTopicDetail(slug);
@@ -205,7 +212,7 @@ function updateAdVisibility(path) {
   if (!adContainer) return;
 
   const isPublicPage = path === '/' || path === '' ||
-    path.startsWith('/quote/') || path.startsWith('/author/') || path.startsWith('/article/') || path.startsWith('/analytics');
+    path.startsWith('/quote/') || path.startsWith('/author/') || path.startsWith('/article/') || path.startsWith('/analytics') || path.startsWith('/topic/');
 
   if (isPublicPage && !isStandalone) {
     adContainer.style.display = '';

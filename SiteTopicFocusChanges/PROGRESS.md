@@ -1,9 +1,9 @@
 # Build Progress
 
 ## Current Status
-- **Current Phase:** 5
+- **Current Phase:** 6
 - **Last Updated:** 2026-02-11
-- **Last Commit:** phase-4: add topics system with materialization, admin CRUD, public endpoints
+- **Last Commit:** phase-5: add trending calculator, analytics endpoints, and recalculation triggers
 
 ## Phase 0: Environment & Prerequisites ✅
 - [x] Existing codebase functional with 214+ passing tests
@@ -50,16 +50,16 @@
 - [x] Add GET `/api/topics` and GET `/api/topics/:slug` public endpoints to a new `src/routes/topics.js`
 - [x] Write integration tests for topic CRUD, materialization, suggestion, and public endpoints
 
-## Phase 5: Trending Score Calculation & Caching
-- [ ] Create `src/services/trendingCalculator.js` — compute trending_score for quotes, articles, persons, topics (see docs/TRENDING_SYSTEM.md)
-- [ ] Integrate trendingCalculator into `src/services/scheduler.js` — run after materializer
-- [ ] Add recalculation trigger after important toggle in `src/routes/importants.js`
-- [ ] Add recalculation trigger after share event in `src/routes/tracking.js`
-- [ ] Add GET `/api/analytics/trending-topics` endpoint — paginated, sorted by trending_score
-- [ ] Add GET `/api/analytics/trending-sources` endpoint — articles sorted by trending_score
-- [ ] Add GET `/api/analytics/trending-quotes` endpoint — quote of day/week/month + recent sorted list
-- [ ] Add GET `/api/analytics/all-sources` endpoint — all articles with quotes, newest first
-- [ ] Write integration tests for trending calculation, caching, and all 4 tab endpoints
+## Phase 5: Trending Score Calculation & Caching ✅
+- [x] Create `src/services/trendingCalculator.js` — compute trending_score for quotes, articles, persons, topics (see docs/TRENDING_SYSTEM.md)
+- [x] Integrate trendingCalculator into `src/services/scheduler.js` — run after materializer
+- [x] Add recalculation trigger after important toggle in `src/routes/importants.js`
+- [x] Add recalculation trigger after share event in `src/routes/tracking.js`
+- [x] Add GET `/api/analytics/trending-topics` endpoint — paginated, sorted by trending_score
+- [x] Add GET `/api/analytics/trending-sources` endpoint — articles sorted by trending_score
+- [x] Add GET `/api/analytics/trending-quotes` endpoint — quote of day/week/month + recent sorted list
+- [x] Add GET `/api/analytics/all-sources` endpoint — all articles with quotes, newest first
+- [x] Write integration tests for trending calculation, caching, and all 4 tab endpoints
 
 ## Phase 6: Frontend — Homepage Tabs & Quote Block
 - [ ] Create `public/js/important.js` — reusable Important? button component (see docs/HOMEPAGE_REDESIGN.md)

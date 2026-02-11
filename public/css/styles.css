@@ -3031,3 +3031,450 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+/* ======= Phase 6: Important? Button ======= */
+
+.important-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  background: none;
+  border: 1.5px solid var(--text-muted);
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: all 0.15s;
+}
+
+.important-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.important-btn--active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+.important-count {
+  font-weight: 700;
+}
+
+/* ======= Phase 6: Homepage Tabs ======= */
+
+.homepage-tabs {
+  display: flex;
+  border-bottom: 2px solid var(--border);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  gap: 0;
+  margin-bottom: 1rem;
+}
+
+.homepage-tab {
+  flex: 1;
+  min-width: fit-content;
+  padding: 10px 16px;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  cursor: pointer;
+  color: var(--text-muted);
+  white-space: nowrap;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.homepage-tab:hover {
+  color: var(--accent);
+}
+
+.homepage-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+/* ======= Phase 6: Quote Block ======= */
+
+.quote-block {
+  padding: 1rem;
+  margin-bottom: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card-bg, var(--bg));
+}
+
+.quote-block__text {
+  font-family: 'Source Serif 4', Georgia, serif;
+  font-size: 1.05rem;
+  line-height: 1.6;
+  color: var(--text);
+  cursor: pointer;
+  margin-bottom: 0.5rem;
+}
+
+.quote-block__context {
+  font-style: italic;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+  cursor: pointer;
+}
+
+.quote-block__meta-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.quote-block__datetime {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.quote-block__views {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.quote-block__author {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 0.75rem;
+  cursor: pointer;
+}
+
+.quote-block__headshot {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.quote-block__author-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.quote-block__author-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.quote-block__author-desc {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.quote-block__footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.quote-block__links {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.quote-block__source-link {
+  font-size: 0.8rem;
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.quote-block__source-link:hover {
+  text-decoration: underline;
+}
+
+.quote-block__topic-tag {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.quote-block__topic-tag:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.quote-block__share {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.quote-block__share-count {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-left: 4px;
+}
+
+/* ======= Phase 6: Share Buttons ======= */
+
+.share-buttons {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.share-buttons .share-btn {
+  padding: 4px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, background 0.15s;
+}
+
+.share-buttons .share-btn:hover {
+  color: var(--accent);
+  background: var(--hover-bg, rgba(0,0,0,0.05));
+}
+
+/* ======= Phase 6: Topic Card ======= */
+
+.topic-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.25rem;
+  margin-bottom: 1.5rem;
+  background: var(--card-bg, var(--bg));
+}
+
+.topic-card__name {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 1.3rem;
+  margin: 0 0 0.5rem;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.topic-card__name:hover {
+  color: var(--accent);
+}
+
+.topic-card__context {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  margin: 0 0 1rem;
+}
+
+.topic-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.topic-card__see-more {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.topic-card__see-more:hover {
+  text-decoration: underline;
+}
+
+/* ======= Phase 6: Source Card ======= */
+
+.source-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.25rem;
+  margin-bottom: 1.5rem;
+  background: var(--card-bg, var(--bg));
+}
+
+.source-card__header {
+  margin-bottom: 1rem;
+}
+
+.source-card__title {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 1.2rem;
+  margin: 0 0 0.25rem;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.source-card__title:hover {
+  color: var(--accent);
+}
+
+.source-card__meta {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.source-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.source-card__see-more {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.source-card__see-more:hover {
+  text-decoration: underline;
+}
+
+/* ======= Phase 6: Sort Buttons ======= */
+
+.sort-btn {
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: all 0.15s;
+}
+
+.sort-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.sort-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+.trending-quotes__sort,
+.all-tab__sort {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 1rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+/* ======= Phase 6: Trending Section Headings ======= */
+
+.trending-section-heading {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 1.3rem;
+  margin: 1.5rem 0 0.75rem;
+  color: var(--text);
+}
+
+.trending-section-heading:first-child {
+  margin-top: 0;
+}
+
+.trending-disclaimer {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin: 1rem 0;
+}
+
+/* ======= Phase 6: Topic Page ======= */
+
+.topic-page {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+.topic-page h1 {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 1.8rem;
+  margin: 0 0 0.5rem;
+}
+
+.topic-page__description {
+  font-size: 0.95rem;
+  color: var(--text-muted);
+  margin-bottom: 1rem;
+}
+
+.topic-page__actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.topic-page__sort {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 1rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+/* ======= Phase 6: Mobile Responsive ======= */
+
+@media (max-width: 600px) {
+  .homepage-tab {
+    font-size: 0.65rem;
+    padding: 8px 10px;
+  }
+
+  .quote-block {
+    padding: 0.75rem;
+  }
+
+  .topic-card,
+  .source-card {
+    padding: 1rem;
+  }
+
+  .quote-block__meta-row {
+    gap: 8px;
+  }
+}
