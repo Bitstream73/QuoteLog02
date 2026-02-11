@@ -4,6 +4,7 @@ import { requireAdmin } from '../middleware/auth.js';
 import { createBackup, listBackups, exportDatabaseJson, importDatabaseJson } from '../services/backup.js';
 import { backfillHeadshots } from '../services/personPhoto.js';
 import { storeTopicsAndKeywords } from '../services/quoteDeduplicator.js';
+import { embedQuote } from '../services/vectorDb.js';
 import { getDb } from '../config/database.js';
 import config from '../config/index.js';
 import logger from '../services/logger.js';
@@ -157,6 +158,62 @@ Return: { "topics": [...], "keywords": [...] }`;
       processed,
       errors,
       remaining: remaining - processed,
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Backfill failed: ' + err.message });
+  }
+});
+
+// Backfill Pinecone with enriched quote data (context + person_name)
+router.post('/backfill-pinecone', async (req, res) => {
+  const batchSize = Math.min(parseInt(req.body?.batch_size) || 50, 200);
+
+  if (!config.pineconeApiKey || !config.pineconeIndexHost) {
+    return res.status(400).json({ error: 'Pinecone not configured' });
+  }
+
+  try {
+    const db = getDb();
+
+    const quotes = db.prepare(`
+      SELECT q.id, q.text, q.context, q.person_id, p.canonical_name
+      FROM quotes q
+      JOIN persons p ON p.id = q.person_id
+      WHERE q.is_visible = 1 AND q.canonical_quote_id IS NULL
+      ORDER BY q.created_at DESC
+      LIMIT ?
+    `).all(batchSize);
+
+    if (quotes.length === 0) {
+      return res.json({ message: 'No quotes to backfill', processed: 0, errors: 0, remaining: 0 });
+    }
+
+    const totalVisible = db.prepare(`
+      SELECT COUNT(*) AS count FROM quotes
+      WHERE is_visible = 1 AND canonical_quote_id IS NULL
+    `).get().count;
+
+    let processed = 0;
+    let errors = 0;
+
+    for (const quote of quotes) {
+      try {
+        await embedQuote(quote.id, quote.text, quote.person_id, quote.context, quote.canonical_name);
+        processed++;
+      } catch (err) {
+        logger.error('admin', 'backfill_pinecone_error', { quoteId: quote.id, error: err.message });
+        errors++;
+      }
+
+      // Small delay to avoid rate limits
+      await new Promise(r => setTimeout(r, 100));
+    }
+
+    res.json({
+      message: 'Pinecone backfill complete',
+      processed,
+      errors,
+      remaining: totalVisible - processed,
     });
   } catch (err) {
     res.status(500).json({ error: 'Backfill failed: ' + err.message });

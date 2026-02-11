@@ -589,20 +589,24 @@ async function renderHome() {
   if (searchInput) searchInput.value = _currentSearch;
 
   try {
-    const queryParams = new URLSearchParams({
-      page: '1',
-      limit: '50',
-    });
-    if (_activeCategory === 'Top Stories') {
-      queryParams.set('tab', 'top-stories');
+    // Use semantic search API when search is active, otherwise use main quotes endpoint
+    let quotesPromise;
+    if (_currentSearch) {
+      const searchParams = new URLSearchParams({ q: _currentSearch, page: '1', limit: '50' });
+      quotesPromise = API.get('/quotes/search?' + searchParams.toString());
     } else {
-      queryParams.set('category', _activeCategory);
+      const queryParams = new URLSearchParams({ page: '1', limit: '50' });
+      if (_activeCategory === 'Top Stories') {
+        queryParams.set('tab', 'top-stories');
+      } else {
+        queryParams.set('category', _activeCategory);
+      }
+      if (_activeSubFilter) queryParams.set('subFilter', _activeSubFilter);
+      quotesPromise = API.get('/quotes?' + queryParams.toString());
     }
-    if (_activeSubFilter) queryParams.set('subFilter', _activeSubFilter);
-    if (_currentSearch) queryParams.set('search', _currentSearch);
 
     const [quotesData, reviewStats] = await Promise.all([
-      API.get('/quotes?' + queryParams.toString()),
+      quotesPromise,
       API.get('/review/stats').catch(() => ({ pending: 0 })),
     ]);
 
@@ -613,8 +617,9 @@ async function renderHome() {
 
     // Search results header
     if (_currentSearch) {
+      const methodLabel = quotesData.searchMethod === 'semantic' ? ' (semantic)' : '';
       html += `<div class="search-results-header">
-        <h2>Search results for "${escapeHtml(_currentSearch)}"</h2>
+        <h2>Search results for "${escapeHtml(_currentSearch)}"${methodLabel}</h2>
         <button class="btn btn-secondary btn-sm" onclick="clearSearch()">Clear Search</button>
       </div>`;
     }

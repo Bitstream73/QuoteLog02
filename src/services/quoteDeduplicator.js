@@ -469,9 +469,9 @@ function insertNewQuote(text, quoteType, context, sourceUrl, personId, articleId
     logger.debug('deduplicator', 'keyword_extraction_failed', { quoteId, error: err.message });
   }
 
-  // Try to index in Pinecone (async, don't await)
+  // Try to index in Pinecone (async, don't await) — enriched with context + person name
   if (config.pineconeApiKey && config.pineconeIndexHost) {
-    embedQuote(quoteId, text, personId).catch(err => {
+    embedQuote(quoteId, text, personId, context, person?.canonical_name).catch(err => {
       logger.debug('deduplicator', 'pinecone_index_failed', { error: err.message });
     });
   }
