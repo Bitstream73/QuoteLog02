@@ -774,6 +774,88 @@ function loadNewQuotes() {
   renderHome();
 }
 
+// ======= Topic Page =======
+
+/**
+ * Render a full topic page at /topic/:slug
+ */
+async function renderTopicPage(slug) {
+  const content = document.getElementById('content');
+  content.innerHTML = buildSkeletonHtml(4);
+
+  try {
+    const data = await API.get(`/topics/${slug}`);
+    if (!data.topic) {
+      content.innerHTML = '<div class="empty-state"><h3>Topic not found</h3><p><a href="/" onclick="navigate(event, \'/\')" style="color:var(--accent)">Back to home</a></p></div>';
+      return;
+    }
+
+    const topic = data.topic;
+    const quotes = data.quotes || [];
+
+    // Fetch important statuses
+    const entityKeys = [`topic:${topic.id}`, ...quotes.map(q => `quote:${q.id}`)];
+    await fetchImportantStatuses(entityKeys);
+
+    const isTopicImportant = _importantStatuses[`topic:${topic.id}`] || false;
+
+    let html = `
+      <div class="topic-page">
+        <p style="margin-bottom:1rem;font-family:var(--font-ui);font-size:0.85rem">
+          <a href="/" onclick="navigate(event, '/')" style="color:var(--accent);text-decoration:none">&larr; Back to home</a>
+        </p>
+        <h1>${escapeHtml(topic.name)}</h1>
+        ${topic.description ? `<p class="topic-page__description">${escapeHtml(topic.description)}</p>` : ''}
+        ${topic.context ? `<p class="topic-page__description">${escapeHtml(topic.context)}</p>` : ''}
+        <div class="topic-page__actions">
+          ${renderImportantButton('topic', topic.id, topic.importants_count || 0, isTopicImportant)}
+          ${buildShareButtonsHtml('topic', topic.id, topic.name, '')}
+        </div>
+    `;
+
+    if (quotes.length === 0) {
+      html += '<div class="empty-state"><h3>No quotes in this topic yet</h3></div>';
+    } else {
+      html += `<p class="quote-count">${data.total || quotes.length} quotes</p>`;
+      for (const q of quotes) {
+        const isQImp = _importantStatuses[`quote:${q.id}`] || false;
+        html += buildQuoteBlockHtml(q, [], isQImp);
+      }
+
+      // Pagination
+      const total = data.total || quotes.length;
+      const limit = data.limit || 20;
+      const page = data.page || 1;
+      const totalPages = Math.ceil(total / limit);
+      if (totalPages > 1) {
+        html += '<div class="pagination">';
+        for (let i = 1; i <= Math.min(totalPages, 10); i++) {
+          html += `<button class="page-btn ${i === page ? 'active' : ''}" onclick="loadTopicPage('${escapeHtml(slug)}', ${i})">${i}</button>`;
+        }
+        html += '</div>';
+      }
+    }
+
+    html += '</div>';
+    content.innerHTML = html;
+    initViewTracking();
+  } catch (err) {
+    content.innerHTML = `<div class="empty-state"><h3>Error</h3><p>${escapeHtml(err.message)}</p></div>`;
+  }
+}
+
+async function loadTopicPage(slug, page) {
+  const content = document.getElementById('content');
+  content.innerHTML = buildSkeletonHtml(4);
+  try {
+    const data = await API.get(`/topics/${slug}?page=${page}`);
+    // Re-render the full page
+    renderTopicPage(slug);
+  } catch (err) {
+    content.innerHTML = `<div class="empty-state"><h3>Error</h3><p>${escapeHtml(err.message)}</p></div>`;
+  }
+}
+
 /**
  * Update the review badge count
  */

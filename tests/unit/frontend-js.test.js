@@ -584,4 +584,46 @@ describe('Frontend JS files', () => {
       expect(css).toContain('.share-buttons');
     });
   });
+
+  // Phase 7: Topic page rendering
+  describe('home.js topic page rendering', () => {
+    const homeJs = fs.readFileSync(path.join(process.cwd(), 'public/js/home.js'), 'utf-8');
+
+    it('should define renderTopicPage function', () => {
+      expect(homeJs).toContain('async function renderTopicPage');
+    });
+  });
+
+  // Phase 7: quote.js replaces vote with Important?
+  describe('quote.js Important? integration', () => {
+    const quoteJs = fs.readFileSync(path.join(process.cwd(), 'public/js/quote.js'), 'utf-8');
+
+    it('should use renderImportantButton instead of renderVoteControls', () => {
+      expect(quoteJs).toContain('renderImportantButton');
+      expect(quoteJs).not.toContain('renderVoteControls');
+    });
+  });
+
+  // Phase 7: article.js uses Source label and Important?
+  describe('article.js Source label and Important?', () => {
+    const articleJs = fs.readFileSync(path.join(process.cwd(), 'public/js/article.js'), 'utf-8');
+
+    it('should use renderImportantButton for article', () => {
+      expect(articleJs).toContain('renderImportantButton');
+    });
+
+    it('should label as Source not Article in heading', () => {
+      expect(articleJs).toContain('Source');
+    });
+  });
+
+  // Phase 7: author.js replaces vote with Important?
+  describe('author.js Important? integration', () => {
+    const authorJs = fs.readFileSync(path.join(process.cwd(), 'public/js/author.js'), 'utf-8');
+
+    it('should use renderImportantButton instead of renderVoteControls', () => {
+      expect(authorJs).toContain('renderImportantButton');
+      expect(authorJs).not.toContain('renderVoteControls');
+    });
+  });
 });
