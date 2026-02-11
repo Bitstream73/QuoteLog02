@@ -88,9 +88,21 @@ export function indexQuoteKeywords(quoteId, context, text) {
     keywords.push(...textKeywords);
   }
 
-  const insert = db.prepare('INSERT INTO quote_keywords (quote_id, keyword) VALUES (?, ?)');
+  const upsertKeyword = db.prepare(
+    `INSERT INTO keywords (name, name_normalized, keyword_type) VALUES (?, ?, 'concept')
+     ON CONFLICT(name) DO NOTHING`
+  );
+  const getKeyword = db.prepare('SELECT id FROM keywords WHERE name = ?');
+  const linkKeyword = db.prepare(
+    'INSERT OR IGNORE INTO quote_keywords (quote_id, keyword_id) VALUES (?, ?)'
+  );
+
   for (const keyword of keywords) {
-    insert.run(quoteId, keyword);
+    upsertKeyword.run(keyword, keyword.toLowerCase());
+    const row = getKeyword.get(keyword);
+    if (row) {
+      linkKeyword.run(quoteId, row.id);
+    }
   }
 
   return keywords;
@@ -107,17 +119,28 @@ export function backfillKeywords() {
     SELECT q.id, q.context, q.text
     FROM quotes q
     LEFT JOIN quote_keywords qk ON qk.quote_id = q.id
-    WHERE qk.id IS NULL AND q.is_visible = 1
+    WHERE qk.keyword_id IS NULL AND q.is_visible = 1
   `).all();
 
   let count = 0;
-  const insert = db.prepare('INSERT INTO quote_keywords (quote_id, keyword) VALUES (?, ?)');
+  const upsertKeyword = db.prepare(
+    `INSERT INTO keywords (name, name_normalized, keyword_type) VALUES (?, ?, 'concept')
+     ON CONFLICT(name) DO NOTHING`
+  );
+  const getKeyword = db.prepare('SELECT id FROM keywords WHERE name = ?');
+  const linkKeyword = db.prepare(
+    'INSERT OR IGNORE INTO quote_keywords (quote_id, keyword_id) VALUES (?, ?)'
+  );
 
   for (const q of quotes) {
     const source = q.context || q.text || '';
     const keywords = extractKeywords(source);
     for (const keyword of keywords) {
-      insert.run(q.id, keyword);
+      upsertKeyword.run(keyword, keyword.toLowerCase());
+      const row = getKeyword.get(keyword);
+      if (row) {
+        linkKeyword.run(q.id, row.id);
+      }
     }
     if (keywords.length > 0) count++;
   }
