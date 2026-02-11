@@ -3,6 +3,31 @@ import { getDb } from '../config/database.js';
 
 const router = Router();
 
+/**
+ * Enrich an array of quotes with their top 2 topics
+ */
+function enrichQuotesWithTopics(db, quotes) {
+  if (!quotes || quotes.length === 0) return quotes;
+  const quoteIds = quotes.map(q => q.id);
+  const placeholders = quoteIds.map(() => '?').join(',');
+  const rows = db.prepare(`
+    SELECT qt.quote_id, t.name, t.slug
+    FROM quote_topics qt
+    JOIN topics t ON t.id = qt.topic_id
+    WHERE qt.quote_id IN (${placeholders})
+  `).all(...quoteIds);
+
+  const topicMap = {};
+  for (const row of rows) {
+    if (!topicMap[row.quote_id]) topicMap[row.quote_id] = [];
+    if (topicMap[row.quote_id].length < 2) {
+      topicMap[row.quote_id].push({ name: row.name, slug: row.slug });
+    }
+  }
+
+  return quotes.map(q => ({ ...q, topics: topicMap[q.id] || [] }));
+}
+
 // GET /api/analytics/trending-topics - Topics sorted by trending_score, each with top 3 quotes
 router.get('/trending-topics', (req, res) => {
   try {
@@ -20,7 +45,8 @@ router.get('/trending-topics', (req, res) => {
 
     // For each topic, get top 3 quotes
     const getTopQuotes = db.prepare(`
-      SELECT q.id, q.text, q.quote_datetime, q.importants_count, q.share_count, q.created_at,
+      SELECT q.id, q.text, q.context, q.quote_datetime, q.importants_count, q.share_count,
+        q.created_at,
         p.id as person_id, p.canonical_name as person_name, p.photo_url,
         p.category_context, a.id as article_id, a.title as article_title,
         a.url as article_url, s.domain as source_domain, s.name as source_name
@@ -32,13 +58,13 @@ router.get('/trending-topics', (req, res) => {
       LEFT JOIN sources s ON s.id = a.source_id
       WHERE q.is_visible = 1
       GROUP BY q.id
-      ORDER BY q.importants_count DESC, q.created_at DESC
+      ORDER BY q.created_at DESC
       LIMIT 3
     `);
 
     const topicsWithQuotes = topics.map(t => ({
       ...t,
-      quotes: getTopQuotes.all(t.id),
+      quotes: enrichQuotesWithTopics(db, getTopQuotes.all(t.id)),
     }));
 
     res.json({ topics: topicsWithQuotes });
@@ -226,19 +252,28 @@ router.get('/trending-sources', (req, res) => {
 
     // For each article, get top 3 quotes
     const getTopQuotes = db.prepare(`
-      SELECT q.id, q.text, q.importants_count, q.share_count, q.created_at,
-        p.id as person_id, p.canonical_name as person_name, p.photo_url
+      SELECT q.id, q.text, q.context, q.quote_datetime, q.importants_count, q.share_count,
+        q.created_at,
+        p.id as person_id, p.canonical_name as person_name, p.photo_url,
+        p.category_context
       FROM quotes q
       JOIN quote_articles qa ON qa.quote_id = q.id AND qa.article_id = ?
       JOIN persons p ON p.id = q.person_id
       WHERE q.is_visible = 1
-      ORDER BY q.importants_count DESC, q.created_at DESC
+      ORDER BY q.created_at DESC
       LIMIT 3
     `);
 
     const articlesWithQuotes = articles.map(a => ({
       ...a,
-      quotes: getTopQuotes.all(a.id),
+      quotes: enrichQuotesWithTopics(db, getTopQuotes.all(a.id).map(q => ({
+        ...q,
+        article_id: a.id,
+        article_title: a.title,
+        article_url: a.url,
+        source_domain: a.source_domain,
+        source_name: a.source_name,
+      }))),
     }));
 
     res.json({ articles: articlesWithQuotes });
@@ -260,6 +295,7 @@ router.get('/trending-quotes', (req, res) => {
       SELECT q.id, q.text, q.context, q.quote_datetime, q.importants_count, q.share_count,
         q.trending_score, q.created_at,
         p.id as person_id, p.canonical_name as person_name, p.photo_url,
+        p.category_context,
         a.id as article_id, a.title as article_title, a.url as article_url,
         s.domain as source_domain, s.name as source_name
       FROM quotes q
@@ -293,11 +329,17 @@ router.get('/trending-quotes', (req, res) => {
       'SELECT COUNT(*) as count FROM quotes WHERE is_visible = 1 AND canonical_quote_id IS NULL'
     ).get().count;
 
+    // Enrich all quotes with topics
+    const allQuotes = [quoteOfDay, quoteOfWeek, quoteOfMonth, ...recentQuotes].filter(Boolean);
+    const enriched = enrichQuotesWithTopics(db, allQuotes);
+    const enrichedMap = {};
+    for (const q of enriched) enrichedMap[q.id] = q;
+
     res.json({
-      quote_of_day: quoteOfDay || null,
-      quote_of_week: quoteOfWeek || null,
-      quote_of_month: quoteOfMonth || null,
-      recent_quotes: recentQuotes,
+      quote_of_day: quoteOfDay ? enrichedMap[quoteOfDay.id] || quoteOfDay : null,
+      quote_of_week: quoteOfWeek ? enrichedMap[quoteOfWeek.id] || quoteOfWeek : null,
+      quote_of_month: quoteOfMonth ? enrichedMap[quoteOfMonth.id] || quoteOfMonth : null,
+      recent_quotes: recentQuotes.map(q => enrichedMap[q.id] || q),
       total,
       page,
       limit,
@@ -335,19 +377,28 @@ router.get('/all-sources', (req, res) => {
 
     // For each article, get top 3 quotes
     const getTopQuotes = db.prepare(`
-      SELECT q.id, q.text, q.importants_count, q.share_count, q.created_at,
-        p.id as person_id, p.canonical_name as person_name, p.photo_url
+      SELECT q.id, q.text, q.context, q.quote_datetime, q.importants_count, q.share_count,
+        q.created_at,
+        p.id as person_id, p.canonical_name as person_name, p.photo_url,
+        p.category_context
       FROM quotes q
       JOIN quote_articles qa ON qa.quote_id = q.id AND qa.article_id = ?
       JOIN persons p ON p.id = q.person_id
       WHERE q.is_visible = 1
-      ORDER BY q.importants_count DESC, q.created_at DESC
+      ORDER BY q.created_at DESC
       LIMIT 3
     `);
 
     const articlesWithQuotes = articles.map(a => ({
       ...a,
-      quotes: getTopQuotes.all(a.id),
+      quotes: enrichQuotesWithTopics(db, getTopQuotes.all(a.id).map(q => ({
+        ...q,
+        article_id: a.id,
+        article_title: a.title,
+        article_url: a.url,
+        source_domain: a.source_domain,
+        source_name: a.source_name,
+      }))),
     }));
 
     res.json({ articles: articlesWithQuotes, total, page, limit });

@@ -190,7 +190,7 @@ function buildQuoteBlockHtml(q, topics, isImportant) {
   const personName = q.person_name || q.personName || '';
   const personId = q.person_id || q.personId || '';
   const photoUrl = q.photo_url || q.photoUrl || '';
-  const personCategoryContext = q.person_category_context || q.personCategoryContext || '';
+  const personCategoryContext = q.person_category_context || q.personCategoryContext || q.category_context || '';
   const articleId = q.article_id || q.articleId || '';
   const articleTitle = q.article_title || q.articleTitle || '';
   const articleUrl = q.article_url || q.articleUrl || '';
@@ -227,7 +227,7 @@ function buildQuoteBlockHtml(q, topics, isImportant) {
     : '';
 
   return `
-    <div class="quote-block" data-quote-id="${q.id}" data-track-type="quote" data-track-id="${q.id}">
+    <div class="quote-block" data-quote-id="${q.id}" data-track-type="quote" data-track-id="${q.id}" data-created-at="${q.created_at || ''}" data-importance="${(importantsCount + shareCount + viewCount) || 0}">
       <div class="quote-block__text" onclick="navigateTo('/author/${personId}')">
         ${escapeHtml(truncatedText)}
         ${isLong ? `<a href="#" class="show-more-toggle" onclick="toggleQuoteText(event, ${q.id})">show more</a>` : ''}
@@ -373,14 +373,20 @@ function buildTopicCardHtml(topic, isImportant) {
   // These will be fetched in batch, use cached values
   const quotesHtml = quotes.map(q => {
     const isQImp = _importantStatuses[`quote:${q.id}`] || false;
-    return buildQuoteBlockHtml(q, [], isQImp);
+    return buildQuoteBlockHtml(q, q.topics || [], isQImp);
   }).join('');
 
   return `
     <div class="topic-card" data-track-type="topic" data-track-id="${topic.id}">
       <h2 class="topic-card__name" onclick="navigateTo('/topic/${escapeHtml(topic.slug)}')">${escapeHtml(topic.name)}</h2>
       ${topic.context ? `<p class="topic-card__context">${escapeHtml(topic.context)}</p>` : ''}
-      ${quotesHtml}
+      <div class="card-sort-toggle" data-card-id="topic-${topic.id}">
+        Sort by: <button class="sort-btn active" onclick="sortCardQuotes(this, 'topic-${topic.id}', 'date')">Date</button>
+        <button class="sort-btn" onclick="sortCardQuotes(this, 'topic-${topic.id}', 'importance')">Importance</button>
+      </div>
+      <div class="card-quotes-container" id="card-quotes-topic-${topic.id}">
+        ${quotesHtml}
+      </div>
       <div class="topic-card__actions">
         <a class="topic-card__see-more" onclick="navigateTo('/topic/${escapeHtml(topic.slug)}')">See More</a>
         ${renderImportantButton('topic', topic.id, topic.importants_count || 0, isImportant)}
@@ -388,6 +394,32 @@ function buildTopicCardHtml(topic, isImportant) {
       </div>
     </div>
   `;
+}
+
+/**
+ * Sort quotes within a topic/source card by date or importance
+ */
+function sortCardQuotes(btn, cardId, sortBy) {
+  // Update active button in this card's sort toggle
+  const toggle = btn.closest('.card-sort-toggle');
+  if (toggle) {
+    toggle.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  }
+
+  const container = document.getElementById(`card-quotes-${cardId}`);
+  if (!container) return;
+
+  const quotes = Array.from(container.querySelectorAll('.quote-block'));
+  quotes.sort((a, b) => {
+    if (sortBy === 'importance') {
+      return (parseInt(b.dataset.importance) || 0) - (parseInt(a.dataset.importance) || 0);
+    }
+    // Date sort: newest first
+    return (b.dataset.createdAt || '').localeCompare(a.dataset.createdAt || '');
+  });
+
+  quotes.forEach(q => container.appendChild(q));
 }
 
 // ======= Trending Sources Tab =======
@@ -416,7 +448,7 @@ function buildSourceCardHtml(article, isImportant) {
   const quotes = article.quotes || [];
   const quotesHtml = quotes.map(q => {
     const isQImp = _importantStatuses[`quote:${q.id}`] || false;
-    return buildQuoteBlockHtml(q, [], isQImp);
+    return buildQuoteBlockHtml(q, q.topics || [], isQImp);
   }).join('');
 
   const dateStr = formatRelativeTime(article.published_at);
@@ -430,7 +462,13 @@ function buildSourceCardHtml(article, isImportant) {
           ${dateStr ? `<time class="source-card__date">${dateStr}</time>` : ''}
         </div>
       </div>
-      ${quotesHtml}
+      <div class="card-sort-toggle" data-card-id="source-${article.id}">
+        Sort by: <button class="sort-btn active" onclick="sortCardQuotes(this, 'source-${article.id}', 'date')">Date</button>
+        <button class="sort-btn" onclick="sortCardQuotes(this, 'source-${article.id}', 'importance')">Importance</button>
+      </div>
+      <div class="card-quotes-container" id="card-quotes-source-${article.id}">
+        ${quotesHtml}
+      </div>
       <div class="source-card__actions">
         <a class="source-card__see-more" onclick="navigateTo('/article/${article.id}')">See More</a>
         ${renderImportantButton('article', article.id, article.importants_count || 0, isImportant)}
@@ -458,19 +496,19 @@ async function renderTrendingQuotesTab(container) {
   // Quote of the Day
   if (data.quote_of_day) {
     html += `<h2 class="trending-section-heading">Quote of the Day</h2>`;
-    html += buildQuoteBlockHtml(data.quote_of_day, [], _importantStatuses[`quote:${data.quote_of_day.id}`] || false);
+    html += buildQuoteBlockHtml(data.quote_of_day, data.quote_of_day.topics || [], _importantStatuses[`quote:${data.quote_of_day.id}`] || false);
   }
 
   // Quote of the Week
   if (data.quote_of_week) {
     html += `<h2 class="trending-section-heading">Quote of the Week</h2>`;
-    html += buildQuoteBlockHtml(data.quote_of_week, [], _importantStatuses[`quote:${data.quote_of_week.id}`] || false);
+    html += buildQuoteBlockHtml(data.quote_of_week, data.quote_of_week.topics || [], _importantStatuses[`quote:${data.quote_of_week.id}`] || false);
   }
 
   // Quote of the Month
   if (data.quote_of_month) {
     html += `<h2 class="trending-section-heading">Quote of the Month</h2>`;
-    html += buildQuoteBlockHtml(data.quote_of_month, [], _importantStatuses[`quote:${data.quote_of_month.id}`] || false);
+    html += buildQuoteBlockHtml(data.quote_of_month, data.quote_of_month.topics || [], _importantStatuses[`quote:${data.quote_of_month.id}`] || false);
   }
 
   html += `<p class="trending-disclaimer"><em>*Trending quotes change over time as views and shares change</em></p>`;
@@ -485,7 +523,7 @@ async function renderTrendingQuotesTab(container) {
     </div>`;
     html += `<div id="recent-quotes-list">`;
     for (const q of recentQuotes) {
-      html += buildQuoteBlockHtml(q, [], _importantStatuses[`quote:${q.id}`] || false);
+      html += buildQuoteBlockHtml(q, q.topics || [], _importantStatuses[`quote:${q.id}`] || false);
     }
     html += `</div>`;
   }
@@ -511,7 +549,7 @@ async function sortRecentQuotes(sortBy) {
 
   let html = '';
   for (const q of recentQuotes) {
-    html += buildQuoteBlockHtml(q, [], _importantStatuses[`quote:${q.id}`] || false);
+    html += buildQuoteBlockHtml(q, q.topics || [], _importantStatuses[`quote:${q.id}`] || false);
   }
   listEl.innerHTML = html;
   initViewTracking();
@@ -718,7 +756,7 @@ async function renderSearchResults(content, searchQuery) {
     } else {
       html += `<p class="quote-count">${quotesData.total} quotes found</p>`;
       for (const q of quotesData.quotes) {
-        html += buildQuoteBlockHtml(q, [], false);
+        html += buildQuoteBlockHtml(q, q.topics || [], false);
       }
     }
 
@@ -819,7 +857,7 @@ async function renderTopicPage(slug) {
       html += `<p class="quote-count">${data.total || quotes.length} quotes</p>`;
       for (const q of quotes) {
         const isQImp = _importantStatuses[`quote:${q.id}`] || false;
-        html += buildQuoteBlockHtml(q, [], isQImp);
+        html += buildQuoteBlockHtml(q, q.topics || [], isQImp);
       }
 
       // Pagination

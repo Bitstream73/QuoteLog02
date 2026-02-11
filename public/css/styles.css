@@ -3068,8 +3068,14 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
 }
 
 .important-btn--active {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: #2ea043;
+  border-color: #2ea043;
+  color: white;
+}
+
+.important-btn--active:hover {
+  background: #238636;
+  border-color: #238636;
   color: white;
 }
 
@@ -3487,4 +3493,38 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   .quote-block__meta-row {
     gap: 8px;
   }
+}
+
+/* ======= Card Sort Toggle ======= */
+
+.card-sort-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin: 0.5rem 0;
+  font-family: var(--font-ui, 'Inter', sans-serif);
+}
+
+.card-sort-toggle .sort-btn {
+  font-size: 0.8rem;
+  padding: 2px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  transition: all 0.15s;
+}
+
+.card-sort-toggle .sort-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+.card-quotes-container {
+  display: flex;
+  flex-direction: column;
 }
