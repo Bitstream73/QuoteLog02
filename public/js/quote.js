@@ -24,9 +24,9 @@ async function renderQuote(id) {
       ? `<span class="quote-type-badge quote-type-indirect">Indirect</span>`
       : '';
 
-    // Vote controls for detail page
-    const voteHtml = typeof renderVoteControls === 'function'
-      ? renderVoteControls(q.id, q.voteScore || 0, q.userVote || 0)
+    // Important? button for detail page
+    const importantHtml = typeof renderImportantButton === 'function'
+      ? renderImportantButton('quote', q.id, q.importantsCount || q.importants_count || 0, false)
       : '';
 
     let html = `
@@ -35,7 +35,6 @@ async function renderQuote(id) {
       </p>
       <div class="quote-detail-card">
         <div class="quote-layout" style="gap:1.25rem">
-          ${voteHtml}
           <div class="quote-headshot-col">${headshotHtml}</div>
           <div class="quote-content-col">
             <div class="quote-detail-text">${escapeHtml(q.text)}</div>
@@ -47,7 +46,9 @@ async function renderQuote(id) {
               ${q.personDisambiguation ? `<div class="quote-author-description">${escapeHtml(q.personDisambiguation)}</div>` : ''}
             </div>
             ${q.context ? `<div class="quote-context" style="margin-top:0.75rem">${escapeHtml(q.context)}</div>` : ''}
+            ${q.quote_datetime || q.quoteDateTime ? `<div class="quote-date-inline" style="margin-top:0.5rem"><strong>Quote Date:</strong> ${escapeHtml(q.quote_datetime || q.quoteDateTime)}</div>` : ''}
             ${dateStr ? `<div class="quote-date-inline" style="margin-top:0.5rem">${dateStr}</div>` : ''}
+            <div style="margin-top:0.75rem">${importantHtml}</div>
             ${typeof buildAdminActionsHtml === 'function' ? buildAdminActionsHtml({
               id: q.id, personId: q.personId, personName: q.personName,
               text: q.text, context: q.context, isVisible: q.isVisible,
@@ -81,7 +82,10 @@ async function renderQuote(id) {
     }
 
     // Share buttons
-    html += `<div style="margin-top:1.5rem">${buildShareHtml(q)}</div>`;
+    const shareHtml = typeof buildShareButtonsHtml === 'function'
+      ? buildShareButtonsHtml('quote', q.id, q.text, q.personName)
+      : '';
+    html += `<div style="margin-top:1.5rem">${shareHtml}</div>`;
 
     // Related quotes from same person
     if (data.relatedQuotes && data.relatedQuotes.length > 0) {

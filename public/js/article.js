@@ -18,23 +18,26 @@ async function renderArticle(id) {
         <p style="margin-bottom:0.5rem;font-family:var(--font-ui);font-size:0.85rem">
           <a href="/" onclick="navigateBackToQuotes(event)" style="color:var(--accent);text-decoration:none">&larr; Back to quotes</a>
         </p>
-        <h1 class="page-title" style="font-size:1.8rem;margin-bottom:0.5rem">${escapeHtml(a.title || 'Untitled Article')}</h1>
+        <h1 class="page-title" style="font-size:1.8rem;margin-bottom:0.5rem">${escapeHtml(a.title || 'Untitled Source')}</h1>
         <div style="font-family:var(--font-ui);font-size:0.85rem;color:var(--text-secondary);display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center">
           ${sourceLabel ? `<span class="quote-primary-source">${escapeHtml(sourceLabel)}</span>` : ''}
           ${dateStr ? `<span>${dateStr}</span>` : ''}
-          ${a.url ? `<a href="${escapeHtml(a.url)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">View original article &rarr;</a>` : ''}
+          ${a.url ? `<a href="${escapeHtml(a.url)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">View original &rarr;</a>` : ''}
           ${isAdmin ? `<label class="top-story-label" title="Mark as Top Story">
             <input type="checkbox" ${a.isTopStory ? 'checked' : ''} onchange="toggleArticleTopStory(${a.id}, this.checked)">
             <span class="top-story-label-text">Top Story</span>
           </label>` : ''}
         </div>
+        <div style="margin-top:0.75rem">
+          ${typeof renderImportantButton === 'function' ? renderImportantButton('article', a.id, a.importantsCount || a.importants_count || 0, false) : ''}
+        </div>
       </div>
     `;
 
     if (data.quotes.length === 0) {
-      html += '<div class="empty-state"><h3>No quotes from this article</h3></div>';
+      html += '<div class="empty-state"><h3>No quotes from this source</h3></div>';
     } else {
-      html += `<p class="quote-count">${data.quotes.length} quote${data.quotes.length !== 1 ? 's' : ''} from this article</p>`;
+      html += `<p class="quote-count">${data.quotes.length} quote${data.quotes.length !== 1 ? 's' : ''} from this source</p>`;
 
       // Chart section (only if 2+ quotes)
       if (data.quotes.length >= 2) {
@@ -55,16 +58,21 @@ async function renderArticle(id) {
       }
 
       for (const q of data.quotes) {
-        // Re-use buildQuoteEntryHtml — strip article title/source (already in header) but keep date
-        html += buildQuoteEntryHtml({
-          ...q,
-          articleId: null,
-          articleTitle: null,
-          articlePublishedAt: a.publishedAt,
-          articleUrl: null,
-          primarySourceDomain: null,
-          primarySourceName: null,
-        }, false);
+        // Use buildQuoteBlockHtml — provides new layout with Important? and share buttons
+        html += typeof buildQuoteBlockHtml === 'function'
+          ? buildQuoteBlockHtml({
+              ...q,
+              articleId: null,
+              articleTitle: null,
+              articlePublishedAt: a.publishedAt,
+              articleUrl: null,
+              primarySourceDomain: null,
+              primarySourceName: null,
+              person_name: q.personName,
+              person_id: q.personId,
+              importants_count: q.importantsCount || q.importants_count || 0,
+            }, [], false)
+          : `<div class="quote-block"><p class="quote-block__text">${escapeHtml(q.text)}</p></div>`;
       }
     }
 

@@ -25,7 +25,11 @@ import reviewRouter from './routes/review.js';
 import logsRouter from './routes/logs.js';
 import adminRouter from './routes/admin.js';
 import articlesRouter from './routes/articles.js';
-import votesRouter from './routes/votes.js';
+// votes route kept for reference but unmounted — replaced by importants
+// import votesRouter from './routes/votes.js';
+import importantsRouter from './routes/importants.js';
+import trackingRouter from './routes/tracking.js';
+import topicsRouter from './routes/topics.js';
 import analyticsRouter from './routes/analytics.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -105,7 +109,10 @@ export function createApp({ skipDbInit = false } = {}) {
   app.use('/api/logs', logsRouter);
   app.use('/api/admin', adminRouter);
   app.use('/api/articles', articlesRouter);
-  app.use('/api', votesRouter);
+  // app.use('/api', votesRouter); // unmounted — replaced by importants
+  app.use('/api/importants', importantsRouter);
+  app.use('/api/tracking', trackingRouter);
+  app.use('/api/topics', topicsRouter);
   app.use('/api/analytics', analyticsRouter);
 
   // SPA fallback - serve index.html for all non-API routes

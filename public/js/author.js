@@ -39,52 +39,44 @@ function buildAuthorQuoteHtml(q, authorName, authorCategoryContext) {
     ? `<div class="quote-context">${escapeHtml(q.context)}</div>`
     : '';
 
-  // Share buttons — build share data with author info
-  const shareQ = {
-    id: q.id,
-    text: q.text,
-    personName: authorName,
-    personCategoryContext: authorCategoryContext || '',
-    context: q.context || '',
-    articleTitle: q.articleTitle || '',
-    primarySourceName: q.primarySourceName || q.primarySourceDomain || '',
-    articlePublishedAt: q.articlePublishedAt || q.createdAt || '',
-  };
-  const shareHtml = buildShareHtml(shareQ);
+  // Share buttons
+  const shareHtml = typeof buildShareButtonsHtml === 'function'
+    ? buildShareButtonsHtml('quote', q.id, q.text, authorName)
+    : '';
 
-  // Vote controls
-  const voteHtml = typeof renderVoteControls === 'function'
-    ? renderVoteControls(q.id, q.voteScore || 0, q.userVote || 0)
+  // Important? button
+  const importantHtml = typeof renderImportantButton === 'function'
+    ? renderImportantButton('quote', q.id, q.importantsCount || q.importants_count || q.voteScore || 0, false)
     : '';
 
   return `
     <div class="quote-entry" id="qe-${q.id}">
-      <div class="quote-entry-with-vote">
-        ${voteHtml}
-        <div class="quote-entry-content">
-          <div class="quote-text-row">
-            <p class="quote-text" id="qt-${q.id}">${escapeHtml(truncatedText)}</p>
-            ${isLong ? `<a href="#" class="show-more-toggle" onclick="toggleQuoteText(event, ${q.id})">show more</a>` : ''}
-          </div>
-          <div class="quote-author-block">
-            <div class="quote-author-row">
-              ${quoteTypeHtml}
-              ${dateHtml}
-            </div>
-          </div>
-          ${contextHtml}
-          <div class="quote-sources-row">
-            ${primarySourceHtml}
-            ${articleTitleHtml}
-          </div>
-          ${shareHtml}
-          ${typeof buildAdminActionsHtml === 'function' ? buildAdminActionsHtml({
-            id: q.id, personId: q.personId, personName: authorName,
-            text: q.text, context: q.context, isVisible: q.isVisible,
-            personCategory: null, personCategoryContext: authorCategoryContext,
-            disambiguation: authorCategoryContext
-          }) : ''}
+      <div class="quote-entry-content">
+        <div class="quote-text-row">
+          <p class="quote-text" id="qt-${q.id}">${escapeHtml(truncatedText)}</p>
+          ${isLong ? `<a href="#" class="show-more-toggle" onclick="toggleQuoteText(event, ${q.id})">show more</a>` : ''}
         </div>
+        <div class="quote-author-block">
+          <div class="quote-author-row">
+            ${quoteTypeHtml}
+            ${dateHtml}
+          </div>
+        </div>
+        ${contextHtml}
+        <div class="quote-sources-row">
+          ${primarySourceHtml}
+          ${articleTitleHtml}
+        </div>
+        <div style="display:flex;gap:1rem;align-items:center;margin-top:0.5rem">
+          ${importantHtml}
+          ${shareHtml}
+        </div>
+        ${typeof buildAdminActionsHtml === 'function' ? buildAdminActionsHtml({
+          id: q.id, personId: q.personId, personName: authorName,
+          text: q.text, context: q.context, isVisible: q.isVisible,
+          personCategory: null, personCategoryContext: authorCategoryContext,
+          disambiguation: authorCategoryContext
+        }) : ''}
       </div>
     </div>
   `;
