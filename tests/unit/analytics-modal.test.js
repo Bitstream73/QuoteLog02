@@ -5,30 +5,20 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const chartsJsSrc = fs.readFileSync(path.join(__dirname, '../../public/js/charts.js'), 'utf-8');
 const analyticsJsSrc = fs.readFileSync(path.join(__dirname, '../../public/js/analytics.js'), 'utf-8');
 
-describe('Analytics Dashboard Page', () => {
-  let mod, mockContent, mockElements;
+describe('Analytics Page', () => {
+  let mod, mockContent;
 
   beforeEach(() => {
-    mockElements = {};
+    const mockElements = {};
     mockContent = { innerHTML: '', style: {} };
     mockElements['content'] = mockContent;
-    mockElements['dash-period-wrap'] = { innerHTML: '' };
-    mockElements['dash-kpis'] = { innerHTML: '' };
-    mockElements['dash-top-authors'] = { innerHTML: '' };
-    mockElements['dash-trending-topics'] = { innerHTML: '' };
-    mockElements['dash-heatmap'] = { innerHTML: '' };
-    mockElements['author-compare-input'] = { value: '' };
-    mockElements['author-compare-dropdown'] = { innerHTML: '', style: { display: 'none' } };
-    mockElements['author-compare-tags'] = { innerHTML: '' };
-    mockElements['topic-compare-input'] = { value: '' };
-    mockElements['topic-compare-dropdown'] = { innerHTML: '', style: { display: 'none' } };
-    mockElements['topic-compare-tags'] = { innerHTML: '' };
+    mockElements['analytics-period'] = { value: '30' };
 
     global.document = {
       getElementById: vi.fn((id) => mockElements[id] || null),
+      querySelector: vi.fn(() => null),
       querySelectorAll: vi.fn(() => []),
       addEventListener: vi.fn(),
       body: { style: {} },
@@ -36,112 +26,148 @@ describe('Analytics Dashboard Page', () => {
 
     global.API = {
       get: vi.fn().mockResolvedValue({
-        quotes_today: 10,
-        quotes_this_week: 50,
-        quotes_total: 1000,
-        articles_today: 5,
-        top_author_today: { id: 1, name: 'Test Author', photo_url: null, quote_count: 3 },
-        most_upvoted_today: { id: 1, text: 'Test quote', person_name: 'Author', vote_score: 5 },
-        quotes_per_day: [],
-        period: 'month',
-        authors: [{ id: 1, name: 'Author A', quote_count: 10, category: 'Politician' }],
-        sources: [{ id: 1, name: 'CNN', quote_count: 5, article_count: 3 }],
-        categories: [{ category: 'Politician', quote_count: 10, author_count: 2 }],
-        series: [],
-        buckets: [{ bucket: '2025-02-01', count: 5 }],
-        granularity: 'day',
-        cells: [],
-        topics: [{ keyword: 'economy', count: 5 }],
+        period_days: 30,
+        total_quotes: 100,
+        total_authors: 25,
+        topics: [
+          { id: 1, name: 'U.S. Politics', slug: 'us-politics', quote_count: 50 },
+          { id: 2, name: 'Economy', slug: 'economy', quote_count: 30 },
+        ],
+        keywords: [
+          { id: 1, name: 'Donald Trump', keyword_type: 'person', quote_count: 20 },
+          { id: 2, name: 'Federal Reserve', keyword_type: 'organization', quote_count: 10 },
+        ],
+        authors: [
+          { id: 1, canonical_name: 'Author A', photo_url: null, category: 'Politician', quote_count: 15 },
+        ],
       }),
     };
 
     global.navigate = vi.fn();
     global.escapeHtml = (s) => s || '';
+    global.escapeAttr = (s) => s || '';
     global.console = { ...console, error: vi.fn() };
 
-    const mockChartInstance = { destroy: vi.fn(), update: vi.fn() };
-    global.Chart = vi.fn(() => mockChartInstance);
-    global.Chart.defaults = { font: {}, color: '', plugins: { tooltip: {}, legend: { labels: {} } } };
-
-    // Evaluate both scripts in same scope so chart functions are visible to analytics
     mod = {};
-    const combined = chartsJsSrc + '\n' + analyticsJsSrc +
-      '\nmod.renderAnalyticsPage = renderAnalyticsPage;' +
-      '\nmod.openAnalytics = openAnalytics;' +
-      '\nmod.closeAnalytics = closeAnalytics;' +
-      '\nmod.renderDashPeriodSelector = renderDashPeriodSelector;' +
-      '\nmod.changeDashPeriod = changeDashPeriod;' +
-      '\nmod.loadDashboard = loadDashboard;';
-    const fn = new Function('mod', 'Chart', 'document', 'API', 'escapeHtml', 'navigate', 'console', combined);
-    fn(mod, global.Chart, global.document, global.API, global.escapeHtml, global.navigate, global.console);
+    const combined = analyticsJsSrc +
+      '\nmod.renderAnalytics = renderAnalytics;' +
+      '\nmod.changeAnalyticsPeriod = changeAnalyticsPeriod;' +
+      '\nmod.loadAnalytics = loadAnalytics;' +
+      '\nmod.renderAnalyticsData = renderAnalyticsData;' +
+      '\nmod.formatDateShort = formatDateShort;';
+    const fn = new Function('mod', 'document', 'API', 'escapeHtml', 'escapeAttr', 'navigate', 'console', combined);
+    fn(mod, global.document, global.API, global.escapeHtml, global.escapeAttr, global.navigate, global.console);
   });
 
-  it('renderAnalyticsPage renders dashboard to #content', () => {
-    mod.renderAnalyticsPage();
-    expect(mockContent.innerHTML).toContain('Analytics Dashboard');
-    expect(mockContent.innerHTML).toContain('dash-kpi-row');
-    expect(mockContent.innerHTML).toContain('chart-dash-timeline');
+  it('renderAnalytics sets up page structure', async () => {
+    await mod.renderAnalytics();
+    expect(mockContent.innerHTML).toContain('Analytics');
+    expect(mockContent.innerHTML).toContain('analytics-period');
+    expect(mockContent.innerHTML).toContain('analytics-page');
   });
 
-  it('renderAnalyticsPage renders all dashboard sections', () => {
-    mod.renderAnalyticsPage();
-    expect(mockContent.innerHTML).toContain('Quote Activity');
-    expect(mockContent.innerHTML).toContain('Categories');
-    expect(mockContent.innerHTML).toContain('Top Sources');
-    expect(mockContent.innerHTML).toContain('Compare Authors');
-    expect(mockContent.innerHTML).toContain('Compare Topics');
-    expect(mockContent.innerHTML).toContain('Custom Breakdown');
-    expect(mockContent.innerHTML).toContain('Top Authors');
-    expect(mockContent.innerHTML).toContain('Trending Topics');
-    expect(mockContent.innerHTML).toContain('Category Trends');
-    expect(mockContent.innerHTML).toContain('Activity Pattern');
+  it('renderAnalytics calls API.get with overview endpoint', async () => {
+    await mod.renderAnalytics();
+    expect(global.API.get).toHaveBeenCalledWith('/analytics/overview?days=30');
   });
 
-  it('openAnalytics navigates to /analytics (legacy compat)', () => {
-    mod.openAnalytics();
-    expect(global.navigate).toHaveBeenCalledWith(null, '/analytics');
+  it('changeAnalyticsPeriod updates days and calls API', async () => {
+    // First render to set up the page
+    await mod.renderAnalytics();
+    global.API.get.mockClear();
+    await mod.changeAnalyticsPeriod(7);
+    expect(global.API.get).toHaveBeenCalledWith('/analytics/overview?days=7');
   });
 
-  it('renderDashPeriodSelector shows all four periods', () => {
-    const html = mod.renderDashPeriodSelector('month', 'changeDashPeriod');
-    expect(html).toContain('24h');
-    expect(html).toContain('7 days');
-    expect(html).toContain('30 days');
-    expect(html).toContain('365 days');
+  it('renderAnalyticsData renders stats cards', () => {
+    // Set up DOM for renderAnalyticsData
+    const page = {
+      querySelector: vi.fn((sel) => {
+        if (sel === '.analytics-loading') return { remove: vi.fn() };
+        return null;
+      }),
+      querySelectorAll: vi.fn(() => []),
+      insertAdjacentHTML: vi.fn(),
+    };
+    global.document.querySelector = vi.fn(() => page);
+
+    mod.renderAnalyticsData({
+      total_quotes: 100,
+      total_authors: 25,
+      topics: [{ id: 1, name: 'U.S. Politics', slug: 'us-politics', quote_count: 50 }],
+      keywords: [{ id: 1, name: 'GDP Growth', keyword_type: 'concept', quote_count: 10 }],
+      authors: [{ id: 1, canonical_name: 'Author A', photo_url: null, category: 'Politician', quote_count: 15 }],
+    });
+
+    expect(page.insertAdjacentHTML).toHaveBeenCalled();
+    const html = page.insertAdjacentHTML.mock.calls[0][1];
+    expect(html).toContain('100');
+    expect(html).toContain('25');
+    expect(html).toContain('U.S. Politics');
+    expect(html).toContain('GDP Growth');
+    expect(html).toContain('Author A');
   });
 
-  it('renderDashPeriodSelector marks active period', () => {
-    const html = mod.renderDashPeriodSelector('month', 'changeDashPeriod');
-    expect(html).toMatch(/dash-period-btn active.*30 days/);
+  it('renderAnalyticsData renders topic cloud', () => {
+    const page = {
+      querySelector: vi.fn(() => ({ remove: vi.fn() })),
+      querySelectorAll: vi.fn(() => []),
+      insertAdjacentHTML: vi.fn(),
+    };
+    global.document.querySelector = vi.fn(() => page);
+
+    mod.renderAnalyticsData({
+      total_quotes: 10,
+      total_authors: 2,
+      topics: [
+        { id: 1, name: 'Economy', slug: 'economy', quote_count: 5 },
+        { id: 2, name: 'Trade', slug: 'trade', quote_count: 3 },
+      ],
+      keywords: [],
+      authors: [],
+    });
+
+    const html = page.insertAdjacentHTML.mock.calls[0][1];
+    expect(html).toContain('Trending Topics');
+    expect(html).toContain('topics-cloud');
+    expect(html).toContain('Economy');
+    expect(html).toContain('Trade');
   });
 
-  it('loadDashboard calls section API endpoints', async () => {
-    mod.renderAnalyticsPage();
-    await new Promise(r => setTimeout(r, 50));
-    const calls = global.API.get.mock.calls.map(c => c[0]);
-    expect(calls).toContain('/analytics/overview');
-    expect(calls.some(c => c.startsWith('/analytics/trends/quotes'))).toBe(true);
-    expect(calls.some(c => c.startsWith('/analytics/categories'))).toBe(true);
-    expect(calls.some(c => c.startsWith('/analytics/sources/breakdown'))).toBe(true);
-    expect(calls.some(c => c.startsWith('/analytics/heatmap'))).toBe(true);
+  it('renderAnalyticsData renders keyword groups by type', () => {
+    const page = {
+      querySelector: vi.fn(() => ({ remove: vi.fn() })),
+      querySelectorAll: vi.fn(() => []),
+      insertAdjacentHTML: vi.fn(),
+    };
+    global.document.querySelector = vi.fn(() => page);
+
+    mod.renderAnalyticsData({
+      total_quotes: 10,
+      total_authors: 2,
+      topics: [],
+      keywords: [
+        { id: 1, name: 'Donald Trump', keyword_type: 'person', quote_count: 10 },
+        { id: 2, name: 'Federal Reserve', keyword_type: 'organization', quote_count: 5 },
+      ],
+      authors: [],
+    });
+
+    const html = page.insertAdjacentHTML.mock.calls[0][1];
+    expect(html).toContain('Trending Keywords');
+    expect(html).toContain('keyword-type-person');
+    expect(html).toContain('keyword-type-organization');
   });
 
-  it('renderAnalyticsPage includes comparison builders', () => {
-    mod.renderAnalyticsPage();
-    expect(mockContent.innerHTML).toContain('author-compare-input');
-    expect(mockContent.innerHTML).toContain('topic-compare-input');
+  it('formatDateShort formats dates correctly', () => {
+    const result = mod.formatDateShort('2026-01-15T12:00:00Z');
+    expect(result).toContain('Jan');
+    expect(result).toContain('15');
+    expect(result).toContain('2026');
   });
 
-  it('renderAnalyticsPage includes custom pie selector', () => {
-    mod.renderAnalyticsPage();
-    expect(mockContent.innerHTML).toContain('custom-pie-select');
-    expect(mockContent.innerHTML).toContain('By Category');
-    expect(mockContent.innerHTML).toContain('By Source');
-  });
-
-  it('renderAnalyticsPage includes chart type toggles', () => {
-    mod.renderAnalyticsPage();
-    expect(mockContent.innerHTML).toContain('author-chart-toggle');
-    expect(mockContent.innerHTML).toContain('topic-chart-toggle');
+  it('formatDateShort returns empty for null', () => {
+    expect(mod.formatDateShort(null)).toBe('');
+    expect(mod.formatDateShort('')).toBe('');
   });
 });

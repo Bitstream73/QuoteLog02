@@ -72,6 +72,14 @@ For each quote, return:
 - speaker_category_context: Brief context for the category. For Politicians: party and office (e.g. "Republican, U.S. Senator from Texas"). For Athletes: team and sport (e.g. "Los Angeles Lakers, NBA"). For Business Leaders: company and title. For Entertainers: medium and notable works. For Pundits/Journalists: outlet. For others: relevant affiliation. Null if unknown.
 - quote_type: Always "direct".
 - context: One sentence describing what the quote is about and why it was said.
+- topics: Array of 1-3 broad subject categories this quote relates to. Use consistent, standard category names. Examples: "U.S. Politics", "Foreign Policy", "Criminal Justice", "Healthcare", "Economy", "Technology", "Entertainment", "Sports", "Climate & Environment", "Education", "Immigration", "Civil Rights", "National Security", "Business", "Science", "Media", "Religion", "Housing", "Labor", "Trade". Prefer existing standard names over inventing new ones.
+- keywords: Array of 2-5 specific named entities, events, or concepts relevant to this quote. Rules for keywords:
+  * Use full proper names: "Donald Trump" not "Trump", "Supreme Court" not "court"
+  * Include: specific people mentioned, organizations, named events (e.g. "Epstein Files", "January 6th"), legislation, places
+  * Multi-word entities are ONE keyword: "Epstein Files" is one keyword, not two
+  * Do NOT include generic verbs (said, expressed, explained), adjectives, or common words
+  * Do NOT include the speaker's own name as a keyword (they are already the speaker)
+  * Each keyword should be a proper noun or a recognized named concept
 
 Rules:
 - ONLY extract verbatim quotes that appear inside quotation marks.
@@ -231,6 +239,8 @@ export async function extractQuotesFromArticle(articleText, article, db, io) {
           context: q.context || articleSummary || null,
           sourceUrl: article.url,
           rssMetadata: JSON.stringify(rssMetadata),
+          topics: q.topics || [],
+          keywords: q.keywords || [],
         },
         personId,
         article,

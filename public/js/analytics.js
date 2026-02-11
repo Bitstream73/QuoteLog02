@@ -1,600 +1,279 @@
-// Analytics Dashboard — Full page with interactive charts and comparison tools
+// Analytics page - Trending Topics & Keywords
 
-var _dashPeriod = 'month';
-var _authorCompareIds = [];
-var _topicCompareKeywords = [];
-var _authorChartType = 'line';
-var _topicChartType = 'line';
-var _customPieMetric = 'category';
-var _debounceTimers = {};
+let _analyticsDays = 30;
 
-// --- Legacy modal compat (nav link now navigates to /analytics) ---
-function openAnalytics(e) {
-  if (e) e.preventDefault();
-  navigate(null, '/analytics');
-}
-function closeAnalytics() {
-  if (typeof destroyAllCharts === 'function') destroyAllCharts();
-}
+async function renderAnalytics() {
+  const content = document.getElementById('content');
+  content.innerHTML = `
+    <div class="analytics-page">
+      <div class="analytics-header">
+        <h1>Analytics</h1>
+        <div class="analytics-period">
+          <select id="analytics-period" onchange="changeAnalyticsPeriod(this.value)">
+            <option value="7">Last 7 days</option>
+            <option value="30" selected>Last 30 days</option>
+            <option value="90">Last 90 days</option>
+            <option value="365">Last year</option>
+          </select>
+        </div>
+      </div>
+      <div class="analytics-loading">Loading analytics...</div>
+    </div>
+  `;
 
-// --- Period selector (reused by sub-sections) ---
-function renderDashPeriodSelector(activePeriod, onChangeFn) {
-  var periods = ['day', 'week', 'month', 'year'];
-  var labels = { day: '24h', week: '7 days', month: '30 days', year: '365 days' };
-  return '<div class="dash-period-selector">' +
-    periods.map(function(p) {
-      return '<button class="dash-period-btn' + (p === activePeriod ? ' active' : '') +
-             '" onclick="' + onChangeFn + '(\'' + p + '\')">' + labels[p] + '</button>';
-    }).join('') + '</div>';
+  await loadAnalytics();
 }
 
-// --- Main page render ---
-function renderAnalyticsPage() {
-  var content = document.getElementById('content');
-  if (!content) return;
-
-  content.innerHTML = '\
-<div class="dash">\
-  <div class="dash-header">\
-    <div class="dash-header-left">\
-      <h1 class="dash-title">Analytics Dashboard</h1>\
-      <p class="dash-subtitle">Insights and trends across your quote collection</p>\
-    </div>\
-    <div id="dash-period-wrap">' + renderDashPeriodSelector(_dashPeriod, 'changeDashPeriod') + '</div>\
-  </div>\
-  <div class="dash-kpi-row" id="dash-kpis"></div>\
-  <div class="dash-section" id="sect-timeline">\
-    <div class="dash-section-header"><h2>Quote Activity</h2></div>\
-    <div class="chart-container" style="height:300px"><canvas id="chart-dash-timeline"></canvas></div>\
-  </div>\
-  <div class="dash-grid-2">\
-    <div class="dash-section">\
-      <div class="dash-section-header"><h2>Categories</h2></div>\
-      <div class="chart-container" style="height:320px"><canvas id="chart-dash-categories"></canvas></div>\
-    </div>\
-    <div class="dash-section">\
-      <div class="dash-section-header"><h2>Top Sources</h2></div>\
-      <div class="chart-container" style="height:320px"><canvas id="chart-dash-sources"></canvas></div>\
-    </div>\
-  </div>\
-  <div class="dash-section" id="sect-author-compare">\
-    <div class="dash-section-header">\
-      <h2>Compare Authors</h2>\
-      <div class="dash-chart-toggle" id="author-chart-toggle">\
-        <button class="dash-toggle-btn active" onclick="setAuthorChartType(\'line\')">Line</button>\
-        <button class="dash-toggle-btn" onclick="setAuthorChartType(\'bar\')">Bar</button>\
-      </div>\
-    </div>\
-    <div class="dash-compare-builder">\
-      <div class="dash-compare-search-wrap">\
-        <input type="text" class="dash-compare-input" id="author-compare-input"\
-               placeholder="Search authors to compare..." oninput="debounceAuthorSearch()">\
-        <div class="dash-compare-dropdown" id="author-compare-dropdown"></div>\
-      </div>\
-      <div class="dash-compare-tags" id="author-compare-tags"></div>\
-    </div>\
-    <div class="chart-container" style="height:320px"><canvas id="chart-author-compare"></canvas></div>\
-  </div>\
-  <div class="dash-section" id="sect-topic-compare">\
-    <div class="dash-section-header">\
-      <h2>Compare Topics</h2>\
-      <div class="dash-chart-toggle" id="topic-chart-toggle">\
-        <button class="dash-toggle-btn active" onclick="setTopicChartType(\'line\')">Line</button>\
-        <button class="dash-toggle-btn" onclick="setTopicChartType(\'bar\')">Bar</button>\
-      </div>\
-    </div>\
-    <div class="dash-compare-builder">\
-      <div class="dash-compare-search-wrap">\
-        <input type="text" class="dash-compare-input" id="topic-compare-input"\
-               placeholder="Search topics to compare..." oninput="debounceTopicSearch()">\
-        <div class="dash-compare-dropdown" id="topic-compare-dropdown"></div>\
-      </div>\
-      <div class="dash-compare-tags" id="topic-compare-tags"></div>\
-    </div>\
-    <div class="chart-container" style="height:320px"><canvas id="chart-topic-compare"></canvas></div>\
-  </div>\
-  <div class="dash-section" id="sect-custom-pie">\
-    <div class="dash-section-header">\
-      <h2>Custom Breakdown</h2>\
-      <select class="dash-pie-select" id="custom-pie-select" onchange="changeCustomPie(this.value)">\
-        <option value="category" selected>By Category</option>\
-        <option value="source">By Source</option>\
-        <option value="quote_type">By Quote Type</option>\
-        <option value="top_authors">By Author (Top 10)</option>\
-      </select>\
-    </div>\
-    <div class="dash-grid-2">\
-      <div class="chart-container" style="height:320px"><canvas id="chart-custom-doughnut"></canvas></div>\
-      <div class="chart-container" style="height:320px"><canvas id="chart-custom-bar"></canvas></div>\
-    </div>\
-  </div>\
-  <div class="dash-grid-2">\
-    <div class="dash-section">\
-      <div class="dash-section-header"><h2>Top Authors</h2></div>\
-      <div id="dash-top-authors" class="dash-ranking-list"></div>\
-    </div>\
-    <div class="dash-section">\
-      <div class="dash-section-header"><h2>Trending Topics</h2></div>\
-      <div id="dash-trending-topics" class="dash-topic-cloud"></div>\
-    </div>\
-  </div>\
-  <div class="dash-section" id="sect-category-trends">\
-    <div class="dash-section-header"><h2>Category Trends Over Time</h2></div>\
-    <div class="chart-container" style="height:320px"><canvas id="chart-dash-cat-trends"></canvas></div>\
-  </div>\
-  <div class="dash-section" id="sect-heatmap">\
-    <div class="dash-section-header"><h2>Activity Pattern</h2></div>\
-    <div id="dash-heatmap" class="dash-heatmap-wrap"></div>\
-  </div>\
-</div>';
-
-  if (typeof initChartDefaults === 'function') initChartDefaults();
-  loadDashboard(_dashPeriod);
+async function changeAnalyticsPeriod(days) {
+  _analyticsDays = parseInt(days);
+  await loadAnalytics();
 }
 
-function changeDashPeriod(period) {
-  _dashPeriod = period;
-  if (typeof destroyAllCharts === 'function') destroyAllCharts();
-  var wrap = document.getElementById('dash-period-wrap');
-  if (wrap) wrap.innerHTML = renderDashPeriodSelector(period, 'changeDashPeriod');
-  loadDashboard(period);
-}
-
-function loadDashboard(period) {
-  loadKPIs(period);
-  loadActivityTimeline(period);
-  loadCategoryBreakdown(period);
-  loadSourceBreakdown(period);
-  loadTopAuthorsRanking(period);
-  loadTrendingTopicsList(period);
-  loadCategoryTrends(period);
-  loadHeatmap(period);
-  loadCustomPie(period);
-  // Load comparisons (renders hint text when empty, chart when items selected)
-  loadAuthorComparison();
-  loadTopicComparison();
-}
-
-// --- KPIs ---
-async function loadKPIs(period) {
-  var el = document.getElementById('dash-kpis');
-  if (!el) return;
-  el.innerHTML = '<div class="dash-kpi-card skeleton"></div>'.repeat(6);
+async function loadAnalytics() {
   try {
-    var data = await API.get('/analytics/overview');
-    var authorData = await API.get('/analytics/authors?period=' + period);
-    var sourceData = await API.get('/analytics/sources/breakdown?period=' + period);
-    var uniqueAuthors = authorData.authors ? authorData.authors.length : 0;
-    var uniqueSources = sourceData.sources ? sourceData.sources.length : 0;
-
-    el.innerHTML = '\
-      <div class="dash-kpi-card"><div class="dash-kpi-value">' + data.quotes_today.toLocaleString() + '</div><div class="dash-kpi-label">Quotes Today</div></div>\
-      <div class="dash-kpi-card"><div class="dash-kpi-value">' + data.quotes_this_week.toLocaleString() + '</div><div class="dash-kpi-label">This Week</div></div>\
-      <div class="dash-kpi-card"><div class="dash-kpi-value">' + data.quotes_total.toLocaleString() + '</div><div class="dash-kpi-label">Total Quotes</div></div>\
-      <div class="dash-kpi-card"><div class="dash-kpi-value">' + data.articles_today.toLocaleString() + '</div><div class="dash-kpi-label">Articles Today</div></div>\
-      <div class="dash-kpi-card"><div class="dash-kpi-value">' + uniqueAuthors + '</div><div class="dash-kpi-label">Active Authors</div></div>\
-      <div class="dash-kpi-card"><div class="dash-kpi-value">' + uniqueSources + '</div><div class="dash-kpi-label">Active Sources</div></div>';
+    const data = await API.get(`/analytics/overview?days=${_analyticsDays}`);
+    renderAnalyticsData(data);
   } catch (err) {
-    el.innerHTML = '<div class="dash-error">Failed to load KPIs</div>';
-  }
-}
-
-// --- Activity Timeline ---
-async function loadActivityTimeline(period) {
-  try {
-    var data = await API.get('/analytics/trends/quotes?period=' + period);
-    if (!data.buckets || data.buckets.length === 0) return;
-    if (typeof createTimelineChart !== 'function') return;
-
-    var labels = data.buckets.map(function(b) {
-      if (data.granularity === 'hour') return b.bucket.slice(11, 16);
-      if (data.granularity === 'week') return b.bucket;
-      return b.bucket.slice(5);
-    });
-    var values = data.buckets.map(function(b) { return b.count; });
-    createTimelineChart('chart-dash-timeline', labels, [{ label: 'Quotes', data: values }]);
-  } catch (err) { console.error('Timeline:', err); }
-}
-
-// --- Category Breakdown (Doughnut) ---
-async function loadCategoryBreakdown(period) {
-  try {
-    var data = await API.get('/analytics/categories?period=' + period);
-    if (!data.categories || data.categories.length === 0) return;
-    if (typeof createDoughnutChart !== 'function') return;
-
-    var labels = data.categories.map(function(c) { return c.category; });
-    var values = data.categories.map(function(c) { return c.quote_count; });
-    createDoughnutChart('chart-dash-categories', labels, values);
-  } catch (err) { console.error('Categories:', err); }
-}
-
-// --- Source Breakdown (Horizontal Bar) ---
-async function loadSourceBreakdown(period) {
-  try {
-    var data = await API.get('/analytics/sources/breakdown?period=' + period);
-    if (!data.sources || data.sources.length === 0) return;
-    if (typeof createBarChart !== 'function') return;
-
-    var top = data.sources.slice(0, 10);
-    var labels = top.map(function(s) { return s.name || s.domain; });
-    var values = top.map(function(s) { return s.quote_count; });
-    createBarChart('chart-dash-sources', labels, values);
-  } catch (err) { console.error('Sources:', err); }
-}
-
-// --- Top Authors Ranking ---
-async function loadTopAuthorsRanking(period) {
-  var el = document.getElementById('dash-top-authors');
-  if (!el) return;
-  try {
-    var data = await API.get('/analytics/authors?period=' + period);
-    if (!data.authors || data.authors.length === 0) {
-      el.innerHTML = '<div class="dash-empty">No authors found</div>';
-      return;
-    }
-    var maxQ = data.authors[0].quote_count || 1;
-    var html = '';
-    data.authors.slice(0, 10).forEach(function(a, i) {
-      var pct = Math.round((a.quote_count / maxQ) * 100);
-      var initial = (a.name || '?').charAt(0).toUpperCase();
-      var avatar = a.photo_url
-        ? '<img src="' + escapeHtml(a.photo_url) + '" alt="" class="dash-rank-avatar" onerror="this.outerHTML=\'<div class=dash-rank-initial>' + initial + '</div>\'">' 
-        : '<div class="dash-rank-initial">' + initial + '</div>';
-      html += '<div class="dash-rank-item">\
-        <span class="dash-rank-num">' + (i + 1) + '</span>' +
-        avatar +
-        '<div class="dash-rank-info">\
-          <a href="/author/' + a.id + '" onclick="navigate(event, \'/author/' + a.id + '\')" class="dash-rank-name">' + escapeHtml(a.name) + '</a>\
-          <span class="dash-rank-cat">' + escapeHtml(a.category || 'Other') + '</span>\
-        </div>\
-        <div class="dash-rank-bar-wrap"><div class="dash-rank-bar" style="width:' + pct + '%"></div></div>\
-        <span class="dash-rank-count">' + a.quote_count + '</span>\
-      </div>';
-    });
-    el.innerHTML = html;
-  } catch (err) { el.innerHTML = '<div class="dash-error">Failed to load authors</div>'; }
-}
-
-// --- Trending Topics ---
-async function loadTrendingTopicsList(period) {
-  var el = document.getElementById('dash-trending-topics');
-  if (!el) return;
-  try {
-    var data = await API.get('/analytics/topics?period=' + period);
-    if (!data.topics || data.topics.length === 0) {
-      el.innerHTML = '<div class="dash-empty">No topics found</div>';
-      return;
-    }
-    var maxC = data.topics[0].count || 1;
-    var html = '';
-    data.topics.slice(0, 20).forEach(function(t) {
-      var size = Math.max(0.7, Math.min(1.6, 0.7 + (t.count / maxC) * 0.9));
-      var trendCls = t.trend === 'up' ? 'dash-trend-up' : t.trend === 'down' ? 'dash-trend-down' : 'dash-trend-flat';
-      var arrow = t.trend === 'up' ? '&#x25B2;' : t.trend === 'down' ? '&#x25BC;' : '';
-      html += '<span class="dash-topic-badge ' + trendCls + '" style="font-size:' + size.toFixed(2) + 'rem">' +
-        escapeHtml(t.keyword) + '<sup class="dash-topic-count">' + t.count + '</sup>' +
-        (arrow ? '<span class="dash-topic-arrow">' + arrow + '</span>' : '') +
-        '</span> ';
-    });
-    el.innerHTML = html;
-  } catch (err) { el.innerHTML = '<div class="dash-error">Failed to load topics</div>'; }
-}
-
-// --- Category Trends Over Time ---
-async function loadCategoryTrends(period) {
-  try {
-    var data = await API.get('/analytics/categories?period=' + period);
-    if (!data.series || data.series.length === 0) return;
-    if (typeof createTimelineChart !== 'function') return;
-
-    var bucketSet = {};
-    data.series.forEach(function(s) { s.buckets.forEach(function(b) { bucketSet[b.bucket] = 1; }); });
-    var allBuckets = Object.keys(bucketSet).sort();
-    var labels = allBuckets.map(function(b) { return b.slice(5); });
-
-    var datasets = data.series.map(function(s) {
-      var map = {};
-      s.buckets.forEach(function(b) { map[b.bucket] = b.count; });
-      return { label: s.category, data: allBuckets.map(function(b) { return map[b] || 0; }) };
-    });
-
-    createTimelineChart('chart-dash-cat-trends', labels, datasets);
-  } catch (err) { console.error('Cat trends:', err); }
-}
-
-// --- Activity Heatmap (pure CSS) ---
-async function loadHeatmap(period) {
-  var el = document.getElementById('dash-heatmap');
-  if (!el) return;
-  try {
-    var data = await API.get('/analytics/heatmap?period=' + period);
-    if (!data.cells || data.cells.length === 0) {
-      el.innerHTML = '<div class="dash-empty">No activity data</div>';
-      return;
-    }
-
-    var grid = {};
-    var maxCount = 1;
-    data.cells.forEach(function(c) {
-      var key = c.day_of_week + '-' + c.hour;
-      grid[key] = c.count;
-      if (c.count > maxCount) maxCount = c.count;
-    });
-
-    var dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    var html = '<div class="dash-heatmap-grid">';
-    // Header row (hours)
-    html += '<div class="dash-heatmap-label"></div>';
-    for (var h = 0; h < 24; h++) {
-      html += '<div class="dash-heatmap-hour">' + (h % 3 === 0 ? h + 'h' : '') + '</div>';
-    }
-    // Data rows
-    for (var d = 0; d < 7; d++) {
-      html += '<div class="dash-heatmap-label">' + dayLabels[d] + '</div>';
-      for (var hh = 0; hh < 24; hh++) {
-        var count = grid[d + '-' + hh] || 0;
-        var intensity = count > 0 ? Math.max(0.15, count / maxCount) : 0;
-        var bg = count > 0 ? 'rgba(196,30,58,' + intensity.toFixed(2) + ')' : 'var(--bg-secondary)';
-        html += '<div class="dash-heatmap-cell" style="background:' + bg + '" title="' +
-          dayLabels[d] + ' ' + hh + ':00 — ' + count + ' quotes"></div>';
+    const content = document.querySelector('.analytics-page');
+    if (content) {
+      const loading = content.querySelector('.analytics-loading');
+      if (loading) {
+        loading.innerHTML = `<p class="error-text">Failed to load analytics: ${err.message}</p>`;
       }
     }
-    html += '</div>';
-    el.innerHTML = html;
-  } catch (err) { el.innerHTML = '<div class="dash-error">Failed to load heatmap</div>'; }
-}
-
-// --- Custom Pie Breakdown ---
-function changeCustomPie(metric) {
-  _customPieMetric = metric;
-  destroyChart('chart-custom-doughnut');
-  destroyChart('chart-custom-bar');
-  loadCustomPie(_dashPeriod);
-}
-
-async function loadCustomPie(period) {
-  try {
-    var labels, values, title;
-    if (_customPieMetric === 'category') {
-      var data = await API.get('/analytics/categories?period=' + period);
-      labels = data.categories.map(function(c) { return c.category; });
-      values = data.categories.map(function(c) { return c.quote_count; });
-    } else if (_customPieMetric === 'source') {
-      var data = await API.get('/analytics/sources/breakdown?period=' + period);
-      var top = data.sources.slice(0, 10);
-      labels = top.map(function(s) { return s.name || s.domain; });
-      values = top.map(function(s) { return s.quote_count; });
-    } else if (_customPieMetric === 'quote_type') {
-      var data = await API.get('/analytics/quotes?period=' + period);
-      var direct = 0, indirect = 0;
-      (data.quotes || []).forEach(function(q) {
-        if (q.quote_type === 'indirect') indirect++; else direct++;
-      });
-      labels = ['Direct', 'Indirect'];
-      values = [direct, indirect];
-    } else if (_customPieMetric === 'top_authors') {
-      var data = await API.get('/analytics/authors?period=' + period);
-      var top = (data.authors || []).slice(0, 10);
-      labels = top.map(function(a) { return a.name; });
-      values = top.map(function(a) { return a.quote_count; });
-    }
-    if (!labels || labels.length === 0) return;
-    if (typeof createDoughnutChart === 'function') createDoughnutChart('chart-custom-doughnut', labels, values);
-    if (typeof createBarChart === 'function') createBarChart('chart-custom-bar', labels, values);
-  } catch (err) { console.error('Custom pie:', err); }
-}
-
-// --- Author Comparison Builder ---
-function debounceAuthorSearch() {
-  clearTimeout(_debounceTimers.author);
-  _debounceTimers.author = setTimeout(searchAuthors, 300);
-}
-
-async function searchAuthors() {
-  var input = document.getElementById('author-compare-input');
-  var dropdown = document.getElementById('author-compare-dropdown');
-  if (!input || !dropdown) return;
-  var q = input.value.trim();
-  if (q.length < 2) { dropdown.innerHTML = ''; dropdown.style.display = 'none'; return; }
-
-  try {
-    var data = await API.get('/analytics/authors/search?q=' + encodeURIComponent(q));
-    if (!data.authors || data.authors.length === 0) {
-      dropdown.innerHTML = '<div class="dash-dropdown-empty">No authors found</div>';
-      dropdown.style.display = 'block';
-      return;
-    }
-    dropdown.innerHTML = data.authors.map(function(a) {
-      var disabled = _authorCompareIds.indexOf(a.id) >= 0;
-      var initial = (a.name || '?').charAt(0).toUpperCase();
-      var avatar = a.photo_url
-        ? '<img src="' + escapeHtml(a.photo_url) + '" alt="" class="dash-dd-avatar" onerror="this.outerHTML=\'<span class=dash-dd-initial>' + initial + '</span>\'">' 
-        : '<span class="dash-dd-initial">' + initial + '</span>';
-      return '<div class="dash-dropdown-item' + (disabled ? ' disabled' : '') + '"' +
-        (disabled ? '' : ' onclick="addAuthorToCompare(' + a.id + ',\'' + escapeHtml(a.name).replace(/'/g, "\\'") + '\')"') + '>' +
-        avatar + '<span class="dash-dd-name">' + escapeHtml(a.name) + '</span>' +
-        '<span class="dash-dd-meta">' + (a.quote_count || 0) + ' quotes</span></div>';
-    }).join('');
-    dropdown.style.display = 'block';
-  } catch (err) { dropdown.style.display = 'none'; }
-}
-
-function addAuthorToCompare(id, name) {
-  if (_authorCompareIds.indexOf(id) >= 0 || _authorCompareIds.length >= 8) return;
-  _authorCompareIds.push(id);
-  renderAuthorCompareTags();
-  var input = document.getElementById('author-compare-input');
-  var dropdown = document.getElementById('author-compare-dropdown');
-  if (input) input.value = '';
-  if (dropdown) { dropdown.innerHTML = ''; dropdown.style.display = 'none'; }
-  loadAuthorComparison();
-}
-
-function removeAuthorFromCompare(id) {
-  _authorCompareIds = _authorCompareIds.filter(function(x) { return x !== id; });
-  renderAuthorCompareTags();
-  loadAuthorComparison();
-}
-
-function renderAuthorCompareTags() {
-  // We store names as data attribute; for now re-render will fetch
-  var el = document.getElementById('author-compare-tags');
-  if (!el) return;
-  if (_authorCompareIds.length === 0) { el.innerHTML = '<span class="dash-compare-hint">Select authors above to compare their quote activity over time</span>'; return; }
-  // Tags are rendered from comparison data
-}
-
-async function loadAuthorComparison() {
-  var el = document.getElementById('author-compare-tags');
-  if (_authorCompareIds.length === 0) {
-    destroyChart('chart-author-compare');
-    if (el) el.innerHTML = '<span class="dash-compare-hint">Select authors above to compare their quote activity over time</span>';
-    return;
   }
-  try {
-    var data = await API.get('/analytics/compare/authors?ids=' + _authorCompareIds.join(',') + '&period=' + _dashPeriod);
-    if (!data.authors || data.authors.length === 0) return;
-
-    // Render tags from response data
-    if (el) {
-      el.innerHTML = data.authors.map(function(a, i) {
-        var color = CHART_COLORS[i % CHART_COLORS.length];
-        return '<span class="dash-compare-tag" style="border-color:' + color + ';color:' + color + '">' +
-          escapeHtml(a.name) + ' <span class="dash-tag-count">' + a.total + '</span>' +
-          '<button class="dash-tag-remove" onclick="removeAuthorFromCompare(' + a.id + ')">&times;</button></span>';
-      }).join('');
-    }
-
-    // Build chart
-    var bucketSet = {};
-    data.authors.forEach(function(a) { a.buckets.forEach(function(b) { bucketSet[b.bucket] = 1; }); });
-    var allBuckets = Object.keys(bucketSet).sort();
-    var labels = allBuckets.map(function(b) { return b.slice(5); });
-
-    var datasets = data.authors.map(function(a) {
-      var map = {};
-      a.buckets.forEach(function(b) { map[b.bucket] = b.count; });
-      return { label: a.name, data: allBuckets.map(function(b) { return map[b] || 0; }) };
-    });
-
-    destroyChart('chart-author-compare');
-    if (_authorChartType === 'bar') {
-      if (typeof createStackedBarChart === 'function') createStackedBarChart('chart-author-compare', labels, datasets);
-    } else {
-      if (typeof createTimelineChart === 'function') createTimelineChart('chart-author-compare', labels, datasets);
-    }
-  } catch (err) { console.error('Author compare:', err); }
 }
 
-function setAuthorChartType(type) {
-  _authorChartType = type;
-  var toggle = document.getElementById('author-chart-toggle');
-  if (toggle) toggle.querySelectorAll('.dash-toggle-btn').forEach(function(b) {
-    b.classList.toggle('active', b.textContent.toLowerCase() === type);
-  });
-  if (_authorCompareIds.length > 0) loadAuthorComparison();
-}
+function renderAnalyticsData(data) {
+  const page = document.querySelector('.analytics-page');
+  if (!page) return;
 
-// --- Topic Comparison Builder ---
-function debounceTopicSearch() {
-  clearTimeout(_debounceTimers.topic);
-  _debounceTimers.topic = setTimeout(searchTopics, 300);
-}
+  // Remove loading
+  const loading = page.querySelector('.analytics-loading');
+  if (loading) loading.remove();
 
-async function searchTopics() {
-  var input = document.getElementById('topic-compare-input');
-  var dropdown = document.getElementById('topic-compare-dropdown');
-  if (!input || !dropdown) return;
-  var q = input.value.trim();
-  if (q.length < 2) { dropdown.innerHTML = ''; dropdown.style.display = 'none'; return; }
+  // Remove existing content sections (keep header)
+  page.querySelectorAll('.analytics-section').forEach(el => el.remove());
+  page.querySelectorAll('.analytics-stats').forEach(el => el.remove());
 
-  try {
-    var data = await API.get('/analytics/topics/list?period=' + _dashPeriod + '&q=' + encodeURIComponent(q) + '&limit=10');
-    if (!data.topics || data.topics.length === 0) {
-      dropdown.innerHTML = '<div class="dash-dropdown-empty">No topics found</div>';
-      dropdown.style.display = 'block';
-      return;
-    }
-    dropdown.innerHTML = data.topics.map(function(t) {
-      var disabled = _topicCompareKeywords.indexOf(t.keyword) >= 0;
-      return '<div class="dash-dropdown-item' + (disabled ? ' disabled' : '') + '"' +
-        (disabled ? '' : ' onclick="addTopicToCompare(\'' + escapeHtml(t.keyword).replace(/'/g, "\\'") + '\')"') + '>' +
-        '<span class="dash-dd-name">' + escapeHtml(t.keyword) + '</span>' +
-        '<span class="dash-dd-meta">' + t.count + ' mentions</span></div>';
-    }).join('');
-    dropdown.style.display = 'block';
-  } catch (err) { dropdown.style.display = 'none'; }
-}
+  // Stats summary
+  const statsHtml = `
+    <div class="analytics-stats">
+      <div class="stat-card">
+        <div class="stat-number">${data.total_quotes.toLocaleString()}</div>
+        <div class="stat-label">Quotes</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">${data.total_authors.toLocaleString()}</div>
+        <div class="stat-label">Authors</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">${data.topics.length}</div>
+        <div class="stat-label">Topics</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">${data.keywords.length}</div>
+        <div class="stat-label">Keywords</div>
+      </div>
+    </div>
+  `;
 
-function addTopicToCompare(keyword) {
-  if (_topicCompareKeywords.indexOf(keyword) >= 0 || _topicCompareKeywords.length >= 8) return;
-  _topicCompareKeywords.push(keyword);
-  var input = document.getElementById('topic-compare-input');
-  var dropdown = document.getElementById('topic-compare-dropdown');
-  if (input) input.value = '';
-  if (dropdown) { dropdown.innerHTML = ''; dropdown.style.display = 'none'; }
-  loadTopicComparison();
-}
+  // Topics section
+  const topicsHtml = `
+    <div class="analytics-section">
+      <h2>Trending Topics</h2>
+      <p class="analytics-subtitle">Broad subject categories across all quotes</p>
+      <div class="topics-cloud">
+        ${data.topics.length > 0 ? data.topics.map(t => `
+          <a href="#" class="topic-tag" onclick="navigateToTopic(event, '${escapeAttr(t.slug)}')" title="${t.quote_count} quotes">
+            <span class="topic-name">${escapeHtml(t.name)}</span>
+            <span class="topic-count">${t.quote_count}</span>
+          </a>
+        `).join('') : '<p class="analytics-empty">No topics yet. Topics are extracted as new quotes are processed.</p>'}
+      </div>
+    </div>
+  `;
 
-function removeTopicFromCompare(keyword) {
-  _topicCompareKeywords = _topicCompareKeywords.filter(function(k) { return k !== keyword; });
-  loadTopicComparison();
-}
-
-async function loadTopicComparison() {
-  var el = document.getElementById('topic-compare-tags');
-  if (_topicCompareKeywords.length === 0) {
-    destroyChart('chart-topic-compare');
-    if (el) el.innerHTML = '<span class="dash-compare-hint">Select topics above to compare their frequency over time</span>';
-    return;
+  // Keywords section - grouped by type
+  const keywordsByType = {};
+  for (const kw of data.keywords) {
+    const type = kw.keyword_type || 'concept';
+    if (!keywordsByType[type]) keywordsByType[type] = [];
+    keywordsByType[type].push(kw);
   }
-  try {
-    var data = await API.get('/analytics/compare/topics?keywords=' + _topicCompareKeywords.map(encodeURIComponent).join(',') + '&period=' + _dashPeriod);
-    if (!data.topics || data.topics.length === 0) return;
 
-    if (el) {
-      el.innerHTML = data.topics.map(function(t, i) {
-        var color = CHART_COLORS[i % CHART_COLORS.length];
-        return '<span class="dash-compare-tag" style="border-color:' + color + ';color:' + color + '">' +
-          escapeHtml(t.keyword) + ' <span class="dash-tag-count">' + t.total + '</span>' +
-          '<button class="dash-tag-remove" onclick="removeTopicFromCompare(\'' + escapeHtml(t.keyword).replace(/'/g, "\\'") + '\')">&times;</button></span>';
-      }).join('');
-    }
+  const typeLabels = {
+    person: 'People',
+    organization: 'Organizations',
+    event: 'Events',
+    legislation: 'Legislation',
+    location: 'Locations',
+    concept: 'Concepts',
+  };
 
-    var bucketSet = {};
-    data.topics.forEach(function(t) { t.buckets.forEach(function(b) { bucketSet[b.bucket] = 1; }); });
-    var allBuckets = Object.keys(bucketSet).sort();
-    var labels = allBuckets.map(function(b) { return b.slice(5); });
+  const typeOrder = ['person', 'event', 'organization', 'location', 'legislation', 'concept'];
 
-    var datasets = data.topics.map(function(t) {
-      var map = {};
-      t.buckets.forEach(function(b) { map[b.bucket] = b.count; });
-      return { label: t.keyword, data: allBuckets.map(function(b) { return map[b] || 0; }) };
-    });
+  let keywordsInnerHtml = '';
+  if (data.keywords.length > 0) {
+    // Show all keywords in a single cloud, but with type indicators
+    keywordsInnerHtml = `
+      <div class="keywords-cloud">
+        ${data.keywords.map(kw => `
+          <a href="#" class="keyword-tag keyword-type-${kw.keyword_type}" onclick="navigateToKeyword(event, ${kw.id})" title="${kw.quote_count} quotes - ${typeLabels[kw.keyword_type] || kw.keyword_type}">
+            <span class="keyword-name">${escapeHtml(kw.name)}</span>
+            <span class="keyword-count">${kw.quote_count}</span>
+          </a>
+        `).join('')}
+      </div>
+    `;
 
-    destroyChart('chart-topic-compare');
-    if (_topicChartType === 'bar') {
-      if (typeof createStackedBarChart === 'function') createStackedBarChart('chart-topic-compare', labels, datasets);
-    } else {
-      if (typeof createTimelineChart === 'function') createTimelineChart('chart-topic-compare', labels, datasets);
-    }
-  } catch (err) { console.error('Topic compare:', err); }
-}
+    // Also show grouped view
+    const groupedSections = typeOrder
+      .filter(type => keywordsByType[type]?.length > 0)
+      .map(type => `
+        <div class="keyword-group">
+          <h4>${typeLabels[type]}</h4>
+          <div class="keywords-cloud">
+            ${keywordsByType[type].map(kw => `
+              <a href="#" class="keyword-tag keyword-type-${kw.keyword_type}" onclick="navigateToKeyword(event, ${kw.id})" title="${kw.quote_count} quotes">
+                <span class="keyword-name">${escapeHtml(kw.name)}</span>
+                <span class="keyword-count">${kw.quote_count}</span>
+              </a>
+            `).join('')}
+          </div>
+        </div>
+      `).join('');
 
-function setTopicChartType(type) {
-  _topicChartType = type;
-  var toggle = document.getElementById('topic-chart-toggle');
-  if (toggle) toggle.querySelectorAll('.dash-toggle-btn').forEach(function(b) {
-    b.classList.toggle('active', b.textContent.toLowerCase() === type);
-  });
-  if (_topicCompareKeywords.length > 0) loadTopicComparison();
-}
-
-// Close dropdowns on outside click
-document.addEventListener('click', function(e) {
-  if (!e.target.closest('.dash-compare-search-wrap')) {
-    var dds = document.querySelectorAll('.dash-compare-dropdown');
-    dds.forEach(function(dd) { dd.style.display = 'none'; });
+    keywordsInnerHtml += `<div class="keyword-groups">${groupedSections}</div>`;
+  } else {
+    keywordsInnerHtml = '<p class="analytics-empty">No keywords yet. Keywords are extracted as new quotes are processed.</p>';
   }
-});
+
+  const keywordsHtml = `
+    <div class="analytics-section">
+      <h2>Trending Keywords</h2>
+      <p class="analytics-subtitle">Specific people, events, organizations, and concepts</p>
+      ${keywordsInnerHtml}
+    </div>
+  `;
+
+  // Top Authors section
+  const authorsHtml = `
+    <div class="analytics-section">
+      <h2>Top Authors</h2>
+      <div class="analytics-authors-list">
+        ${data.authors.map((a, i) => `
+          <a href="#" class="analytics-author-row" onclick="navigate(event, '/author/${a.id}')">
+            <span class="author-rank">${i + 1}</span>
+            <img src="${a.photo_url || '/img/default-avatar.svg'}" alt="" class="author-thumb" onerror="this.src='/img/default-avatar.svg'">
+            <div class="author-info">
+              <span class="author-name">${escapeHtml(a.canonical_name)}</span>
+              <span class="author-category">${escapeHtml(a.category || 'Other')}</span>
+            </div>
+            <span class="author-quote-count">${a.quote_count}</span>
+          </a>
+        `).join('')}
+      </div>
+    </div>
+  `;
+
+  page.insertAdjacentHTML('beforeend', statsHtml + topicsHtml + keywordsHtml + authorsHtml);
+}
+
+function navigateToTopic(event, slug) {
+  event.preventDefault();
+  navigate(null, `/analytics/topic/${slug}`);
+}
+
+function navigateToKeyword(event, id) {
+  event.preventDefault();
+  navigate(null, `/analytics/keyword/${id}`);
+}
+
+async function renderTopicDetail(slug) {
+  const content = document.getElementById('content');
+  content.innerHTML = `<div class="analytics-page"><div class="analytics-loading">Loading topic...</div></div>`;
+
+  try {
+    const data = await API.get(`/analytics/topic/${encodeURIComponent(slug)}`);
+    content.innerHTML = `
+      <div class="analytics-page">
+        <div class="analytics-header">
+          <h1><a href="#" onclick="navigate(event, '/analytics')" class="back-link">Analytics</a> / ${escapeHtml(data.topic.name)}</h1>
+          <span class="analytics-subtitle">${data.total} quotes in this topic</span>
+        </div>
+        <div class="topic-quotes-list">
+          ${data.quotes.map(q => renderQuoteCard(q)).join('')}
+        </div>
+        ${data.total > data.quotes.length ? `
+          <div class="load-more-container">
+            <button class="btn" onclick="loadMoreTopicQuotes('${escapeAttr(slug)}', 2)">Load more</button>
+          </div>
+        ` : ''}
+      </div>
+    `;
+  } catch (err) {
+    content.innerHTML = `<div class="analytics-page"><p class="error-text">Failed to load topic: ${err.message}</p></div>`;
+  }
+}
+
+async function renderKeywordDetail(id) {
+  const content = document.getElementById('content');
+  content.innerHTML = `<div class="analytics-page"><div class="analytics-loading">Loading keyword...</div></div>`;
+
+  try {
+    const data = await API.get(`/analytics/keyword/${id}`);
+    const typeLabels = { person: 'Person', organization: 'Organization', event: 'Event', legislation: 'Legislation', location: 'Location', concept: 'Concept' };
+    content.innerHTML = `
+      <div class="analytics-page">
+        <div class="analytics-header">
+          <h1><a href="#" onclick="navigate(event, '/analytics')" class="back-link">Analytics</a> / ${escapeHtml(data.keyword.name)}</h1>
+          <span class="analytics-subtitle">${typeLabels[data.keyword.keyword_type] || 'Keyword'} &middot; ${data.total} quotes</span>
+        </div>
+        <div class="topic-quotes-list">
+          ${data.quotes.map(q => renderQuoteCard(q)).join('')}
+        </div>
+        ${data.total > data.quotes.length ? `
+          <div class="load-more-container">
+            <button class="btn" onclick="loadMoreKeywordQuotes(${id}, 2)">Load more</button>
+          </div>
+        ` : ''}
+      </div>
+    `;
+  } catch (err) {
+    content.innerHTML = `<div class="analytics-page"><p class="error-text">Failed to load keyword: ${err.message}</p></div>`;
+  }
+}
+
+function renderQuoteCard(q) {
+  const truncated = q.text.length > 200 ? q.text.substring(0, 200) + '...' : q.text;
+  return `
+    <div class="analytics-quote-card" onclick="navigate(null, '/quote/${q.id}')">
+      <div class="quote-card-header">
+        <img src="${q.photo_url || '/img/default-avatar.svg'}" alt="" class="author-thumb" onerror="this.src='/img/default-avatar.svg'">
+        <div>
+          <a href="#" onclick="event.stopPropagation(); navigate(event, '/author/${q.person_id}')" class="quote-card-author">${escapeHtml(q.canonical_name)}</a>
+          <span class="quote-card-date">${formatDateShort(q.created_at)}</span>
+        </div>
+      </div>
+      <blockquote class="quote-card-text">&ldquo;${escapeHtml(truncated)}&rdquo;</blockquote>
+      ${q.context ? `<p class="quote-card-context">${escapeHtml(q.context)}</p>` : ''}
+    </div>
+  `;
+}
+
+function formatDateShort(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function escapeAttr(str) {
+  if (!str) return '';
+  return str.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+}
