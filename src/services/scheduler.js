@@ -178,7 +178,9 @@ async function runFetchCycle() {
     }
 
     // Post-fetch: materialize topics and suggest new ones
-    if (totalNewQuotes > 0) {
+    // Also run materialization if quote_topics is empty (first deploy / fresh seed)
+    const qtCount = db.prepare('SELECT COUNT(*) as cnt FROM quote_topics').get().cnt;
+    if (totalNewQuotes > 0 || qtCount === 0) {
       try {
         const matResult = materializeTopics();
         logger.info('scheduler', 'topics_materialized', matResult);

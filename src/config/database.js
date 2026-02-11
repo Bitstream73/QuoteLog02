@@ -433,6 +433,20 @@ function initializeTables(db) {
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_topic_keywords_keyword ON topic_keywords(keyword_id)`);
 
+  // Auto-seed topic_keywords: link topics to keywords with matching names (case-insensitive)
+  const tkCount = db.prepare('SELECT COUNT(*) as cnt FROM topic_keywords').get().cnt;
+  if (tkCount === 0) {
+    const seeded = db.prepare(`
+      INSERT OR IGNORE INTO topic_keywords (topic_id, keyword_id)
+      SELECT t.id, k.id
+      FROM topics t
+      JOIN keywords k ON LOWER(k.name) = LOWER(t.name)
+    `).run();
+    if (seeded.changes > 0) {
+      console.log(`[startup] Auto-seeded ${seeded.changes} topic_keywords links`);
+    }
+  }
+
   // --- Site Topic Focus migrations: new columns for importants/share/view/trending ---
 
   // quotes: quote_datetime, importants_count, share_count, trending_score
