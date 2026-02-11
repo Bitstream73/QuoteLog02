@@ -392,6 +392,11 @@ function initializeTables(db) {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_quote_topics_topic ON quote_topics(topic_id)`);
 
   // Quote-to-keyword mapping (many-to-many)
+  // Migration: drop old quote_keywords table if it has wrong schema (keyword TEXT instead of keyword_id INTEGER)
+  const qkCols = db.prepare("PRAGMA table_info(quote_keywords)").all().map(c => c.name);
+  if (qkCols.length > 0 && !qkCols.includes('keyword_id')) {
+    db.exec(`DROP TABLE IF EXISTS quote_keywords`);
+  }
   db.exec(`
     CREATE TABLE IF NOT EXISTS quote_keywords (
       quote_id INTEGER NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,

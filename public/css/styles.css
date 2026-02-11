@@ -627,6 +627,19 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
 
 .modal-close:hover { color: var(--text-primary); }
 
+.json-view {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+  color: var(--text-secondary);
+}
+
 /* ===================================
    Toast Notifications
    =================================== */
@@ -1027,6 +1040,17 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   gap: 0.75rem;
   align-items: flex-start;
   margin-top: 0.5rem;
+}
+
+.quote-entry-with-vote {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.quote-entry-content {
+  flex: 1;
+  min-width: 0;
 }
 
 .quote-headshot-col {
