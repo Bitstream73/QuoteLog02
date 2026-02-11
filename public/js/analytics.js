@@ -239,7 +239,7 @@ async function loadTopAuthorsRanking(period) {
       var pct = Math.round((a.quote_count / maxQ) * 100);
       var initial = (a.name || '?').charAt(0).toUpperCase();
       var avatar = a.photo_url
-        ? '<img src="' + escapeHtml(a.photo_url) + '" alt="" class="dash-rank-avatar" onerror="this.outerHTML=\'<div class=dash-rank-initial>' + initial + '</div>\'">'
+        ? '<img src="' + escapeHtml(a.photo_url) + '" alt="" class="dash-rank-avatar" onerror="this.outerHTML=\'<div class=dash-rank-initial>' + initial + '</div>\'">' 
         : '<div class="dash-rank-initial">' + initial + '</div>';
       html += '<div class="dash-rank-item">\
         <span class="dash-rank-num">' + (i + 1) + '</span>' +
@@ -409,7 +409,7 @@ async function searchAuthors() {
       var disabled = _authorCompareIds.indexOf(a.id) >= 0;
       var initial = (a.name || '?').charAt(0).toUpperCase();
       var avatar = a.photo_url
-        ? '<img src="' + escapeHtml(a.photo_url) + '" alt="" class="dash-dd-avatar" onerror="this.outerHTML=\'<span class=dash-dd-initial>' + initial + '</span>\'">'
+        ? '<img src="' + escapeHtml(a.photo_url) + '" alt="" class="dash-dd-avatar" onerror="this.outerHTML=\'<span class=dash-dd-initial>' + initial + '</span>\'">' 
         : '<span class="dash-dd-initial">' + initial + '</span>';
       return '<div class="dash-dropdown-item' + (disabled ? ' disabled' : '') + '"' +
         (disabled ? '' : ' onclick="addAuthorToCompare(' + a.id + ',\'' + escapeHtml(a.name).replace(/'/g, "\\'") + '\')"') + '>' +

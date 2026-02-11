@@ -19,25 +19,6 @@ async function renderSettings() {
       <h1 class="page-title">Settings</h1>
       <p class="page-subtitle">Manage news sources and application configuration</p>
 
-      <!-- Source Management Section -->
-      <div class="settings-section">
-        <h2>News Sources</h2>
-        <p class="section-description">Add reputable news sources to extract quotes from.</p>
-
-        <div class="add-source-form">
-          <input type="text" id="new-source-domain" placeholder="e.g., reuters.com" class="input-text">
-          <input type="text" id="new-source-name" placeholder="Display name (optional)" class="input-text">
-          <input type="text" id="new-source-rss" placeholder="RSS feed URL (optional, auto-detected)" class="input-text">
-          <button class="btn btn-primary" onclick="addSource()">Add Source</button>
-        </div>
-
-        <div id="sources-list" class="sources-list">
-          ${sources.length === 0 ? `
-            <p class="empty-message">No sources configured. Add a news source to start extracting quotes.</p>
-          ` : sources.map(s => renderSourceRow(s)).join('')}
-        </div>
-      </div>
-
       <!-- Fetch Settings Section -->
       <div class="settings-section">
         <h2>Fetch Settings</h2>
@@ -124,55 +105,65 @@ async function renderSettings() {
         </div>
       </div>
 
-      <!-- Database Backup Section -->
+      <!-- Data Management Section -->
       <div class="settings-section">
-        <h2>Database</h2>
-        <p class="section-description">Export and import your database for backup and recovery.</p>
+        <h2>Data Management</h2>
 
-        <div class="setting-row" style="align-items:center">
-          <label>
-            <span class="setting-label">Export Backup</span>
-            <span class="setting-description">Download all data as a JSON file</span>
-          </label>
-          <button class="btn btn-primary" id="export-db-btn" onclick="exportDatabase()">Export JSON</button>
-        </div>
+        <!-- News Sources Subsection -->
+        <div class="settings-subsection">
+          <h3 class="subsection-title">News Sources</h3>
+          <p class="section-description">Add reputable news sources to extract quotes from.</p>
 
-        <div class="setting-row" style="align-items:center">
-          <label>
-            <span class="setting-label">Import Backup</span>
-            <span class="setting-description">Restore from a previously exported JSON file</span>
-          </label>
-          <div>
-            <input type="file" id="import-db-file" accept=".json" style="display:none" onchange="importDatabase(this)">
-            <button class="btn btn-secondary" onclick="document.getElementById('import-db-file').click()">Import JSON</button>
+          <div class="add-source-form">
+            <input type="text" id="new-source-domain" placeholder="e.g., reuters.com" class="input-text">
+            <input type="text" id="new-source-name" placeholder="Display name (optional)" class="input-text">
+            <input type="text" id="new-source-rss" placeholder="RSS feed URL (optional, auto-detected)" class="input-text">
+            <button class="btn btn-primary" onclick="addSource()">Add Source</button>
+          </div>
+
+          <div id="sources-list" class="sources-list">
+            ${sources.length === 0 ? `
+              <p class="empty-message">No sources configured. Add a news source to start extracting quotes.</p>
+            ` : sources.map(s => renderSourceRow(s)).join('')}
           </div>
         </div>
 
-        <div class="setting-row" style="align-items:center">
-          <label>
-            <span class="setting-label">Backfill Headshots</span>
-            <span class="setting-description">Fetch headshot photos from Wikipedia for persons without one</span>
-          </label>
-          <button class="btn btn-secondary" id="backfill-headshots-btn" onclick="backfillHeadshots()">Backfill Headshots</button>
-        </div>
-      </div>
+        <!-- Backup & Restore Subsection -->
+        <div class="settings-subsection">
+          <h3 class="subsection-title">Backup &amp; Restore</h3>
+          <p class="section-description">Export and import your database for backup and recovery.</p>
 
-      <!-- Quote Management Section -->
-      <div class="settings-section">
-        <div class="section-header">
-          <h2>Quote Management</h2>
-          <button class="btn btn-secondary btn-sm" onclick="loadAdminQuotes()">Refresh</button>
+          <div class="setting-row" style="align-items:center">
+            <label>
+              <span class="setting-label">Export Backup</span>
+              <span class="setting-description">Download all data as a JSON file</span>
+            </label>
+            <button class="btn btn-primary" id="export-db-btn" onclick="exportDatabase()">Export JSON</button>
+          </div>
+
+          <div class="setting-row" style="align-items:center">
+            <label>
+              <span class="setting-label">Import Backup</span>
+              <span class="setting-description">Restore from a previously exported JSON file</span>
+            </label>
+            <div>
+              <input type="file" id="import-db-file" accept=".json" style="display:none" onchange="importDatabase(this)">
+              <button class="btn btn-secondary" onclick="document.getElementById('import-db-file').click()">Import JSON</button>
+            </div>
+          </div>
         </div>
-        <p class="section-description">View, edit, and manage extracted quotes. Click a quote to edit its text or change the associated author headshot.</p>
-        <div style="display:flex;gap:0.5rem;margin-bottom:1rem">
-          <input type="search" id="admin-quote-search" placeholder="Search quotes, authors..." class="input-text" style="flex:1;width:auto" onkeydown="if(event.key==='Enter')searchAdminQuotes()">
-          <button class="btn btn-primary btn-sm" onclick="searchAdminQuotes()">Search</button>
-          <button class="btn btn-secondary btn-sm" onclick="clearAdminSearch()">Clear</button>
+
+        <!-- Backfill Headshots Subsection -->
+        <div class="settings-subsection">
+          <h3 class="subsection-title">Backfill Headshots</h3>
+          <div class="setting-row" style="align-items:center">
+            <label>
+              <span class="setting-label">Fetch Missing Photos</span>
+              <span class="setting-description">Fetch headshot photos from Wikipedia for persons without one</span>
+            </label>
+            <button class="btn btn-secondary" id="backfill-headshots-btn" onclick="backfillHeadshots()">Backfill Headshots</button>
+          </div>
         </div>
-        <div id="admin-quotes-list">
-          <div class="loading">Loading quotes...</div>
-        </div>
-        <div id="admin-quotes-pagination"></div>
       </div>
 
       <!-- Logs Section -->
@@ -193,9 +184,6 @@ async function renderSettings() {
     // Start scheduler countdown
     startSchedulerCountdown();
 
-    // Load admin quotes section
-    await loadAdminQuotes();
-
     // Load logs section
     await loadLogsStats();
     renderLogsFilters();
@@ -215,6 +203,10 @@ function renderSourceRow(source) {
         ${source.consecutive_failures > 0 ? `<span class="source-warning" title="${source.consecutive_failures} failures" style="cursor:pointer" onclick="showSourceErrors('${escapeHtml(source.domain)}', ${source.consecutive_failures})">!</span>` : ''}
       </div>
       <div class="source-actions">
+        <label class="top-story-label" title="Include in Top Stories">
+          <input type="checkbox" ${source.is_top_story ? 'checked' : ''} onchange="toggleTopStory(${source.id}, this.checked)">
+          <span class="top-story-label-text">Top</span>
+        </label>
         <label class="toggle">
           <input type="checkbox" ${source.enabled ? 'checked' : ''} onchange="toggleSource(${source.id}, this.checked)">
           <span class="toggle-slider"></span>
@@ -271,6 +263,19 @@ async function toggleSource(sourceId, enabled) {
     const row = document.querySelector(`.source-row[data-id="${sourceId}"]`);
     const checkbox = row.querySelector('input[type="checkbox"]');
     checkbox.checked = !enabled;
+  }
+}
+
+async function toggleTopStory(sourceId, isTopStory) {
+  try {
+    await API.patch(`/sources/${sourceId}`, { is_top_story: isTopStory ? 1 : 0 });
+    showToast(isTopStory ? 'Source marked as top story' : 'Source removed from top stories', 'success');
+  } catch (err) {
+    showToast('Error updating source: ' + err.message, 'error', 5000);
+    // Revert checkbox
+    const row = document.querySelector(`.source-row[data-id="${sourceId}"]`);
+    const checkbox = row.querySelector('.top-story-label input[type="checkbox"]');
+    if (checkbox) checkbox.checked = !isTopStory;
   }
 }
 
@@ -455,188 +460,6 @@ async function importDatabase(input) {
   }
 }
 
-// ===================================
-// Admin Quote Management
-// ===================================
-
-let _adminQuotePage = 1;
-let _adminQuoteSearch = '';
-
-function searchAdminQuotes() {
-  const input = document.getElementById('admin-quote-search');
-  _adminQuoteSearch = input ? input.value.trim() : '';
-  _adminQuotePage = 1;
-  loadAdminQuotes();
-}
-
-function clearAdminSearch() {
-  _adminQuoteSearch = '';
-  const input = document.getElementById('admin-quote-search');
-  if (input) input.value = '';
-  _adminQuotePage = 1;
-  loadAdminQuotes();
-}
-
-async function loadAdminQuotes(page) {
-  _adminQuotePage = page || _adminQuotePage || 1;
-  const container = document.getElementById('admin-quotes-list');
-  const paginationEl = document.getElementById('admin-quotes-pagination');
-  if (!container) return;
-
-  try {
-    let url = `/quotes?page=${_adminQuotePage}&limit=20`;
-    if (_adminQuoteSearch) url += `&search=${encodeURIComponent(_adminQuoteSearch)}`;
-    const data = await API.get(url);
-    if (data.quotes.length === 0) {
-      container.innerHTML = '<p class="empty-message">No quotes found.</p>';
-      if (paginationEl) paginationEl.innerHTML = '';
-      return;
-    }
-
-    let html = '';
-    for (const q of data.quotes) {
-      const dateStr = q.articlePublishedAt
-        ? new Date(q.articlePublishedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-        : '';
-      const createdStr = q.createdAt
-        ? new Date(q.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-        : '';
-      const initial = (q.personName || '?').charAt(0).toUpperCase();
-      const headshotHtml = q.photoUrl
-        ? `<img src="${escapeHtml(q.photoUrl)}" class="admin-quote-headshot" onerror="this.style.display='none'">`
-        : `<div class="admin-quote-headshot-placeholder">${initial}</div>`;
-
-      const sourceUrls = (q.sourceUrls || []).map(u => {
-        try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; }
-      });
-
-      html += `
-        <div class="admin-quote-card" id="aqc-${q.id}">
-          <div class="admin-quote-top">
-            <div class="admin-quote-headshot-col">
-              ${headshotHtml}
-              <button class="btn btn-secondary btn-sm" onclick="changeHeadshot(${q.personId}, '${escapeHtml(q.personName)}')" style="margin-top:0.25rem;font-size:0.65rem">Photo</button>
-            </div>
-            <div class="admin-quote-info">
-              <div class="admin-quote-text">${escapeHtml(q.text)}</div>
-              <div class="admin-quote-meta">
-                <strong>${escapeHtml(q.personName)}</strong>
-                <span class="badge badge-info" style="font-size:0.6rem">${escapeHtml(q.personCategory || 'Other')}</span>
-                ${q.personCategoryContext ? `<span style="font-size:0.75rem;color:var(--text-muted)">${escapeHtml(q.personCategoryContext)}</span>` : ''}
-              </div>
-              <div class="admin-quote-details">
-                ${q.articleTitle ? `<div><strong>Article:</strong> ${escapeHtml(q.articleTitle)}</div>` : ''}
-                ${dateStr ? `<div><strong>Published:</strong> ${dateStr}</div>` : ''}
-                ${createdStr ? `<div><strong>Extracted:</strong> ${createdStr}</div>` : ''}
-                ${q.primarySourceName ? `<div><strong>Source:</strong> ${escapeHtml(q.primarySourceName)}</div>` : ''}
-                ${sourceUrls.length > 0 ? `<div><strong>URLs:</strong> ${sourceUrls.map(u => escapeHtml(u)).join(', ')}</div>` : ''}
-                ${q.context ? `<div><strong>Context:</strong> ${escapeHtml(q.context)}</div>` : ''}
-                <div><strong>Type:</strong> ${q.quoteType || 'direct'} &middot; <strong>Visible:</strong> ${q.isVisible ? 'Yes' : 'No'} &middot; <strong>ID:</strong> ${q.id}</div>
-              </div>
-              <div class="admin-quote-actions">
-                <button class="btn btn-secondary btn-sm" onclick="adminEditQuote(${q.id})">Edit Text</button>
-                <button class="btn btn-secondary btn-sm" onclick="adminEditContext(${q.id})">Edit Context</button>
-                <button class="btn btn-secondary btn-sm" onclick="adminToggleVisibility(${q.id}, ${!q.isVisible})">${q.isVisible ? 'Hide' : 'Show'}</button>
-                <button class="btn btn-secondary btn-sm" onclick="adminEditCategory(${q.personId}, '${escapeHtml(q.personName)}')">Category</button>
-                <button class="btn btn-secondary btn-sm" onclick="adminEditAuthor(${q.personId}, '${escapeHtml(q.personName)}')">Edit Author</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      `;
-    }
-
-    container.innerHTML = html;
-
-    // Pagination
-    if (data.totalPages > 1 && paginationEl) {
-      let pHtml = '<div class="pagination">';
-      for (let i = 1; i <= Math.min(data.totalPages, 10); i++) {
-        pHtml += `<button class="page-btn ${i === _adminQuotePage ? 'active' : ''}" onclick="loadAdminQuotes(${i})">${i}</button>`;
-      }
-      if (data.totalPages > 10) {
-        pHtml += `<span class="pagination-ellipsis">...</span>`;
-        pHtml += `<button class="page-btn" onclick="loadAdminQuotes(${data.totalPages})">${data.totalPages}</button>`;
-      }
-      pHtml += '</div>';
-      paginationEl.innerHTML = pHtml;
-    } else if (paginationEl) {
-      paginationEl.innerHTML = '';
-    }
-  } catch (err) {
-    container.innerHTML = `<p class="empty-message">Error loading quotes: ${escapeHtml(err.message)}</p>`;
-  }
-}
-
-async function adminEditQuote(quoteId) {
-  const newText = prompt('Edit quote text:');
-  if (newText === null || newText.trim() === '') return;
-
-  try {
-    await API.patch(`/quotes/${quoteId}`, { text: newText.trim() });
-    loadAdminQuotes(_adminQuotePage);
-  } catch (err) {
-    showToast('Error: ' + err.message, 'error', 5000);
-  }
-}
-
-async function adminEditContext(quoteId) {
-  const newContext = prompt('Edit context:');
-  if (newContext === null) return;
-
-  try {
-    await API.patch(`/quotes/${quoteId}`, { context: newContext.trim() || null });
-    loadAdminQuotes(_adminQuotePage);
-  } catch (err) {
-    showToast('Error: ' + err.message, 'error', 5000);
-  }
-}
-
-async function adminToggleVisibility(quoteId, newVisible) {
-  try {
-    await API.patch(`/quotes/${quoteId}/visibility`, { isVisible: newVisible });
-    loadAdminQuotes(_adminQuotePage);
-  } catch (err) {
-    showToast('Error: ' + err.message, 'error', 5000);
-  }
-}
-
-async function changeHeadshot(personId, personName) {
-  const newUrl = prompt(`Enter new headshot URL for ${personName}:`, '');
-  if (newUrl === null) return;
-
-  try {
-    await API.patch(`/authors/${personId}`, { photoUrl: newUrl.trim() || null });
-    loadAdminQuotes(_adminQuotePage);
-  } catch (err) {
-    showToast('Error: ' + err.message, 'error', 5000);
-  }
-}
-
-async function adminEditAuthor(personId, personName) {
-  const newName = prompt(`Edit author name for "${personName}":`, personName);
-  if (newName === null) return;
-
-  const newDisambiguation = prompt(`Edit description/disambiguation for "${newName || personName}" (leave blank to clear):`, '');
-
-  const updates = {};
-  if (newName !== null && newName.trim() !== '' && newName.trim() !== personName) {
-    updates.canonicalName = newName.trim();
-  }
-  if (newDisambiguation !== null) {
-    updates.disambiguation = newDisambiguation.trim() || null;
-  }
-
-  if (Object.keys(updates).length === 0) return;
-
-  try {
-    await API.patch(`/authors/${personId}`, updates);
-    loadAdminQuotes(_adminQuotePage);
-  } catch (err) {
-    showToast('Error: ' + err.message, 'error', 5000);
-  }
-}
-
 async function showSourceErrors(domain, failureCount) {
   const modalContent = document.getElementById('modal-content');
   const modalOverlay = document.getElementById('modal-overlay');
@@ -677,34 +500,5 @@ async function showSourceErrors(domain, failureCount) {
     modalContent.innerHTML = html;
   } catch (err) {
     modalContent.innerHTML = `<p style="color:var(--error)">Error loading logs: ${escapeHtml(err.message)}</p><div style="text-align:right;margin-top:1rem"><button class="btn btn-secondary" onclick="closeModal()">Close</button></div>`;
-  }
-}
-
-async function adminEditCategory(personId, personName) {
-  const categories = ['Politician', 'Government Official', 'Business Leader', 'Entertainer', 'Athlete', 'Pundit', 'Journalist', 'Scientist/Academic', 'Legal/Judicial', 'Military/Defense', 'Activist/Advocate', 'Religious Leader', 'Other'];
-  const category = prompt(`Select category for ${personName}:\n${categories.map((c, i) => `${i + 1}. ${c}`).join('\n')}\n\nEnter number or category name:`);
-  if (category === null) return;
-
-  let selectedCategory = category.trim();
-  const num = parseInt(selectedCategory);
-  if (num >= 1 && num <= categories.length) {
-    selectedCategory = categories[num - 1];
-  }
-
-  if (!categories.includes(selectedCategory)) {
-    showToast('Invalid category. Please choose from the list.', 'error');
-    return;
-  }
-
-  const context = prompt(`Enter category context for ${personName} (e.g., party/office, team/sport):`, '');
-
-  try {
-    await API.patch(`/authors/${personId}`, {
-      category: selectedCategory,
-      categoryContext: context ? context.trim() : null,
-    });
-    loadAdminQuotes(_adminQuotePage);
-  } catch (err) {
-    showToast('Error: ' + err.message, 'error', 5000);
   }
 }

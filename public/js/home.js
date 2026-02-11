@@ -7,7 +7,7 @@ const _quoteTexts = {};
 const _quoteMeta = {};
 
 // Current active category filter
-let _activeCategory = 'Politicians';
+let _activeCategory = 'Top Stories';
 let _activeSubFilter = '';
 let _currentSearch = '';
 
@@ -242,9 +242,16 @@ function buildQuoteEntryHtml(q, insideGroup, gangOpts) {
 
   // Headshot or initial placeholder
   const initial = (q.personName || '?').charAt(0).toUpperCase();
+  const placeholderDiv = `<div class="quote-headshot-placeholder">${initial}</div>`;
+  const _isAdm = typeof isAdmin !== 'undefined' && isAdmin;
+  const _safeName = escapeHtml((q.personName || '').replace(/'/g, "\\'"));
   const headshotHtml = q.photoUrl
-    ? `<img src="${escapeHtml(q.photoUrl)}" alt="${escapeHtml(q.personName)}" class="quote-headshot" onerror="this.outerHTML='<div class=\\'quote-headshot-placeholder\\'>${initial}</div>'">`
-    : `<div class="quote-headshot-placeholder">${initial}</div>`;
+    ? (_isAdm
+      ? `<img src="${escapeHtml(q.photoUrl)}" alt="${escapeHtml(q.personName)}" class="quote-headshot admin-headshot-clickable" onclick="adminChangeHeadshot(${q.personId}, '${_safeName}')" title="Click to change photo" style="cursor:pointer" onerror="this.outerHTML='<div class=\\'quote-headshot-placeholder\\'>${initial}</div>'">`
+      : `<img src="${escapeHtml(q.photoUrl)}" alt="${escapeHtml(q.personName)}" class="quote-headshot" onerror="this.outerHTML='<div class=\\'quote-headshot-placeholder\\'>${initial}</div>'">`)
+    : (_isAdm
+      ? `<a href="https://www.google.com/search?tbm=isch&q=${encodeURIComponent((q.personName || '') + ' ' + (q.personDisambiguation || q.personCategoryContext || ''))}" target="_blank" rel="noopener" class="admin-headshot-search" title="Search Google Images">${placeholderDiv}</a>`
+      : placeholderDiv);
 
   // Quote type indicator (direct vs indirect)
   const quoteTypeHtml = q.quoteType === 'indirect'
@@ -343,6 +350,7 @@ function buildQuoteEntryHtml(q, insideGroup, gangOpts) {
             ${articleTitleHtml}
           </div>
           ${shareHtml}
+          ${typeof buildAdminActionsHtml === 'function' ? buildAdminActionsHtml(q) : ''}
         </div>
       </div>
     </div>
@@ -526,7 +534,7 @@ function buildCategoryTabsHtml(categories, activeCategory) {
     catMap[c.category] = c.count;
   }
 
-  const broadOrder = ['All', 'Politicians', 'Professionals', 'Other'];
+  const broadOrder = ['Top Stories', 'All', 'Politicians', 'Professionals', 'Other'];
 
   let tabs = `<div class="category-tabs">`;
   for (const cat of broadOrder) {
@@ -585,8 +593,12 @@ async function renderHome() {
     const queryParams = new URLSearchParams({
       page: '1',
       limit: '50',
-      category: _activeCategory,
     });
+    if (_activeCategory === 'Top Stories') {
+      queryParams.set('tab', 'top-stories');
+    } else {
+      queryParams.set('category', _activeCategory);
+    }
     if (_activeSubFilter) queryParams.set('subFilter', _activeSubFilter);
     if (_currentSearch) queryParams.set('search', _currentSearch);
 
@@ -614,14 +626,15 @@ async function renderHome() {
     }
 
     if (quotesData.quotes.length === 0) {
+      const emptyMessage = _activeCategory === 'Top Stories'
+        ? '<h3>No top stories yet</h3><p>Top stories will appear here when sources or articles are marked as top stories in Settings.</p>'
+        : '<h3>No quotes yet</h3><p>Quotes will appear here as they are extracted from news articles.</p><p>Add news sources in <a href="/settings" onclick="navigate(event, \'/settings\')" style="color:var(--accent)">Settings</a> to start extracting quotes.</p>';
       html += `
         <div class="empty-state">
           <svg width="64" height="64" viewBox="0 0 24 24" fill="var(--border)" style="margin-bottom:1rem">
             <path d="M6 17h3l2-4V7H5v6h3zm8 0h3l2-4V7h-6v6h3z"/>
           </svg>
-          <h3>No quotes yet</h3>
-          <p>Quotes will appear here as they are extracted from news articles.</p>
-          <p>Add news sources in <a href="/settings" onclick="navigate(event, '/settings')" style="color:var(--accent)">Settings</a> to start extracting quotes.</p>
+          ${emptyMessage}
         </div>
       `;
     } else {
@@ -690,8 +703,12 @@ async function loadQuotesPage(page) {
     const queryParams = new URLSearchParams({
       page: String(page),
       limit: '50',
-      category: _activeCategory,
     });
+    if (_activeCategory === 'Top Stories') {
+      queryParams.set('tab', 'top-stories');
+    } else {
+      queryParams.set('category', _activeCategory);
+    }
     if (_activeSubFilter) queryParams.set('subFilter', _activeSubFilter);
     if (_currentSearch) queryParams.set('search', _currentSearch);
 

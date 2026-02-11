@@ -110,7 +110,7 @@ router.post('/', requireAdmin, async (req, res) => {
 router.patch('/:id', requireAdmin, (req, res) => {
   const db = getDb();
   const { id } = req.params;
-  const { domain, name, rss_url, enabled } = req.body;
+  const { domain, name, rss_url, enabled, is_top_story } = req.body;
 
   const source = db.prepare('SELECT * FROM sources WHERE id = ?').get(id);
   if (!source) {
@@ -135,6 +135,10 @@ router.patch('/:id', requireAdmin, (req, res) => {
   if (enabled !== undefined) {
     updates.push('enabled = ?');
     values.push(enabled ? 1 : 0);
+  }
+  if (is_top_story !== undefined) {
+    updates.push('is_top_story = ?');
+    values.push(is_top_story ? 1 : 0);
   }
 
   if (updates.length === 0) {

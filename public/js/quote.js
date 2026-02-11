@@ -12,9 +12,12 @@ async function renderQuote(id) {
 
     // Headshot
     const initial = (q.personName || '?').charAt(0).toUpperCase();
+    const placeholderDiv = `<div class="quote-headshot-placeholder">${initial}</div>`;
     const headshotHtml = q.photoUrl
       ? `<img src="${escapeHtml(q.photoUrl)}" alt="${escapeHtml(q.personName)}" class="quote-headshot" onerror="this.outerHTML='<div class=\\'quote-headshot-placeholder\\'>${initial}</div>'">`
-      : `<div class="quote-headshot-placeholder">${initial}</div>`;
+      : (typeof isAdmin !== 'undefined' && isAdmin
+        ? `<a href="https://www.google.com/search?tbm=isch&q=${encodeURIComponent((q.personName || '') + ' ' + (q.personDisambiguation || ''))}" target="_blank" rel="noopener" class="admin-headshot-search" title="Search Google Images">${placeholderDiv}</a>`
+        : placeholderDiv);
 
     // Quote type
     const quoteTypeHtml = q.quoteType === 'indirect'
@@ -45,6 +48,12 @@ async function renderQuote(id) {
             </div>
             ${q.context ? `<div class="quote-context" style="margin-top:0.75rem">${escapeHtml(q.context)}</div>` : ''}
             ${dateStr ? `<div class="quote-date-inline" style="margin-top:0.5rem">${dateStr}</div>` : ''}
+            ${typeof buildAdminActionsHtml === 'function' ? buildAdminActionsHtml({
+              id: q.id, personId: q.personId, personName: q.personName,
+              text: q.text, context: q.context, isVisible: q.isVisible,
+              personCategory: null, personCategoryContext: null,
+              disambiguation: q.personDisambiguation
+            }) : ''}
           </div>
         </div>
       </div>

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import jwt from 'jsonwebtoken';
 import { getDb } from '../config/database.js';
+import { requireAdmin } from '../middleware/auth.js';
 import config from '../config/index.js';
 
 const router = Router();
@@ -22,7 +23,7 @@ router.get('/:id', (req, res) => {
   const admin = isAdminRequest(req);
 
   const article = db.prepare(`
-    SELECT a.id, a.url, a.title, a.published_at, a.quote_count,
+    SELECT a.id, a.url, a.title, a.published_at, a.quote_count, a.is_top_story,
            s.domain, s.name AS source_name
     FROM articles a
     LEFT JOIN sources s ON a.source_id = s.id
@@ -54,6 +55,7 @@ router.get('/:id', (req, res) => {
       title: article.title,
       publishedAt: article.published_at,
       quoteCount: article.quote_count,
+      isTopStory: article.is_top_story,
       sourceDomain: article.domain,
       sourceName: article.source_name,
     },
@@ -72,6 +74,54 @@ router.get('/:id', (req, res) => {
       createdAt: q.created_at,
       voteScore: q.vote_score,
     })),
+  });
+});
+
+// Update article (admin only) — currently supports is_top_story toggle
+router.patch('/:id', requireAdmin, (req, res) => {
+  const db = getDb();
+  const { is_top_story } = req.body;
+
+  const article = db.prepare('SELECT id FROM articles WHERE id = ?').get(req.params.id);
+  if (!article) {
+    return res.status(404).json({ error: 'Article not found' });
+  }
+
+  const updates = [];
+  const values = [];
+
+  if (is_top_story !== undefined) {
+    updates.push('is_top_story = ?');
+    values.push(is_top_story ? 1 : 0);
+  }
+
+  if (updates.length === 0) {
+    return res.json({ success: true });
+  }
+
+  values.push(req.params.id);
+  db.prepare(`UPDATE articles SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+
+  const updated = db.prepare(`
+    SELECT a.id, a.url, a.title, a.published_at, a.quote_count, a.is_top_story,
+           s.domain, s.name AS source_name
+    FROM articles a
+    LEFT JOIN sources s ON a.source_id = s.id
+    WHERE a.id = ?
+  `).get(req.params.id);
+
+  res.json({
+    success: true,
+    article: {
+      id: updated.id,
+      url: updated.url,
+      title: updated.title,
+      publishedAt: updated.published_at,
+      quoteCount: updated.quote_count,
+      isTopStory: updated.is_top_story,
+      sourceDomain: updated.domain,
+      sourceName: updated.source_name,
+    },
   });
 });
 
