@@ -490,7 +490,7 @@ async function showSourceErrors(domain, failureCount) {
             </div>
             <div style="font-family:var(--font-ui);font-size:0.85rem;margin-bottom:0.25rem"><strong>${escapeHtml(log.action)}</strong></div>
             ${log.error ? `<div style="color:var(--error);font-size:0.85rem;margin-bottom:0.25rem">${escapeHtml(log.error)}</div>` : ''}
-            <div class="json-view" style="font-size:0.75rem;max-height:150px;overflow-y:auto">${JSON.stringify(details, null, 2)}</div>
+            <div class="json-view" style="font-size:0.75rem;max-height:150px;overflow-y:auto">${escapeHtml(JSON.stringify(details, null, 2))}</div>
           </div>
         `;
       }

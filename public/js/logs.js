@@ -201,16 +201,12 @@ function showLogDetail(id, row) {
       <p><strong>Duration:</strong> ${log.duration ? log.duration + 'ms' : 'N/A'}</p>
       ${log.error ? `<p><strong>Error:</strong> <span style="color:var(--error)">${escapeHtml(log.error)}</span></p>` : ''}
       <h4 style="margin:1rem 0 0.5rem">Details</h4>
-      <div class="json-view">${JSON.stringify(details, null, 2)}</div>
+      <div class="json-view">${escapeHtml(JSON.stringify(details, null, 2))}</div>
     `;
     document.getElementById('modal-overlay').classList.remove('hidden');
   } catch (err) {
     console.error('Error showing log detail:', err);
   }
-}
-
-function closeModal() {
-  document.getElementById('modal-overlay').classList.add('hidden');
 }
 
 function exportLogs() {
