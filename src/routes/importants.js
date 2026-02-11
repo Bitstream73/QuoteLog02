@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { getDb } from '../config/database.js';
 import { createHash } from 'crypto';
+import { recalculateEntityScore } from '../services/trendingCalculator.js';
 
 const router = Router();
 
@@ -61,6 +62,13 @@ router.post('/toggle', (req, res) => {
     // Get updated count
     const updated = db.prepare(`SELECT importants_count FROM ${tableName} WHERE id = ?`).get(entity_id);
     const importants_count = updated.importants_count;
+
+    // Trigger trending score recalculation
+    try {
+      recalculateEntityScore(db, entity_type, entity_id);
+    } catch (err) {
+      console.error('Trending recalc error after important toggle:', err);
+    }
 
     // Emit Socket.IO event
     const io = req.app.get('io');

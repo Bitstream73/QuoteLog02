@@ -1,0 +1,201 @@
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import request from 'supertest';
+
+// Set test environment before importing app
+process.env.NODE_ENV = 'test';
+process.env.GEMINI_API_KEY = 'test-key';
+process.env.DATABASE_PATH = './tests/trending-test.db';
+
+describe('Trending System', () => {
+  let app;
+  let testPersonId;
+  let testQuoteIds = [];
+  let testArticleId;
+  let testTopicId;
+
+  beforeAll(async () => {
+    const { createApp } = await import('../../src/index.js');
+    app = createApp();
+
+    const { getDb } = await import('../../src/config/database.js');
+    const db = getDb();
+
+    // Seed test data
+    const personResult = db.prepare('INSERT INTO persons (canonical_name) VALUES (?)').run('Trending Author');
+    testPersonId = Number(personResult.lastInsertRowid);
+
+    // Create article
+    const artResult = db.prepare("INSERT INTO articles (url, title, status, published_at, quote_count) VALUES (?, ?, 'completed', datetime('now'), 2)").run('https://example.com/trending1', 'Trending Article');
+    testArticleId = Number(artResult.lastInsertRowid);
+
+    // Create quotes
+    const q1 = db.prepare("INSERT INTO quotes (person_id, text, is_visible, importants_count) VALUES (?, ?, 1, 5)").run(testPersonId, 'Important trending quote');
+    const q2 = db.prepare("INSERT INTO quotes (person_id, text, is_visible, importants_count) VALUES (?, ?, 1, 2)").run(testPersonId, 'Less important quote');
+    const q3 = db.prepare("INSERT INTO quotes (person_id, text, is_visible, importants_count, created_at) VALUES (?, ?, 1, 0, datetime('now', '-10 days'))").run(testPersonId, 'Old quote with no importance');
+    testQuoteIds = [Number(q1.lastInsertRowid), Number(q2.lastInsertRowid), Number(q3.lastInsertRowid)];
+
+    // Link quotes to article
+    db.prepare('INSERT INTO quote_articles (quote_id, article_id) VALUES (?, ?)').run(testQuoteIds[0], testArticleId);
+    db.prepare('INSERT INTO quote_articles (quote_id, article_id) VALUES (?, ?)').run(testQuoteIds[1], testArticleId);
+
+    // Create topic + keyword + links
+    const topicResult = db.prepare("INSERT INTO topics (name, slug) VALUES (?, ?)").run('Trending Test', 'trending-test');
+    testTopicId = Number(topicResult.lastInsertRowid);
+    db.prepare("INSERT INTO keywords (name, name_normalized, keyword_type) VALUES (?, ?, 'concept')").run('trending_kw', 'trending_kw');
+    const kwId = db.prepare("SELECT id FROM keywords WHERE name = 'trending_kw'").get().id;
+    db.prepare('INSERT INTO topic_keywords (topic_id, keyword_id) VALUES (?, ?)').run(testTopicId, kwId);
+    db.prepare('INSERT INTO quote_keywords (quote_id, keyword_id) VALUES (?, ?)').run(testQuoteIds[0], kwId);
+    db.prepare('INSERT INTO quote_topics (quote_id, topic_id) VALUES (?, ?)').run(testQuoteIds[0], testTopicId);
+  }, 30000);
+
+  afterAll(async () => {
+    const { closeDb } = await import('../../src/config/database.js');
+    closeDb();
+    const fs = await import('fs');
+    for (const suffix of ['', '-wal', '-shm']) {
+      try { fs.unlinkSync(`./tests/trending-test.db${suffix}`); } catch {}
+    }
+  });
+
+  describe('Trending Calculator Service', () => {
+    it('recalculateTrendingScores updates all entity scores', async () => {
+      const { getDb } = await import('../../src/config/database.js');
+      const db = getDb();
+      const { recalculateTrendingScores } = await import('../../src/services/trendingCalculator.js');
+
+      recalculateTrendingScores(db);
+
+      // Quote with importants_count=5 should have trending_score > 0
+      const q1 = db.prepare('SELECT trending_score FROM quotes WHERE id = ?').get(testQuoteIds[0]);
+      expect(q1.trending_score).toBeGreaterThan(0);
+
+      // Topic score should include child quote importants
+      const topic = db.prepare('SELECT trending_score FROM topics WHERE id = ?').get(testTopicId);
+      expect(topic.trending_score).toBeGreaterThan(0);
+
+      // Article score should include child quote importants
+      const article = db.prepare('SELECT trending_score FROM articles WHERE id = ?').get(testArticleId);
+      expect(article.trending_score).toBeGreaterThan(0);
+    });
+
+    it('recency bonus decays correctly', async () => {
+      const { recencyBonus } = await import('../../src/services/trendingCalculator.js');
+
+      // Recent (now)
+      const recent = recencyBonus(new Date().toISOString());
+      expect(recent).toBeCloseTo(10.0, 0);
+
+      // 2 days old (~48h half-life)
+      const twoDays = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+      const twoDay = recencyBonus(twoDays);
+      expect(twoDay).toBeCloseTo(3.68, 0); // e^-1 ≈ 0.368 * 10
+
+      // 8 days old (> 7 days)
+      const eightDays = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString();
+      const old = recencyBonus(eightDays);
+      expect(old).toBe(0.0);
+
+      // Null
+      expect(recencyBonus(null)).toBe(0.0);
+    });
+
+    it('topic score includes child quote importants', async () => {
+      const { getDb } = await import('../../src/config/database.js');
+      const db = getDb();
+      const { recalculateTrendingScores } = await import('../../src/services/trendingCalculator.js');
+
+      recalculateTrendingScores(db);
+
+      const topic = db.prepare('SELECT trending_score FROM topics WHERE id = ?').get(testTopicId);
+      // Topic has 0 importants_count but child quote has 5 importants * 1.0 = 5.0
+      expect(topic.trending_score).toBeGreaterThanOrEqual(5.0);
+    });
+
+    it('recalculateEntityScore only updates targeted entity and parents', async () => {
+      const { getDb } = await import('../../src/config/database.js');
+      const db = getDb();
+      const { recalculateEntityScore } = await import('../../src/services/trendingCalculator.js');
+
+      // Reset all scores to 0
+      db.exec('UPDATE quotes SET trending_score = 0');
+      db.exec('UPDATE articles SET trending_score = 0');
+      db.exec('UPDATE topics SET trending_score = 0');
+      db.exec('UPDATE persons SET trending_score = 0');
+
+      // Recalculate only q1
+      recalculateEntityScore(db, 'quote', testQuoteIds[0]);
+
+      // q1 should be updated
+      const q1 = db.prepare('SELECT trending_score FROM quotes WHERE id = ?').get(testQuoteIds[0]);
+      expect(q1.trending_score).toBeGreaterThan(0);
+
+      // q2 and q3 should still be 0 (not targeted)
+      const q2 = db.prepare('SELECT trending_score FROM quotes WHERE id = ?').get(testQuoteIds[1]);
+      expect(q2.trending_score).toBe(0);
+
+      // Parent article should also be recalculated
+      const article = db.prepare('SELECT trending_score FROM articles WHERE id = ?').get(testArticleId);
+      expect(article.trending_score).toBeGreaterThan(0);
+
+      // Parent topic should also be recalculated
+      const topic = db.prepare('SELECT trending_score FROM topics WHERE id = ?').get(testTopicId);
+      expect(topic.trending_score).toBeGreaterThan(0);
+    });
+  });
+
+  describe('Trending API Endpoints', () => {
+    beforeAll(async () => {
+      const { getDb } = await import('../../src/config/database.js');
+      const db = getDb();
+      const { recalculateTrendingScores } = await import('../../src/services/trendingCalculator.js');
+      recalculateTrendingScores(db);
+    });
+
+    it('GET /api/analytics/trending-topics returns topics with quotes', async () => {
+      const res = await request(app).get('/api/analytics/trending-topics');
+
+      expect(res.status).toBe(200);
+      expect(res.body.topics).toBeDefined();
+      expect(Array.isArray(res.body.topics)).toBe(true);
+      if (res.body.topics.length > 0) {
+        expect(res.body.topics[0]).toHaveProperty('trending_score');
+        expect(res.body.topics[0]).toHaveProperty('quotes');
+      }
+    });
+
+    it('GET /api/analytics/trending-sources returns articles with quotes', async () => {
+      const res = await request(app).get('/api/analytics/trending-sources');
+
+      expect(res.status).toBe(200);
+      expect(res.body.articles).toBeDefined();
+      expect(Array.isArray(res.body.articles)).toBe(true);
+    });
+
+    it('GET /api/analytics/trending-quotes returns quote of day/week/month + recent', async () => {
+      const res = await request(app).get('/api/analytics/trending-quotes');
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveProperty('quote_of_day');
+      expect(res.body).toHaveProperty('quote_of_week');
+      expect(res.body).toHaveProperty('quote_of_month');
+      expect(res.body).toHaveProperty('recent_quotes');
+      expect(Array.isArray(res.body.recent_quotes)).toBe(true);
+    });
+
+    it('GET /api/analytics/all-sources returns articles newest first', async () => {
+      const res = await request(app).get('/api/analytics/all-sources');
+
+      expect(res.status).toBe(200);
+      expect(res.body.articles).toBeDefined();
+      expect(res.body).toHaveProperty('total');
+      expect(res.body).toHaveProperty('page');
+    });
+
+    it('GET /api/analytics/all-sources sort=importance orders by trending_score', async () => {
+      const res = await request(app).get('/api/analytics/all-sources?sort=importance');
+
+      expect(res.status).toBe(200);
+      expect(res.body.articles).toBeDefined();
+    });
+  });
+});

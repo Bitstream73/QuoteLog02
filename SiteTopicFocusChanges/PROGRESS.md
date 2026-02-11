@@ -1,9 +1,9 @@
 # Build Progress
 
 ## Current Status
-- **Current Phase:** 4
+- **Current Phase:** 5
 - **Last Updated:** 2026-02-11
-- **Last Commit:** phase-3: add view and share tracking endpoints with dedup
+- **Last Commit:** phase-4: add topics system with materialization, admin CRUD, public endpoints
 
 ## Phase 0: Environment & Prerequisites ✅
 - [x] Existing codebase functional with 214+ passing tests
@@ -41,14 +41,14 @@
 - [x] Mount tracking routes in `src/index.js`
 - [x] Write integration tests for view/share tracking endpoints
 
-## Phase 4: Topics System Enhancement
-- [ ] Add topic CRUD endpoints to `src/routes/admin.js` — create, update, delete topics with keywords (see docs/TOPICS_SYSTEM.md)
-- [ ] Create `src/services/topicMaterializer.js` — populate `quote_topics` via keyword overlap between `topic_keywords` and `quote_keywords`
-- [ ] Create `src/services/topicSuggester.js` — Gemini-based topic suggestion for uncategorized quotes
-- [ ] Integrate topicMaterializer into `src/services/scheduler.js` — run after each fetch cycle
-- [ ] Integrate topicSuggester into `src/services/scheduler.js` — run after materialization
-- [ ] Add GET `/api/topics` and GET `/api/topics/:slug` public endpoints to a new `src/routes/topics.js`
-- [ ] Write integration tests for topic CRUD, materialization, suggestion, and public endpoints
+## Phase 4: Topics System Enhancement ✅
+- [x] Add topic CRUD endpoints to `src/routes/admin.js` — create, update, delete topics with keywords (see docs/TOPICS_SYSTEM.md)
+- [x] Create `src/services/topicMaterializer.js` — populate `quote_topics` via keyword overlap between `topic_keywords` and `quote_keywords`
+- [x] Create `src/services/topicSuggester.js` — Gemini-based topic suggestion for uncategorized quotes
+- [x] Integrate topicMaterializer into `src/services/scheduler.js` — run after each fetch cycle
+- [x] Integrate topicSuggester into `src/services/scheduler.js` — run after materialization
+- [x] Add GET `/api/topics` and GET `/api/topics/:slug` public endpoints to a new `src/routes/topics.js`
+- [x] Write integration tests for topic CRUD, materialization, suggestion, and public endpoints
 
 ## Phase 5: Trending Score Calculation & Caching
 - [ ] Create `src/services/trendingCalculator.js` — compute trending_score for quotes, articles, persons, topics (see docs/TRENDING_SYSTEM.md)

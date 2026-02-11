@@ -4,6 +4,7 @@ import { fetchArticlesFromSource, processArticle } from './articleFetcher.js';
 import { createBackup, pruneOldBackups } from './backup.js';
 import { materializeTopics } from './topicMaterializer.js';
 import { suggestTopics } from './topicSuggester.js';
+import { recalculateTrendingScores } from './trendingCalculator.js';
 
 let fetchTimer = null;
 let appInstance = null;
@@ -192,6 +193,13 @@ async function runFetchCycle() {
         }
       } catch (err) {
         logger.error('scheduler', 'topic_suggestion_error', { error: err.message });
+      }
+
+      try {
+        recalculateTrendingScores();
+        logger.info('scheduler', 'trending_scores_recalculated');
+      } catch (err) {
+        logger.error('scheduler', 'trending_recalculation_error', { error: err.message });
       }
     }
 

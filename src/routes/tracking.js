@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { getDb } from '../config/database.js';
 import { createHash } from 'crypto';
+import { recalculateEntityScore } from '../services/trendingCalculator.js';
 
 const router = Router();
 
@@ -93,6 +94,13 @@ router.post('/share', (req, res) => {
 
     // Get updated count
     const updated = db.prepare(`SELECT share_count FROM ${tableName} WHERE id = ?`).get(entity_id);
+
+    // Trigger trending score recalculation
+    try {
+      recalculateEntityScore(db, entity_type, entity_id);
+    } catch (err) {
+      console.error('Trending recalc error after share:', err);
+    }
 
     res.json({
       success: true,
