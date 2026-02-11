@@ -1,9 +1,9 @@
 # Build Progress
 
 ## Current Status
-- **Current Phase:** 1
-- **Last Updated:** not started
-- **Last Commit:** none
+- **Current Phase:** 2
+- **Last Updated:** 2026-02-11
+- **Last Commit:** phase-1: add importants, topic_keywords tables, new columns and indexes
 
 ## Phase 0: Environment & Prerequisites ✅
 - [x] Existing codebase functional with 214+ passing tests
@@ -11,18 +11,18 @@
 - [x] Gemini API key configured for topic suggestion
 - [x] Branch `SiteTopicFocusChanges` created from `main`
 
-## Phase 1: Schema Migrations
-- [ ] Add `importants` table — polymorphic (entity_type, entity_id, voter_hash) with UNIQUE constraint (see docs/SCHEMA_MIGRATIONS.md)
-- [ ] Add `topic_keywords` junction table — links topics to keywords (see docs/SCHEMA_MIGRATIONS.md)
-- [ ] Add `quote_datetime` column to `quotes` table (TEXT, nullable)
-- [ ] Add `importants_count` column to `quotes`, `articles`, `persons`, `topics` tables (INTEGER DEFAULT 0)
-- [ ] Add `share_count` column to `quotes`, `articles`, `persons`, `topics` tables (INTEGER DEFAULT 0)
-- [ ] Add `view_count` column to `articles`, `persons`, `topics` tables (INTEGER DEFAULT 0)
-- [ ] Add `trending_score` column to `quotes`, `articles`, `persons`, `topics` tables (REAL DEFAULT 0.0)
-- [ ] Add `description` and `context` columns to `topics` table (TEXT, nullable)
-- [ ] Add indexes for importants lookups and trending score ordering (see docs/SCHEMA_MIGRATIONS.md)
-- [ ] Write unit tests for all new tables, columns, indexes, and constraints
-- [ ] Verify all existing 214+ tests still pass with schema additions
+## Phase 1: Schema Migrations ✅
+- [x] Add `importants` table — polymorphic (entity_type, entity_id, voter_hash) with UNIQUE constraint (see docs/SCHEMA_MIGRATIONS.md)
+- [x] Add `topic_keywords` junction table — links topics to keywords (see docs/SCHEMA_MIGRATIONS.md)
+- [x] Add `quote_datetime` column to `quotes` table (TEXT, nullable)
+- [x] Add `importants_count` column to `quotes`, `articles`, `persons`, `topics` tables (INTEGER DEFAULT 0)
+- [x] Add `share_count` column to `quotes`, `articles`, `persons`, `topics` tables (INTEGER DEFAULT 0)
+- [x] Add `view_count` column to `articles`, `persons`, `topics` tables (INTEGER DEFAULT 0)
+- [x] Add `trending_score` column to `quotes`, `articles`, `persons`, `topics` tables (REAL DEFAULT 0.0)
+- [x] Add `description` and `context` columns to `topics` table (TEXT, nullable)
+- [x] Add indexes for importants lookups and trending score ordering (see docs/SCHEMA_MIGRATIONS.md)
+- [x] Write unit tests for all new tables, columns, indexes, and constraints
+- [x] Verify all existing 214+ tests still pass with schema additions
 
 ## Phase 2: Important? Backend API
 - [ ] Create `src/routes/importants.js` with POST `/api/importants/toggle` endpoint (see docs/IMPORTANTS_API.md)
