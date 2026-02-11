@@ -357,6 +357,22 @@ function initializeTables(db) {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_votes_quote_id ON votes(quote_id)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_votes_voter_hash ON votes(voter_hash)`);
 
+  // --- Important? System (replaces upvote/downvote) ---
+
+  // Importants — Polymorphic "Important?" marks (quote, article, person, topic)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS importants (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      entity_type TEXT NOT NULL CHECK(entity_type IN ('quote', 'article', 'person', 'topic')),
+      entity_id INTEGER NOT NULL,
+      voter_hash TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(entity_type, entity_id, voter_hash)
+    )
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_importants_entity ON importants(entity_type, entity_id)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_importants_voter ON importants(voter_hash)`);
+
   // Topics - Broad subject categories (semi-closed vocabulary)
   db.exec(`
     CREATE TABLE IF NOT EXISTS topics (
@@ -406,6 +422,92 @@ function initializeTables(db) {
     )
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_quote_keywords_keyword ON quote_keywords(keyword_id)`);
+
+  // Topic-to-keyword mapping (many-to-many) — defines which keywords belong to which topic
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS topic_keywords (
+      topic_id INTEGER NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
+      keyword_id INTEGER NOT NULL REFERENCES keywords(id) ON DELETE CASCADE,
+      PRIMARY KEY (topic_id, keyword_id)
+    )
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_topic_keywords_keyword ON topic_keywords(keyword_id)`);
+
+  // --- Site Topic Focus migrations: new columns for importants/share/view/trending ---
+
+  // quotes: quote_datetime, importants_count, share_count, trending_score
+  const quoteCols2 = db.prepare("PRAGMA table_info(quotes)").all().map(c => c.name);
+  if (!quoteCols2.includes('quote_datetime')) {
+    db.exec(`ALTER TABLE quotes ADD COLUMN quote_datetime TEXT`);
+  }
+  if (!quoteCols2.includes('importants_count')) {
+    db.exec(`ALTER TABLE quotes ADD COLUMN importants_count INTEGER NOT NULL DEFAULT 0`);
+  }
+  if (!quoteCols2.includes('share_count')) {
+    db.exec(`ALTER TABLE quotes ADD COLUMN share_count INTEGER NOT NULL DEFAULT 0`);
+  }
+  if (!quoteCols2.includes('trending_score')) {
+    db.exec(`ALTER TABLE quotes ADD COLUMN trending_score REAL NOT NULL DEFAULT 0.0`);
+  }
+
+  // articles: importants_count, share_count, view_count, trending_score
+  const articleCols2 = db.prepare("PRAGMA table_info(articles)").all().map(c => c.name);
+  if (!articleCols2.includes('importants_count')) {
+    db.exec(`ALTER TABLE articles ADD COLUMN importants_count INTEGER NOT NULL DEFAULT 0`);
+  }
+  if (!articleCols2.includes('share_count')) {
+    db.exec(`ALTER TABLE articles ADD COLUMN share_count INTEGER NOT NULL DEFAULT 0`);
+  }
+  if (!articleCols2.includes('view_count')) {
+    db.exec(`ALTER TABLE articles ADD COLUMN view_count INTEGER NOT NULL DEFAULT 0`);
+  }
+  if (!articleCols2.includes('trending_score')) {
+    db.exec(`ALTER TABLE articles ADD COLUMN trending_score REAL NOT NULL DEFAULT 0.0`);
+  }
+
+  // persons: importants_count, share_count, view_count, trending_score
+  const personCols2 = db.prepare("PRAGMA table_info(persons)").all().map(c => c.name);
+  if (!personCols2.includes('importants_count')) {
+    db.exec(`ALTER TABLE persons ADD COLUMN importants_count INTEGER NOT NULL DEFAULT 0`);
+  }
+  if (!personCols2.includes('share_count')) {
+    db.exec(`ALTER TABLE persons ADD COLUMN share_count INTEGER NOT NULL DEFAULT 0`);
+  }
+  if (!personCols2.includes('view_count')) {
+    db.exec(`ALTER TABLE persons ADD COLUMN view_count INTEGER NOT NULL DEFAULT 0`);
+  }
+  if (!personCols2.includes('trending_score')) {
+    db.exec(`ALTER TABLE persons ADD COLUMN trending_score REAL NOT NULL DEFAULT 0.0`);
+  }
+
+  // topics: description, context, importants_count, share_count, view_count, trending_score
+  const topicsCols = db.prepare("PRAGMA table_info(topics)").all().map(c => c.name);
+  if (!topicsCols.includes('description')) {
+    db.exec(`ALTER TABLE topics ADD COLUMN description TEXT`);
+  }
+  if (!topicsCols.includes('context')) {
+    db.exec(`ALTER TABLE topics ADD COLUMN context TEXT`);
+  }
+  if (!topicsCols.includes('importants_count')) {
+    db.exec(`ALTER TABLE topics ADD COLUMN importants_count INTEGER NOT NULL DEFAULT 0`);
+  }
+  if (!topicsCols.includes('share_count')) {
+    db.exec(`ALTER TABLE topics ADD COLUMN share_count INTEGER NOT NULL DEFAULT 0`);
+  }
+  if (!topicsCols.includes('view_count')) {
+    db.exec(`ALTER TABLE topics ADD COLUMN view_count INTEGER NOT NULL DEFAULT 0`);
+  }
+  if (!topicsCols.includes('trending_score')) {
+    db.exec(`ALTER TABLE topics ADD COLUMN trending_score REAL NOT NULL DEFAULT 0.0`);
+  }
+
+  // --- Trending / importants indexes ---
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quotes_trending ON quotes(trending_score DESC) WHERE is_visible = 1`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_articles_trending ON articles(trending_score DESC)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_persons_trending ON persons(trending_score DESC)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_topics_trending ON topics(trending_score DESC)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quotes_importants ON quotes(importants_count DESC) WHERE is_visible = 1`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quotes_datetime ON quotes(quote_datetime DESC) WHERE is_visible = 1`);
 
   // App settings (key-value)
   db.exec(`
