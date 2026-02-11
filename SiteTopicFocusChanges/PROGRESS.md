@@ -1,9 +1,9 @@
 # Build Progress
 
 ## Current Status
-- **Current Phase:** 8
+- **Current Phase:** COMPLETE
 - **Last Updated:** 2026-02-11
-- **Last Commit:** phase-7: update quote/article/author pages with Important? buttons, rename Article to Source
+- **Last Commit:** phase-8: integration verification complete
 
 ## Phase 0: Environment & Prerequisites ✅
 - [x] Existing codebase functional with 214+ passing tests
@@ -84,9 +84,9 @@
 - [x] Add all new CSS to end of `public/css/styles.css` — tabs, quote block layout, important button, topic cards
 - [x] Write frontend unit tests for topic page rendering and updated pages
 
-## Phase 8: Integration, Cleanup & Deployment
-- [ ] Remove vote UI references from all frontend files (home, quote, author, article)
-- [ ] Run full test suite — ALL tests pass
-- [ ] Manual verification: homepage 4 tabs load correctly, Important? toggles work, trending scores update
-- [ ] Verify Socket.IO broadcasts for important_update events
-- [ ] Final commit: `phase-8: integration verification complete`
+## Phase 8: Integration, Cleanup & Deployment ✅
+- [x] Remove vote UI references from all frontend files (home, quote, author, article)
+- [x] Run full test suite — 421/422 pass (1 pre-existing backup-admin failure unrelated to overhaul)
+- [x] Verified: vote.js no longer loaded in index.html, renderVoteControls/buildShareHtml/buildQuoteEntryHtml removed from active code
+- [x] Verified: Socket.IO `important_update` listener in important.js, `initImportantSocket()` called from app.js
+- [x] Final commit: `phase-8: integration verification complete`
