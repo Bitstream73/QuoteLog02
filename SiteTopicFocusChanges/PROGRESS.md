@@ -1,9 +1,9 @@
 # Build Progress
 
 ## Current Status
-- **Current Phase:** 2
+- **Current Phase:** 3
 - **Last Updated:** 2026-02-11
-- **Last Commit:** phase-1: add importants, topic_keywords tables, new columns and indexes
+- **Last Commit:** phase-2: add importants API, replace vote system with important? toggle
 
 ## Phase 0: Environment & Prerequisites ✅
 - [x] Existing codebase functional with 214+ passing tests
@@ -24,16 +24,16 @@
 - [x] Write unit tests for all new tables, columns, indexes, and constraints
 - [x] Verify all existing 214+ tests still pass with schema additions
 
-## Phase 2: Important? Backend API
-- [ ] Create `src/routes/importants.js` with POST `/api/importants/toggle` endpoint (see docs/IMPORTANTS_API.md)
-- [ ] Add GET `/api/importants/status` endpoint — batch check important status for current voter
-- [ ] Implement `getVoterHash(req)` using IP+UA hash (reuse pattern from votes.js)
-- [ ] Implement importants_count increment/decrement on toggle in entity tables
-- [ ] Emit Socket.IO `important_update` event on toggle
-- [ ] Mount importants routes in `src/index.js`
-- [ ] Remove old votes route mount from `src/index.js` (keep file for reference)
-- [ ] Modify `src/routes/quotes.js` — replace `vote_score` with `importants_count` in GET responses
-- [ ] Write integration tests for toggle, batch status, count sync, Socket.IO broadcast
+## Phase 2: Important? Backend API ✅
+- [x] Create `src/routes/importants.js` with POST `/api/importants/toggle` endpoint (see docs/IMPORTANTS_API.md)
+- [x] Add GET `/api/importants/status` endpoint — batch check important status for current voter
+- [x] Implement `getVoterHash(req)` using IP+UA hash (reuse pattern from votes.js)
+- [x] Implement importants_count increment/decrement on toggle in entity tables
+- [x] Emit Socket.IO `important_update` event on toggle
+- [x] Mount importants routes in `src/index.js`
+- [x] Remove old votes route mount from `src/index.js` (keep file for reference)
+- [x] Modify `src/routes/quotes.js` — replace `vote_score` with `importants_count` in GET responses
+- [x] Write integration tests for toggle, batch status, count sync, Socket.IO broadcast
 
 ## Phase 3: View & Share Tracking Backend
 - [ ] Create `src/routes/tracking.js` with POST `/api/tracking/view` endpoint (see docs/VIEW_SHARE_TRACKING.md)
