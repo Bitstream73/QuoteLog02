@@ -2,6 +2,8 @@ import { getDb, getSettingValue } from '../config/database.js';
 import logger from './logger.js';
 import { fetchArticlesFromSource, processArticle } from './articleFetcher.js';
 import { createBackup, pruneOldBackups } from './backup.js';
+import { materializeTopics } from './topicMaterializer.js';
+import { suggestTopics } from './topicSuggester.js';
 
 let fetchTimer = null;
 let appInstance = null;
@@ -171,6 +173,25 @@ async function runFetchCycle() {
         });
         db.prepare("UPDATE articles SET status = 'failed', error = ? WHERE id = ?")
           .run(err.message, article.id);
+      }
+    }
+
+    // Post-fetch: materialize topics and suggest new ones
+    if (totalNewQuotes > 0) {
+      try {
+        const matResult = materializeTopics();
+        logger.info('scheduler', 'topics_materialized', matResult);
+      } catch (err) {
+        logger.error('scheduler', 'topic_materialization_error', { error: err.message });
+      }
+
+      try {
+        const sugResult = await suggestTopics();
+        if (sugResult.suggested) {
+          logger.info('scheduler', 'topic_suggested', { topicName: sugResult.topicName });
+        }
+      } catch (err) {
+        logger.error('scheduler', 'topic_suggestion_error', { error: err.message });
       }
     }
 

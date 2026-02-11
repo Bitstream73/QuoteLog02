@@ -1,9 +1,9 @@
 # Build Progress
 
 ## Current Status
-- **Current Phase:** 3
+- **Current Phase:** 4
 - **Last Updated:** 2026-02-11
-- **Last Commit:** phase-2: add importants API, replace vote system with important? toggle
+- **Last Commit:** phase-3: add view and share tracking endpoints with dedup
 
 ## Phase 0: Environment & Prerequisites ✅
 - [x] Existing codebase functional with 214+ passing tests
@@ -35,11 +35,11 @@
 - [x] Modify `src/routes/quotes.js` — replace `vote_score` with `importants_count` in GET responses
 - [x] Write integration tests for toggle, batch status, count sync, Socket.IO broadcast
 
-## Phase 3: View & Share Tracking Backend
-- [ ] Create `src/routes/tracking.js` with POST `/api/tracking/view` endpoint (see docs/VIEW_SHARE_TRACKING.md)
-- [ ] Add POST `/api/tracking/share` endpoint — increment share_count on entity
-- [ ] Mount tracking routes in `src/index.js`
-- [ ] Write integration tests for view/share tracking endpoints
+## Phase 3: View & Share Tracking Backend ✅
+- [x] Create `src/routes/tracking.js` with POST `/api/tracking/view` endpoint (see docs/VIEW_SHARE_TRACKING.md)
+- [x] Add POST `/api/tracking/share` endpoint — increment share_count on entity
+- [x] Mount tracking routes in `src/index.js`
+- [x] Write integration tests for view/share tracking endpoints
 
 ## Phase 4: Topics System Enhancement
 - [ ] Add topic CRUD endpoints to `src/routes/admin.js` — create, update, delete topics with keywords (see docs/TOPICS_SYSTEM.md)
