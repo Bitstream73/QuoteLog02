@@ -106,7 +106,7 @@ export function createApp({ skipDbInit = false } = {}) {
   app.use('/api/admin', adminRouter);
   app.use('/api/articles', articlesRouter);
   app.use('/api', votesRouter);
-  app.use('/api', analyticsRouter);
+  app.use('/api/analytics', analyticsRouter);
 
   // SPA fallback - serve index.html for all non-API routes
   // For /quote/:id, inject OG/Twitter meta tags for social sharing

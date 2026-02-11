@@ -13,7 +13,6 @@ describe('Analytics API', () => {
     const { createApp } = await import('../../src/index.js');
     app = createApp();
 
-    // Seed test data
     const { getDb } = await import('../../src/config/database.js');
     const db = getDb();
 
@@ -22,29 +21,35 @@ describe('Analytics API', () => {
     db.prepare('INSERT INTO persons (canonical_name, photo_url, category) VALUES (?, ?, ?)').run('Author Two', null, 'Business Leader');
 
     // Create visible quotes (today)
-    db.prepare("INSERT INTO quotes (person_id, text, context, is_visible, created_at) VALUES (?, ?, ?, 1, datetime('now'))").run(1, 'The economy is growing', 'economy growth policy');
-    db.prepare("INSERT INTO quotes (person_id, text, context, is_visible, created_at) VALUES (?, ?, ?, 1, datetime('now'))").run(1, 'Immigration reform is needed', 'immigration reform legislation');
-    db.prepare("INSERT INTO quotes (person_id, text, context, is_visible, created_at) VALUES (?, ?, ?, 1, datetime('now'))").run(2, 'Markets are bullish', 'stock market finance');
+    db.prepare("INSERT INTO quotes (person_id, text, context, is_visible, created_at) VALUES (?, ?, ?, 1, datetime('now'))").run(1, 'The economy is growing', 'economy growth');
+    db.prepare("INSERT INTO quotes (person_id, text, context, is_visible, created_at) VALUES (?, ?, ?, 1, datetime('now'))").run(1, 'Immigration reform is needed', 'immigration reform');
+    db.prepare("INSERT INTO quotes (person_id, text, context, is_visible, created_at) VALUES (?, ?, ?, 1, datetime('now'))").run(2, 'Markets are bullish', 'stock market');
 
-    // Create a hidden quote (should not appear in analytics)
-    db.prepare("INSERT INTO quotes (person_id, text, context, is_visible, created_at) VALUES (?, ?, ?, 0, datetime('now'))").run(1, 'Hidden quote', 'hidden context');
+    // Hidden quote (should be excluded)
+    db.prepare("INSERT INTO quotes (person_id, text, context, is_visible, created_at) VALUES (?, ?, ?, 0, datetime('now'))").run(1, 'Hidden quote', 'hidden');
 
-    // Create an older quote (7 days ago)
+    // Older quote
     db.prepare("INSERT INTO quotes (person_id, text, context, is_visible, created_at) VALUES (?, ?, ?, 1, datetime('now', '-7 days'))").run(2, 'Old quote text', 'old topic');
 
-    // Add votes
-    db.prepare("INSERT INTO votes (quote_id, voter_hash, vote_value) VALUES (?, ?, ?)").run(1, 'hash_a', 1);
-    db.prepare("INSERT INTO votes (quote_id, voter_hash, vote_value) VALUES (?, ?, ?)").run(1, 'hash_b', 1);
-    db.prepare("INSERT INTO votes (quote_id, voter_hash, vote_value) VALUES (?, ?, ?)").run(1, 'hash_c', -1);
-    db.prepare("INSERT INTO votes (quote_id, voter_hash, vote_value) VALUES (?, ?, ?)").run(2, 'hash_a', 1);
+    // Topics
+    db.prepare('INSERT INTO topics (name, slug) VALUES (?, ?)').run('U.S. Politics', 'us-politics');
+    db.prepare('INSERT INTO topics (name, slug) VALUES (?, ?)').run('Economy', 'economy');
 
-    // Add keywords
-    db.prepare('INSERT INTO quote_keywords (quote_id, keyword) VALUES (?, ?)').run(1, 'economy');
-    db.prepare('INSERT INTO quote_keywords (quote_id, keyword) VALUES (?, ?)').run(1, 'growth');
-    db.prepare('INSERT INTO quote_keywords (quote_id, keyword) VALUES (?, ?)').run(2, 'immigration');
-    db.prepare('INSERT INTO quote_keywords (quote_id, keyword) VALUES (?, ?)').run(2, 'reform');
-    db.prepare('INSERT INTO quote_keywords (quote_id, keyword) VALUES (?, ?)').run(3, 'market');
-    db.prepare('INSERT INTO quote_keywords (quote_id, keyword) VALUES (?, ?)').run(3, 'finance');
+    // Keywords
+    db.prepare("INSERT INTO keywords (name, name_normalized, keyword_type) VALUES (?, ?, ?)").run('GDP Growth', 'gdp growth', 'concept');
+    db.prepare("INSERT INTO keywords (name, name_normalized, keyword_type) VALUES (?, ?, ?)").run('Federal Reserve', 'federal reserve', 'organization');
+    db.prepare("INSERT INTO keywords (name, name_normalized, keyword_type) VALUES (?, ?, ?)").run('Wall Street', 'wall street', 'location');
+
+    // Quote-topic links
+    db.prepare('INSERT INTO quote_topics (quote_id, topic_id) VALUES (?, ?)').run(1, 1);
+    db.prepare('INSERT INTO quote_topics (quote_id, topic_id) VALUES (?, ?)').run(1, 2);
+    db.prepare('INSERT INTO quote_topics (quote_id, topic_id) VALUES (?, ?)').run(2, 1);
+    db.prepare('INSERT INTO quote_topics (quote_id, topic_id) VALUES (?, ?)').run(3, 2);
+
+    // Quote-keyword links
+    db.prepare('INSERT INTO quote_keywords (quote_id, keyword_id) VALUES (?, ?)').run(1, 1);
+    db.prepare('INSERT INTO quote_keywords (quote_id, keyword_id) VALUES (?, ?)').run(1, 2);
+    db.prepare('INSERT INTO quote_keywords (quote_id, keyword_id) VALUES (?, ?)').run(3, 3);
   }, 30000);
 
   afterAll(async () => {
@@ -60,120 +65,91 @@ describe('Analytics API', () => {
     it('returns all expected fields', async () => {
       const res = await request(app).get('/api/analytics/overview');
       expect(res.status).toBe(200);
-      expect(typeof res.body.quotes_today).toBe('number');
-      expect(typeof res.body.quotes_this_week).toBe('number');
-      expect(typeof res.body.quotes_total).toBe('number');
-      expect(typeof res.body.articles_today).toBe('number');
-      expect(Array.isArray(res.body.quotes_per_day)).toBe(true);
+      expect(typeof res.body.total_quotes).toBe('number');
+      expect(typeof res.body.total_authors).toBe('number');
+      expect(typeof res.body.period_days).toBe('number');
+      expect(Array.isArray(res.body.topics)).toBe(true);
+      expect(Array.isArray(res.body.keywords)).toBe(true);
+      expect(Array.isArray(res.body.authors)).toBe(true);
     });
 
     it('only counts visible quotes', async () => {
+      const res = await request(app).get('/api/analytics/overview?days=30');
+      // 4 visible quotes (3 today + 1 from 7 days ago), hidden excluded
+      expect(res.body.total_quotes).toBe(4);
+    });
+
+    it('returns topics with quote counts', async () => {
       const res = await request(app).get('/api/analytics/overview');
-      // 3 visible today quotes + 1 older visible = 4 total visible
-      expect(res.body.quotes_total).toBe(4);
-      // 3 visible today
-      expect(res.body.quotes_today).toBe(3);
+      expect(res.body.topics.length).toBeGreaterThan(0);
+      expect(res.body.topics[0]).toHaveProperty('name');
+      expect(res.body.topics[0]).toHaveProperty('slug');
+      expect(res.body.topics[0]).toHaveProperty('quote_count');
     });
 
-    it('returns top author today', async () => {
+    it('returns keywords with type info', async () => {
       const res = await request(app).get('/api/analytics/overview');
-      // Author One has 2 visible quotes today
-      if (res.body.top_author_today) {
-        expect(res.body.top_author_today.name).toBe('Author One');
-        expect(res.body.top_author_today.quote_count).toBe(2);
-      }
+      expect(res.body.keywords.length).toBeGreaterThan(0);
+      expect(res.body.keywords[0]).toHaveProperty('name');
+      expect(res.body.keywords[0]).toHaveProperty('keyword_type');
+      expect(res.body.keywords[0]).toHaveProperty('quote_count');
+    });
+
+    it('returns top authors with quote counts', async () => {
+      const res = await request(app).get('/api/analytics/overview');
+      expect(res.body.authors.length).toBeGreaterThan(0);
+      expect(res.body.authors[0]).toHaveProperty('canonical_name');
+      expect(res.body.authors[0]).toHaveProperty('quote_count');
+    });
+
+    it('respects days parameter', async () => {
+      const res = await request(app).get('/api/analytics/overview?days=1');
+      // Only today's 3 visible quotes
+      expect(res.body.total_quotes).toBe(3);
+      expect(res.body.period_days).toBe(1);
     });
   });
 
-  describe('GET /api/analytics/quotes', () => {
-    it('returns quotes sorted by vote_score desc', async () => {
-      const res = await request(app).get('/api/analytics/quotes?period=week');
+  describe('GET /api/analytics/trending-topics', () => {
+    it('returns topics sorted by quote count', async () => {
+      const res = await request(app).get('/api/analytics/trending-topics');
       expect(res.status).toBe(200);
-      expect(res.body.period).toBe('week');
-      expect(Array.isArray(res.body.quotes)).toBe(true);
-
-      // Quote 1 has score 1 (2 up, 1 down), should be first or near top
-      if (res.body.quotes.length >= 2) {
-        expect(res.body.quotes[0].vote_score).toBeGreaterThanOrEqual(res.body.quotes[1].vote_score);
-      }
-    });
-
-    it('period parameter filters correctly', async () => {
-      const dayRes = await request(app).get('/api/analytics/quotes?period=day');
-      expect(dayRes.body.period).toBe('day');
-
-      const yearRes = await request(app).get('/api/analytics/quotes?period=year');
-      expect(yearRes.body.period).toBe('year');
-      // Year should include more quotes than day
-      expect(yearRes.body.quotes.length).toBeGreaterThanOrEqual(dayRes.body.quotes.length);
-    });
-
-    it('invalid period defaults to week', async () => {
-      const res = await request(app).get('/api/analytics/quotes?period=invalid');
-      expect(res.body.period).toBe('week');
-    });
-  });
-
-  describe('GET /api/analytics/authors', () => {
-    it('returns authors sorted by quote_count desc', async () => {
-      const res = await request(app).get('/api/analytics/authors?period=week');
-      expect(res.status).toBe(200);
-      expect(res.body.period).toBe('week');
-      expect(Array.isArray(res.body.authors)).toBe(true);
-
-      if (res.body.authors.length >= 2) {
-        expect(res.body.authors[0].quote_count).toBeGreaterThanOrEqual(res.body.authors[1].quote_count);
-      }
-    });
-
-    it('author objects have correct fields', async () => {
-      const res = await request(app).get('/api/analytics/authors?period=year');
-      if (res.body.authors.length > 0) {
-        const a = res.body.authors[0];
-        expect(a).toHaveProperty('id');
-        expect(a).toHaveProperty('name');
-        expect(a).toHaveProperty('category');
-        expect(a).toHaveProperty('quote_count');
-        expect(a).toHaveProperty('total_vote_score');
-      }
-    });
-  });
-
-  describe('GET /api/analytics/topics', () => {
-    it('returns keywords sorted by count desc', async () => {
-      const res = await request(app).get('/api/analytics/topics?period=week');
-      expect(res.status).toBe(200);
-      expect(res.body.period).toBe('week');
       expect(Array.isArray(res.body.topics)).toBe(true);
-
-      if (res.body.topics.length >= 2) {
-        expect(res.body.topics[0].count).toBeGreaterThanOrEqual(res.body.topics[1].count);
-      }
+      expect(res.body.topics.length).toBe(2);
+      expect(res.body.topics[0]).toHaveProperty('name');
+      expect(res.body.topics[0]).toHaveProperty('quote_count');
     });
 
-    it('topic objects have trend field', async () => {
-      const res = await request(app).get('/api/analytics/topics?period=week');
-      if (res.body.topics.length > 0) {
-        expect(res.body.topics[0]).toHaveProperty('keyword');
-        expect(res.body.topics[0]).toHaveProperty('count');
-        expect(res.body.topics[0]).toHaveProperty('trend');
-        expect(['up', 'down', 'stable']).toContain(res.body.topics[0].trend);
-      }
+    it('respects limit parameter', async () => {
+      const res = await request(app).get('/api/analytics/trending-topics?limit=1');
+      expect(res.body.topics.length).toBe(1);
+    });
+
+    it('respects days parameter', async () => {
+      const res = await request(app).get('/api/analytics/trending-topics?days=1');
+      expect(res.body.period_days).toBe(1);
     });
   });
 
-  describe('Edge cases', () => {
-    it('empty database period returns empty arrays (not errors)', async () => {
-      // Far future period that has no data
-      const res = await request(app).get('/api/analytics/quotes?period=day');
+  describe('GET /api/analytics/trending-keywords', () => {
+    it('returns keywords sorted by quote count', async () => {
+      const res = await request(app).get('/api/analytics/trending-keywords');
       expect(res.status).toBe(200);
-      expect(Array.isArray(res.body.quotes)).toBe(true);
+      expect(Array.isArray(res.body.keywords)).toBe(true);
+      expect(res.body.keywords.length).toBeGreaterThan(0);
+      expect(res.body.keywords[0]).toHaveProperty('name');
+      expect(res.body.keywords[0]).toHaveProperty('keyword_type');
+      expect(res.body.keywords[0]).toHaveProperty('quote_count');
     });
 
-    it('only visible quotes included in analytics', async () => {
-      const res = await request(app).get('/api/analytics/overview');
-      // Hidden quote should not be counted
-      expect(res.body.quotes_today).toBe(3); // not 4
+    it('filters by keyword type', async () => {
+      const res = await request(app).get('/api/analytics/trending-keywords?type=organization');
+      expect(res.body.keywords.every(k => k.keyword_type === 'organization')).toBe(true);
+    });
+
+    it('respects limit parameter', async () => {
+      const res = await request(app).get('/api/analytics/trending-keywords?limit=1');
+      expect(res.body.keywords.length).toBe(1);
     });
   });
 });
