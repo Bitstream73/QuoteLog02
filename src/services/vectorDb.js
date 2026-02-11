@@ -26,8 +26,10 @@ function getIndex() {
  * Embed and store a quote in Pinecone using integrated sparse embedding.
  * The "quotelog" index uses pinecone-sparse-english-v0 with fieldMap text->text,
  * so we pass raw text and Pinecone generates sparse vectors automatically.
+ * Context and personName are concatenated into the text field for search relevance
+ * and stored as separate metadata fields for retrieval.
  */
-export async function embedQuote(quoteId, text, personId) {
+export async function embedQuote(quoteId, text, personId, context = '', personName = '') {
   const idx = getIndex();
   if (!idx) {
     logger.debug('vectordb', 'skip_embed', { reason: 'not_configured' });
@@ -37,12 +39,18 @@ export async function embedQuote(quoteId, text, personId) {
   try {
     const ns = idx.namespace(config.pineconeNamespace);
 
+    // Concatenate text + context + personName for richer sparse embedding
+    const parts = [text, context || '', personName || ''].filter(Boolean);
+    const enrichedText = parts.join(' | ').substring(0, 1000);
+
     await ns.upsertRecords({
       records: [{
         _id: `quote_${quoteId}`,
-        text: text.substring(0, 1000),
+        text: enrichedText,
         quote_id: quoteId,
         person_id: personId,
+        context: (context || '').substring(0, 500),
+        person_name: (personName || '').substring(0, 200),
       }],
     });
 
@@ -72,7 +80,7 @@ export async function queryQuotes(text, personId, topK = 10) {
         inputs: { text },
         filter: { person_id: { $eq: personId } },
       },
-      fields: ['text', 'quote_id', 'person_id'],
+      fields: ['text', 'quote_id', 'person_id', 'context', 'person_name'],
     });
 
     // Map searchRecords response to match the old query() format
@@ -85,6 +93,39 @@ export async function queryQuotes(text, personId, topK = 10) {
     }));
   } catch (err) {
     logger.error('vectordb', 'query_failed', { error: err.message });
+    return [];
+  }
+}
+
+/**
+ * Search quotes across all authors (no personId filter).
+ * Used for user-facing semantic search via the search bar.
+ */
+export async function searchQuotes(queryText, topK = 20) {
+  const idx = getIndex();
+  if (!idx) {
+    return [];
+  }
+
+  try {
+    const ns = idx.namespace(config.pineconeNamespace);
+
+    const response = await ns.searchRecords({
+      query: {
+        topK,
+        inputs: { text: queryText },
+      },
+      fields: ['text', 'quote_id', 'person_id', 'context', 'person_name'],
+    });
+
+    const hits = response?.result?.hits || [];
+    return hits.map(hit => ({
+      id: hit._id,
+      score: hit._score,
+      metadata: hit.fields || {},
+    }));
+  } catch (err) {
+    logger.error('vectordb', 'search_failed', { error: err.message });
     return [];
   }
 }
@@ -135,6 +176,7 @@ const vectorDb = {
 
   embedQuote,
   queryQuotes,
+  searchQuotes,
 };
 
 export default vectorDb;

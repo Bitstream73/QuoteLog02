@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { createHash } from 'crypto';
 import { getDb } from '../config/database.js';
 import { requireAdmin } from '../middleware/auth.js';
+import { searchQuotes } from '../services/vectorDb.js';
 import config from '../config/index.js';
 
 const router = Router();
@@ -192,8 +193,8 @@ router.get('/', (req, res) => {
   });
 });
 
-// Search quotes (must be before /:id to avoid route conflict)
-router.get('/search', (req, res) => {
+// Search quotes — tries Pinecone semantic search first, falls back to SQLite LIKE
+router.get('/search', async (req, res) => {
   const db = getDb();
   const { q: query } = req.query;
   const page = parseInt(req.query.page) || 1;
@@ -205,8 +206,66 @@ router.get('/search', (req, res) => {
     return res.status(400).json({ error: 'Search query must be at least 2 characters' });
   }
 
+  const trimmedQuery = query.trim();
   const visibilityFilter = admin ? '' : 'AND q.is_visible = 1';
-  const searchTerm = `%${query.trim()}%`;
+
+  // Try Pinecone semantic search first
+  let semanticResults = [];
+  let searchMethod = 'text';
+  if (config.pineconeApiKey && config.pineconeIndexHost) {
+    try {
+      semanticResults = await searchQuotes(trimmedQuery, 50);
+    } catch {
+      // Fall through to SQLite
+    }
+  }
+
+  if (semanticResults.length > 0) {
+    searchMethod = 'semantic';
+    // Extract quote IDs from Pinecone hits (preserve relevance order)
+    const quoteIds = semanticResults
+      .map(r => r.metadata?.quote_id)
+      .filter(Boolean);
+
+    if (quoteIds.length > 0) {
+      const placeholders = quoteIds.map(() => '?').join(',');
+      const allQuotes = db.prepare(`
+        SELECT q.id, q.text, q.source_urls, q.created_at, q.context, q.quote_type, q.is_visible,
+               p.id AS person_id, p.canonical_name, p.photo_url, p.category AS person_category,
+               p.category_context AS person_category_context,
+               a.id AS article_id, a.title AS article_title, a.published_at AS article_published_at, a.url AS article_url,
+               s.domain AS primary_source_domain, s.name AS primary_source_name
+        FROM quotes q
+        JOIN persons p ON q.person_id = p.id
+        LEFT JOIN quote_articles qa ON qa.quote_id = q.id
+        LEFT JOIN articles a ON qa.article_id = a.id
+        LEFT JOIN sources s ON a.source_id = s.id
+        WHERE q.id IN (${placeholders}) AND q.canonical_quote_id IS NULL ${visibilityFilter}
+        GROUP BY q.id
+      `).all(...quoteIds);
+
+      // Re-order by Pinecone relevance score
+      const quoteMap = new Map(allQuotes.map(q => [q.id, q]));
+      const ordered = quoteIds
+        .map(id => quoteMap.get(id))
+        .filter(Boolean);
+
+      const total = ordered.length;
+      const paged = ordered.slice(offset, offset + limit);
+
+      return res.json({
+        quotes: paged.map(q => formatQuoteResult(q)),
+        total,
+        page,
+        totalPages: Math.ceil(total / limit),
+        query: trimmedQuery,
+        searchMethod,
+      });
+    }
+  }
+
+  // Fallback: SQLite LIKE search
+  const searchTerm = `%${trimmedQuery}%`;
 
   const total = db.prepare(`
     SELECT COUNT(DISTINCT q.id) as count FROM quotes q
@@ -236,32 +295,37 @@ router.get('/search', (req, res) => {
   `).all(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, limit, offset);
 
   res.json({
-    quotes: quotes.map(q => ({
-      id: q.id,
-      text: q.text,
-      context: q.context,
-      quoteType: q.quote_type,
-      isVisible: q.is_visible,
-      personId: q.person_id,
-      personName: q.canonical_name,
-      photoUrl: q.photo_url || null,
-      personCategory: q.person_category || 'Other',
-      personCategoryContext: q.person_category_context || null,
-      articleId: q.article_id || null,
-      articleTitle: q.article_title || null,
-      articlePublishedAt: q.article_published_at || null,
-      articleUrl: q.article_url || null,
-      primarySourceDomain: q.primary_source_domain || null,
-      primarySourceName: q.primary_source_name || null,
-      sourceUrls: JSON.parse(q.source_urls || '[]'),
-      createdAt: q.created_at,
-    })),
+    quotes: quotes.map(q => formatQuoteResult(q)),
     total,
     page,
     totalPages: Math.ceil(total / limit),
-    query: query.trim(),
+    query: trimmedQuery,
+    searchMethod,
   });
 });
+
+function formatQuoteResult(q) {
+  return {
+    id: q.id,
+    text: q.text,
+    context: q.context,
+    quoteType: q.quote_type,
+    isVisible: q.is_visible,
+    personId: q.person_id,
+    personName: q.canonical_name,
+    photoUrl: q.photo_url || null,
+    personCategory: q.person_category || 'Other',
+    personCategoryContext: q.person_category_context || null,
+    articleId: q.article_id || null,
+    articleTitle: q.article_title || null,
+    articlePublishedAt: q.article_published_at || null,
+    articleUrl: q.article_url || null,
+    primarySourceDomain: q.primary_source_domain || null,
+    primarySourceName: q.primary_source_name || null,
+    sourceUrls: JSON.parse(q.source_urls || '[]'),
+    createdAt: q.created_at,
+  };
+}
 
 // Get single quote with details
 router.get('/:id', (req, res) => {
