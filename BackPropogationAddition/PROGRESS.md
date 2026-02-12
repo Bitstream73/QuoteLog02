@@ -55,8 +55,8 @@
 - [x] Add CSS for `.historical-source-row`, `.status-dot`, `.status-dot-working/failed/disabled` at end of `public/css/styles.css`
 - [x] Write frontend tests in `tests/unit/historical-frontend.test.js`
 
-## Phase 7: Integration Testing & Verification
-- [ ] Run full test suite: `npx vitest run` -- all tests pass
-- [ ] Verify historical sources section renders in settings page
-- [ ] Verify scheduler runs historical phase without breaking RSS phase
-- [ ] Final commit: `phase-7: integration verification complete`
+## Phase 7: Integration Testing & Verification ✅
+- [x] Run full test suite: `npx vitest run` -- 517 passed, 1 pre-existing failure (backup-admin 413)
+- [x] Verify historical sources section renders in settings page
+- [x] Verify scheduler runs historical phase without breaking RSS phase
+- [x] Final commit: `phase-7: integration verification complete`
