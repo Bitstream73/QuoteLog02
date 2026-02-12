@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { getDb } from '../config/database.js';
 import { createHash } from 'crypto';
 import { recalculateEntityScore } from '../services/trendingCalculator.js';
+import { requireAdmin } from '../middleware/auth.js';
 
 const router = Router();
 
@@ -83,6 +84,55 @@ router.post('/toggle', (req, res) => {
     });
   } catch (err) {
     console.error('Importants toggle error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/importants/super-toggle (admin-only, +100 boost)
+router.post('/super-toggle', requireAdmin, (req, res) => {
+  try {
+    const db = getDb();
+    const { entity_type, entity_id } = req.body;
+
+    if (!entity_type || !VALID_TYPES.includes(entity_type)) {
+      return res.status(400).json({ error: `Invalid entity_type. Must be one of: ${VALID_TYPES.join(', ')}` });
+    }
+
+    if (!entity_id) {
+      return res.status(400).json({ error: 'Missing entity_id' });
+    }
+
+    const tableName = TABLE_MAP[entity_type];
+
+    // Validate entity exists
+    const entity = db.prepare(`SELECT id FROM ${tableName} WHERE id = ?`).get(entity_id);
+    if (!entity) {
+      return res.status(404).json({ error: `${entity_type} not found` });
+    }
+
+    // Increment importants_count by 100 (no voter_hash row)
+    db.prepare(`UPDATE ${tableName} SET importants_count = importants_count + 100 WHERE id = ?`).run(entity_id);
+
+    // Get updated count
+    const updated = db.prepare(`SELECT importants_count FROM ${tableName} WHERE id = ?`).get(entity_id);
+    const importants_count = updated.importants_count;
+
+    // Recalculate trending score
+    try {
+      recalculateEntityScore(db, entity_type, entity_id);
+    } catch (err) {
+      console.error('Trending recalc error after super-toggle:', err);
+    }
+
+    // Emit Socket.IO event
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('important_update', { entity_type, entity_id, importants_count });
+    }
+
+    res.json({ success: true, importants_count });
+  } catch (err) {
+    console.error('Super-toggle error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
