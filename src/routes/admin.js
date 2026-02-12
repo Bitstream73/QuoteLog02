@@ -386,9 +386,115 @@ router.delete('/topics/:id', (req, res) => {
   }
 });
 
-// --- Quote-level Keyword CRUD ---
+// --- Standalone Keyword CRUD ---
 
 const VALID_KEYWORD_TYPES = ['person', 'organization', 'event', 'legislation', 'location', 'concept'];
+
+// GET /api/admin/keywords — list all keywords with quote counts
+router.get('/keywords', (req, res) => {
+  try {
+    const db = getDb();
+    const keywords = db.prepare(`
+      SELECT k.id, k.name, k.name_normalized, k.keyword_type, k.created_at,
+        COUNT(qk.quote_id) as quote_count
+      FROM keywords k
+      LEFT JOIN quote_keywords qk ON k.id = qk.keyword_id
+      GROUP BY k.id
+      ORDER BY quote_count DESC
+    `).all();
+
+    res.json({ keywords });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to list keywords: ' + err.message });
+  }
+});
+
+// POST /api/admin/keywords — create a standalone keyword
+router.post('/keywords', (req, res) => {
+  try {
+    const db = getDb();
+    const { name, keyword_type } = req.body;
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'Keyword name is required' });
+    }
+
+    const trimmedName = name.trim();
+    const normalizedName = trimmedName.toLowerCase();
+    const type = keyword_type && VALID_KEYWORD_TYPES.includes(keyword_type) ? keyword_type : 'concept';
+
+    // Check for duplicate
+    const existing = db.prepare('SELECT id FROM keywords WHERE name = ?').get(trimmedName);
+    if (existing) {
+      return res.status(409).json({ error: 'Keyword with this name already exists' });
+    }
+
+    const result = db.prepare(
+      'INSERT INTO keywords (name, name_normalized, keyword_type) VALUES (?, ?, ?)'
+    ).run(trimmedName, normalizedName, type);
+
+    const keyword = db.prepare('SELECT id, name, keyword_type FROM keywords WHERE id = ?').get(Number(result.lastInsertRowid));
+
+    res.json({ success: true, keyword });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to create keyword: ' + err.message });
+  }
+});
+
+// PATCH /api/admin/keywords/:id — update keyword name/type
+router.patch('/keywords/:id', (req, res) => {
+  try {
+    const db = getDb();
+    const keywordId = parseInt(req.params.id);
+    const { name, keyword_type } = req.body;
+
+    const existing = db.prepare('SELECT * FROM keywords WHERE id = ?').get(keywordId);
+    if (!existing) {
+      return res.status(404).json({ error: 'Keyword not found' });
+    }
+
+    if (!name && !keyword_type) {
+      return res.status(400).json({ error: 'At least one of name or keyword_type is required' });
+    }
+
+    const newName = name ? name.trim() : existing.name;
+    const newNormalized = name ? name.trim().toLowerCase() : existing.name_normalized;
+    const newType = keyword_type && VALID_KEYWORD_TYPES.includes(keyword_type) ? keyword_type : existing.keyword_type;
+
+    db.prepare('UPDATE keywords SET name = ?, name_normalized = ?, keyword_type = ? WHERE id = ?')
+      .run(newName, newNormalized, newType, keywordId);
+
+    const keyword = db.prepare('SELECT id, name, keyword_type FROM keywords WHERE id = ?').get(keywordId);
+
+    res.json({ success: true, keyword });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update keyword: ' + err.message });
+  }
+});
+
+// DELETE /api/admin/keywords/:id — cascade delete keyword
+router.delete('/keywords/:id', (req, res) => {
+  try {
+    const db = getDb();
+    const keywordId = parseInt(req.params.id);
+
+    const existing = db.prepare('SELECT id, name FROM keywords WHERE id = ?').get(keywordId);
+    if (!existing) {
+      return res.status(404).json({ error: 'Keyword not found' });
+    }
+
+    // Cascade delete from join tables
+    db.prepare('DELETE FROM quote_keywords WHERE keyword_id = ?').run(keywordId);
+    db.prepare('DELETE FROM topic_keywords WHERE keyword_id = ?').run(keywordId);
+    db.prepare('DELETE FROM keywords WHERE id = ?').run(keywordId);
+
+    res.json({ success: true, deleted: existing.name });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete keyword: ' + err.message });
+  }
+});
+
+// --- Quote-level Keyword CRUD ---
 
 // POST /api/admin/quotes/:id/keywords — link (or create-and-link) a keyword to a quote
 router.post('/quotes/:id/keywords', (req, res) => {

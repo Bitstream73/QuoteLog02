@@ -1,9 +1,9 @@
 # Build Progress — Admin Edit Capabilities
 
 ## Current Status
-- **Current Phase:** 2
+- **Current Phase:** 3
 - **Last Updated:** 2026-02-12
-- **Last Commit:** 6f8b119
+- **Last Commit:** bcc18cd
 
 ---
 
@@ -19,11 +19,11 @@
 
 ---
 
-## Phase 2: Backend — Quote Keywords/Topics CRUD
-- [ ] Write integration tests for quote-level keyword/topic endpoints in new file `tests/integration/quote-keywords.test.js`. Tests: `GET /api/quotes/:id/keywords-topics` returns both arrays; `POST /api/admin/quotes/:id/keywords` links keyword (create-and-link if new); `DELETE /api/admin/quotes/:id/keywords/:keywordId` unlinks; `POST /api/admin/quotes/:id/topics` links topic; `DELETE /api/admin/quotes/:id/topics/:topicId` unlinks. POST/DELETE require admin. See `docs/KEYWORD-TOPIC-CRUD.md`.
-- [ ] Implement `GET /api/quotes/:id/keywords-topics` in `src/routes/quotes.js`. Returns `{ keywords: [{id, name, keyword_type}], topics: [{id, name, slug}] }` by joining through `quote_keywords` and `quote_topics` tables. No auth required (read-only).
-- [ ] Implement `POST/DELETE /api/admin/quotes/:id/keywords` in `src/routes/admin.js`. POST accepts `{ name, keyword_type? }`, upserts into `keywords` table (normalize name), inserts into `quote_keywords`. DELETE removes from `quote_keywords`. Both require `requireAdmin`. See `docs/KEYWORD-TOPIC-CRUD.md`.
-- [ ] Implement `POST/DELETE /api/admin/quotes/:id/topics` in `src/routes/admin.js`. POST accepts `{ topic_id }` or `{ name }` (create-and-link with auto-slug). DELETE removes from `quote_topics`. Both require `requireAdmin`. See `docs/KEYWORD-TOPIC-CRUD.md`.
+## Phase 2: Backend — Quote Keywords/Topics CRUD ✅
+- [x] Write integration tests for quote-level keyword/topic endpoints in new file `tests/integration/quote-keywords.test.js`. Tests: `GET /api/quotes/:id/keywords-topics` returns both arrays; `POST /api/admin/quotes/:id/keywords` links keyword (create-and-link if new); `DELETE /api/admin/quotes/:id/keywords/:keywordId` unlinks; `POST /api/admin/quotes/:id/topics` links topic; `DELETE /api/admin/quotes/:id/topics/:topicId` unlinks. POST/DELETE require admin. See `docs/KEYWORD-TOPIC-CRUD.md`.
+- [x] Implement `GET /api/quotes/:id/keywords-topics` in `src/routes/quotes.js`. Returns `{ keywords: [{id, name, keyword_type}], topics: [{id, name, slug}] }` by joining through `quote_keywords` and `quote_topics` tables. No auth required (read-only).
+- [x] Implement `POST/DELETE /api/admin/quotes/:id/keywords` in `src/routes/admin.js`. POST accepts `{ name, keyword_type? }`, upserts into `keywords` table (normalize name), inserts into `quote_keywords`. DELETE removes from `quote_keywords`. Both require `requireAdmin`. See `docs/KEYWORD-TOPIC-CRUD.md`.
+- [x] Implement `POST/DELETE /api/admin/quotes/:id/topics` in `src/routes/admin.js`. POST accepts `{ topic_id }` or `{ name }` (create-and-link with auto-slug). DELETE removes from `quote_topics`. Both require `requireAdmin`. See `docs/KEYWORD-TOPIC-CRUD.md`.
 
 ---
 
