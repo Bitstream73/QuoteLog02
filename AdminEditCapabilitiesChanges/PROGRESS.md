@@ -1,9 +1,9 @@
 # Build Progress — Admin Edit Capabilities
 
 ## Current Status
-- **Current Phase:** 4
+- **Current Phase:** 5
 - **Last Updated:** 2026-02-12
-- **Last Commit:** c36b2fb
+- **Last Commit:** b0c9142
 
 ---
 
@@ -33,9 +33,9 @@
 
 ---
 
-## Phase 4: Frontend — Important Button Redesign
-- [ ] Write unit tests for important button rendering in `tests/unit/important-button.test.js`. Tests: (a) non-admin `renderImportantButton()` output does NOT contain count number, only "Important?" text; (b) admin output contains count AND a SuperImportant button element; (c) SuperImportant button has correct onclick handler. Import and test the render function directly.
-- [ ] Modify `renderImportantButton()` in `public/js/important.js` to accept optional `adminView` param (defaults to global `isAdmin`). Non-admin: render "Important?" without count number. Admin: render "Important? {count}" plus `[SuperImportant]` button with `onclick="handleSuperImportant(event, '${entityType}', ${entityId})"`. Add `handleSuperImportant()` function that calls `API.post('/importants/super-toggle', { entity_type, entity_id })`, updates count span, shows toast. Update all callers in `home.js`, `quote.js`, `author.js` (search for `renderImportantButton` calls).
+## Phase 4: Frontend — Important Button Redesign ✅
+- [x] Write unit tests for important button rendering in `tests/unit/important-button.test.js`. Tests: (a) non-admin `renderImportantButton()` output does NOT contain count number, only "Important?" text; (b) admin output contains count AND a SuperImportant button element; (c) SuperImportant button has correct onclick handler. Import and test the render function directly.
+- [x] Modify `renderImportantButton()` in `public/js/important.js` to accept optional `adminView` param (defaults to global `isAdmin`). Non-admin: render "Important?" without count number. Admin: render "Important? {count}" plus `[SuperImportant]` button with `onclick="handleSuperImportant(event, '${entityType}', ${entityId})"`. Add `handleSuperImportant()` function that calls `API.post('/importants/super-toggle', { entity_type, entity_id })`, updates count span, shows toast. Update all callers in `home.js`, `quote.js`, `author.js` (search for `renderImportantButton` calls).
 
 ---
 

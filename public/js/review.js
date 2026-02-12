@@ -1,6 +1,6 @@
 // Disambiguation Review & Quote Management Page
 
-let _reviewActiveTab = 'disambiguation';
+let _reviewActiveTab = 'quotes';
 
 async function renderReview() {
   const content = document.getElementById('content');
@@ -13,8 +13,8 @@ async function renderReview() {
     </p>
     <h1 class="page-title">Review</h1>
     <div class="review-tab-bar">
-      <button class="review-tab ${_reviewActiveTab === 'disambiguation' ? 'active' : ''}" onclick="switchReviewTab('disambiguation')">Disambiguation Review</button>
       <button class="review-tab ${_reviewActiveTab === 'quotes' ? 'active' : ''}" onclick="switchReviewTab('quotes')">Quote Management</button>
+      <button class="review-tab ${_reviewActiveTab === 'disambiguation' ? 'active' : ''}" onclick="switchReviewTab('disambiguation')">Disambiguation Review <span class="disambig-tab-badge" id="disambig-tab-badge" style="display:none"></span></button>
     </div>
     <div id="review-tab-content"></div>
   `;
@@ -54,6 +54,7 @@ async function renderDisambiguationTab() {
     ]);
 
     updateReviewBadge(stats.pending);
+    updateDisambigTabBadge(stats.pending);
 
     let html = `
       <p class="page-subtitle">Review potential name matches to improve quote attribution accuracy</p>
@@ -446,5 +447,17 @@ function updateReviewCount(delta) {
     } else {
       badge.style.display = 'none';
     }
+    updateDisambigTabBadge(count);
+  }
+}
+
+function updateDisambigTabBadge(count) {
+  const badge = document.getElementById('disambig-tab-badge');
+  if (!badge) return;
+  if (count > 0) {
+    badge.textContent = count > 99 ? '99+' : count;
+    badge.style.display = '';
+  } else {
+    badge.style.display = 'none';
   }
 }
