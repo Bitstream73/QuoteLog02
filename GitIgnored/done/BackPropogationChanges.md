@@ -12,6 +12,8 @@ Everything inside the `<!-- TODO -->` block below is the user's raw input. It ma
 
 <!-- TODO START -->
 
+Put the files that result from this prompt in a folder in the root called "BackPropogationAddition". Do not edit the root/Claude.md file in the root or the root/Prompt.md file. If you generate those files with those names as part of this prompt, put them in the "BackPropogationAddition" folder
+
 ** Overall Goal ** 
 To backfill missing quotes from the past,
 

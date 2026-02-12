@@ -105,6 +105,41 @@ async function renderSettings() {
         </div>
       </div>
 
+      <!-- Historical Sources Section -->
+      <div class="settings-section" id="settings-section-historical">
+        <h2>Historical Sources</h2>
+        <p class="section-description">
+          Configure historical quote sources for backfilling quotes from the past.
+          Each provider fetches articles from a different archive.
+        </p>
+
+        <div class="setting-row" style="align-items:center">
+          <label>
+            <span class="setting-label">Historical Backfill</span>
+            <span class="setting-description">Enable/disable historical fetching during each cycle</span>
+          </label>
+          <label class="toggle">
+            <input type="checkbox" ${settings.historical_fetch_enabled === '1' ? 'checked' : ''}
+                   onchange="updateSetting('historical_fetch_enabled', this.checked ? '1' : '0')">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+
+        <div class="setting-row">
+          <label>
+            <span class="setting-label">Articles per Source per Cycle</span>
+            <span class="setting-description">Max historical articles to fetch from each provider per cycle</span>
+          </label>
+          <input type="number" value="${settings.historical_articles_per_source_per_cycle || 5}"
+                 min="1" max="100" class="input-number"
+                 onchange="updateSetting('historical_articles_per_source_per_cycle', this.value)">
+        </div>
+
+        <div id="historical-sources-list" class="sources-list">
+          <p class="empty-message">Loading historical sources...</p>
+        </div>
+      </div>
+
       <!-- Data Management Section -->
       <div class="settings-section">
         <h2>Data Management</h2>
@@ -121,11 +156,14 @@ async function renderSettings() {
             <button class="btn btn-primary" onclick="addSource()">Add Source</button>
           </div>
 
-          <div id="sources-list" class="sources-list">
-            ${sources.length === 0 ? `
-              <p class="empty-message">No sources configured. Add a news source to start extracting quotes.</p>
-            ` : sources.map(s => renderSourceRow(s)).join('')}
-          </div>
+          <details class="sources-details">
+            <summary>Sources (${sources.length})</summary>
+            <div id="sources-list" class="sources-list">
+              ${sources.length === 0 ? `
+                <p class="empty-message">No sources configured. Add a news source to start extracting quotes.</p>
+              ` : sources.map(s => renderSourceRow(s)).join('')}
+            </div>
+          </details>
         </div>
 
         <!-- Backup & Restore Subsection -->
@@ -183,6 +221,9 @@ async function renderSettings() {
 
     // Start scheduler countdown
     startSchedulerCountdown();
+
+    // Load historical sources
+    loadHistoricalSources();
 
     // Load logs section
     await loadLogsStats();
@@ -245,6 +286,9 @@ async function addSource() {
 
     sourcesList.insertAdjacentHTML('beforeend', renderSourceRow(result.source));
 
+    // Update summary count
+    updateSourcesSummaryCount();
+
     // Clear inputs
     domainInput.value = '';
     nameInput.value = '';
@@ -294,8 +338,20 @@ async function removeSource(sourceId) {
     if (!sourcesList.querySelector('.source-row')) {
       sourcesList.innerHTML = '<p class="empty-message">No sources configured. Add a news source to start extracting quotes.</p>';
     }
+
+    // Update summary count
+    updateSourcesSummaryCount();
   } catch (err) {
     showToast('Error removing source: ' + err.message, 'error', 5000);
+  }
+}
+
+function updateSourcesSummaryCount() {
+  const sourcesList = document.getElementById('sources-list');
+  const summary = document.querySelector('.sources-details summary');
+  if (summary && sourcesList) {
+    const count = sourcesList.querySelectorAll('.source-row').length;
+    summary.textContent = `Sources (${count})`;
   }
 }
 
@@ -457,6 +513,79 @@ async function importDatabase(input) {
     showToast('Import failed: ' + err.message, 'error', 5000);
   } finally {
     input.value = '';
+  }
+}
+
+function renderHistoricalSourceRow(source) {
+  const statusClass = source.status === 'working' ? 'status-dot-working'
+    : source.status === 'failed' ? 'status-dot-failed'
+    : 'status-dot-disabled';
+  const statusLabel = source.status === 'working' ? 'Working'
+    : source.status === 'failed' ? 'Failed'
+    : source.status === 'disabled' ? 'Disabled'
+    : 'Unknown';
+
+  return `
+    <div class="source-row historical-source-row" data-key="${escapeHtml(source.provider_key)}">
+      <div class="source-info">
+        <span class="status-dot ${statusClass}" title="${statusLabel}"></span>
+        <div>
+          <span class="source-domain">${escapeHtml(source.name)}</span>
+          <span class="source-name">${escapeHtml(source.description || '')}</span>
+          ${source.last_error ? `<span class="source-warning" title="${escapeHtml(source.last_error)}">!</span>` : ''}
+        </div>
+      </div>
+      <div class="source-actions">
+        <span class="historical-stat">${source.total_articles_fetched} articles</span>
+        <button class="btn btn-secondary btn-sm"
+                onclick="testHistoricalSource('${escapeHtml(source.provider_key)}')"
+                id="test-btn-${escapeHtml(source.provider_key)}">Test</button>
+        <label class="toggle">
+          <input type="checkbox" ${source.enabled ? 'checked' : ''}
+                 onchange="toggleHistoricalSource('${escapeHtml(source.provider_key)}', this.checked)">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </div>
+  `;
+}
+
+async function loadHistoricalSources() {
+  try {
+    const data = await API.get('/historical-sources');
+    const list = document.getElementById('historical-sources-list');
+    if (list) {
+      list.innerHTML = data.sources.length === 0
+        ? '<p class="empty-message">No historical sources configured.</p>'
+        : data.sources.map(s => renderHistoricalSourceRow(s)).join('');
+    }
+  } catch (err) {
+    console.error('Failed to load historical sources:', err);
+  }
+}
+
+async function toggleHistoricalSource(key, enabled) {
+  try {
+    await API.patch(`/historical-sources/${key}`, { enabled });
+    showToast(enabled ? 'Historical source enabled' : 'Historical source disabled', 'success');
+    await loadHistoricalSources();
+  } catch (err) {
+    showToast('Error: ' + err.message, 'error', 5000);
+    await loadHistoricalSources();
+  }
+}
+
+async function testHistoricalSource(key) {
+  const btn = document.getElementById(`test-btn-${key}`);
+  if (btn) { btn.disabled = true; btn.textContent = 'Testing...'; }
+  try {
+    const result = await API.post(`/historical-sources/${key}/test`);
+    showToast(result.message, result.success ? 'success' : 'error', 5000);
+    await loadHistoricalSources();
+  } catch (err) {
+    showToast('Test failed: ' + err.message, 'error', 5000);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Test'; }
   }
 }
 

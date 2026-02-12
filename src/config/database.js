@@ -181,6 +181,45 @@ function initializeTables(db) {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_articles_status ON articles(status)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_articles_url ON articles(url)`);
 
+  // Historical Sources — Provider registry for historical quote backfill
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS historical_sources (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      provider_key TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      description TEXT,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      status TEXT NOT NULL DEFAULT 'unknown'
+        CHECK(status IN ('working', 'failed', 'disabled', 'unknown')),
+      consecutive_failures INTEGER NOT NULL DEFAULT 0,
+      total_articles_fetched INTEGER NOT NULL DEFAULT 0,
+      last_fetch_at TEXT,
+      last_success_at TEXT,
+      last_error TEXT,
+      config TEXT DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_historical_sources_key ON historical_sources(provider_key)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_historical_sources_enabled ON historical_sources(enabled)`);
+
+  // Seed default historical providers
+  const defaultProviders = [
+    { provider_key: 'wikiquote', name: 'Wikiquote', description: 'Quotes from Wikiquote via MediaWiki API' },
+    { provider_key: 'chronicling_america', name: 'Chronicling America', description: 'Historical US newspapers via Library of Congress API (1836-1963)' },
+    { provider_key: 'wayback', name: 'Wayback Machine', description: 'Historical news article snapshots via Internet Archive CDX API' },
+    { provider_key: 'govinfo', name: 'Congressional Record', description: 'Congressional speeches via GovInfo API (1995-present)' },
+    { provider_key: 'presidency_project', name: 'American Presidency Project', description: 'Presidential speeches and press conferences from UCSB archive (1789-present)' },
+  ];
+
+  const insertProvider = db.prepare(
+    'INSERT OR IGNORE INTO historical_sources (provider_key, name, description) VALUES (?, ?, ?)'
+  );
+  for (const p of defaultProviders) {
+    insertProvider.run(p.provider_key, p.name, p.description);
+  }
+
   // Persons - Canonical persons (one row per real-world person)
   db.exec(`
     CREATE TABLE IF NOT EXISTS persons (
@@ -280,6 +319,17 @@ function initializeTables(db) {
   const articleCols = db.prepare("PRAGMA table_info(articles)").all().map(c => c.name);
   if (!articleCols.includes('is_top_story')) {
     db.exec(`ALTER TABLE articles ADD COLUMN is_top_story INTEGER NOT NULL DEFAULT 0`);
+  }
+
+  // Migration: add historical_source_id column to articles (NULL for RSS articles)
+  if (!articleCols.includes('historical_source_id')) {
+    db.exec(`ALTER TABLE articles ADD COLUMN historical_source_id INTEGER REFERENCES historical_sources(id)`);
+  }
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_articles_historical ON articles(historical_source_id)`);
+
+  // Migration: add prefetched_text column to articles (for providers returning full text)
+  if (!articleCols.includes('prefetched_text')) {
+    db.exec(`ALTER TABLE articles ADD COLUMN prefetched_text TEXT`);
   }
 
   // Quote-to-article link (many-to-many)
@@ -596,6 +646,8 @@ function initializeTables(db) {
     min_quote_words: '5',
     theme: 'light',
     log_level: 'info',
+    historical_fetch_enabled: '1',
+    historical_articles_per_source_per_cycle: '5',
   };
 
   let seedSettings = defaultSettings;

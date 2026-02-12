@@ -3135,16 +3135,35 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   font-family: 'Source Serif 4', Georgia, serif;
   font-size: 1.05rem;
   line-height: 1.6;
+  font-weight: 700;
+  font-style: italic;
   color: var(--text);
   cursor: pointer;
   margin-bottom: 0.5rem;
+}
+
+.quote-block__text .quote-mark {
+  color: var(--accent);
+  font-size: 1.4em;
+  font-weight: 700;
+  font-style: normal;
+  line-height: 0;
+  vertical-align: -0.15em;
+}
+
+.quote-block__text .quote-mark--open {
+  margin-right: 2px;
+}
+
+.quote-block__text .quote-mark--close {
+  margin-left: 2px;
 }
 
 .quote-block__context {
   font-style: italic;
   color: var(--text-muted);
   font-size: 0.9rem;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.75rem;
   cursor: pointer;
 }
 
@@ -3245,7 +3264,7 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
 .quote-block__share {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
 }
 
 .quote-block__share-count {
@@ -3527,4 +3546,321 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
 .card-quotes-container {
   display: flex;
   flex-direction: column;
+}
+
+/* ===================================
+   Historical Sources
+   =================================== */
+.historical-source-row .source-info {
+  gap: 0.75rem;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: inline-block;
+}
+
+.status-dot-working {
+  background: var(--success, #22c55e);
+}
+
+.status-dot-failed {
+  background: var(--error, #ef4444);
+}
+
+.status-dot-disabled {
+  background: var(--text-muted, #9ca3af);
+}
+
+.historical-stat {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* ===================================
+   Admin Quote Block
+   =================================== */
+.admin-quote-block {
+  padding: 1.25rem;
+  border: 1px solid var(--accent);
+  border-left: 3px solid var(--accent);
+}
+
+.admin-stats-row {
+  display: flex;
+  gap: 1.25rem;
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.admin-edit-buttons {
+  display: flex;
+  gap: 0.375rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+
+.admin-edit-buttons button {
+  font-family: var(--font-ui);
+  font-size: 0.7rem;
+  padding: 3px 8px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: all 0.15s;
+}
+
+.admin-edit-buttons button:hover {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+.admin-keywords-section,
+.admin-topics-section {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin-top: 0.5rem;
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+}
+
+.admin-section-label {
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.admin-inline-btn {
+  font-family: var(--font-ui);
+  font-size: 0.65rem;
+  padding: 1px 5px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  cursor: pointer;
+  color: var(--accent);
+  transition: all 0.15s;
+}
+
+.admin-inline-btn:hover {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+.admin-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.keyword-chip,
+.topic-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 2px 8px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font-size: 0.7rem;
+  font-family: var(--font-ui);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.keyword-chip:hover,
+.topic-chip:hover {
+  background: var(--bg-hover, #eee);
+}
+
+.chip-remove {
+  font-size: 0.6rem;
+  line-height: 1;
+  padding: 0 2px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  opacity: 0.6;
+  transition: opacity 0.15s;
+}
+
+.chip-remove:hover {
+  opacity: 1;
+  color: var(--error, #dc3545);
+}
+
+/* SuperImportant button */
+.super-important-btn {
+  font-family: var(--font-ui);
+  font-size: 0.7rem;
+  padding: 3px 8px;
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: white;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.15s;
+}
+
+.super-important-btn:hover {
+  background: linear-gradient(135deg, #d97706, #b45309);
+}
+
+.super-important-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Disambiguation tab badge */
+.disambig-tab-badge {
+  display: inline-block;
+  background: var(--color-danger, #dc3545);
+  color: white;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 10px;
+  margin-left: 4px;
+  min-width: 16px;
+  text-align: center;
+  vertical-align: middle;
+}
+
+/* Settings sources twirl-down */
+.sources-details {
+  margin-top: 1rem;
+  border: 1px solid var(--border, #ddd);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.sources-details summary {
+  padding: 10px 14px;
+  cursor: pointer;
+  font-weight: 600;
+  font-family: var(--font-ui);
+  background: var(--bg-secondary, #f5f5f5);
+  user-select: none;
+}
+
+.sources-details summary:hover {
+  background: var(--bg-hover, #eee);
+}
+
+.sources-details[open] summary {
+  border-bottom: 1px solid var(--border, #ddd);
+}
+
+/* Mobile responsive for admin elements */
+@media (max-width: 600px) {
+  .admin-edit-buttons {
+    gap: 0.25rem;
+  }
+  .admin-edit-buttons button {
+    font-size: 0.65rem;
+    padding: 2px 6px;
+  }
+  .admin-stats-row {
+    gap: 0.75rem;
+    font-size: 0.7rem;
+  }
+  .admin-keywords-section,
+  .admin-topics-section {
+    font-size: 0.7rem;
+  }
+}
+
+/* ===================================
+   Admin Autocomplete Widget
+   =================================== */
+.admin-autocomplete {
+  display: inline-block;
+  position: relative;
+}
+
+.admin-ac-input {
+  font-family: var(--font-ui);
+  font-size: 0.7rem;
+  padding: 2px 6px;
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  width: 160px;
+  outline: none;
+}
+
+.admin-ac-input:focus {
+  box-shadow: 0 0 0 2px var(--accent-light);
+}
+
+.admin-ac-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 100;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  max-height: 180px;
+  overflow-y: auto;
+  min-width: 180px;
+  margin-top: 2px;
+}
+
+.admin-ac-option {
+  padding: 4px 8px;
+  font-family: var(--font-ui);
+  font-size: 0.7rem;
+  cursor: pointer;
+  color: var(--text-primary);
+  transition: background 0.1s;
+}
+
+.admin-ac-option:hover,
+.admin-ac-option.highlighted {
+  background: var(--accent-light);
+  color: var(--accent);
+}
+
+.admin-ac-create {
+  padding: 4px 8px;
+  font-family: var(--font-ui);
+  font-size: 0.7rem;
+  font-style: italic;
+  cursor: pointer;
+  color: var(--accent);
+  border-top: 1px solid var(--border);
+  transition: background 0.1s;
+}
+
+.admin-ac-create:hover,
+.admin-ac-create.highlighted {
+  background: var(--accent-light);
+}
+
+@media (max-width: 600px) {
+  .admin-ac-input {
+    width: 130px;
+  }
+  .admin-ac-dropdown {
+    min-width: 150px;
+  }
 }

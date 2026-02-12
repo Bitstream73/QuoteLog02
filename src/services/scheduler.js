@@ -147,19 +147,64 @@ async function runFetchCycle() {
       }
     }
 
+    // Phase 1.5: Discover historical articles
+    const historicalEnabled = getSettingValue('historical_fetch_enabled', '1') === '1';
+    if (historicalEnabled) {
+      try {
+        const { fetchHistoricalArticles } = await import('./historicalFetcher.js');
+        const historicalLimit = parseInt(
+          getSettingValue('historical_articles_per_source_per_cycle', '5'), 10
+        );
+        const historicalResult = await fetchHistoricalArticles(historicalLimit, db);
+        totalNewArticles += historicalResult.newArticles;
+
+        logger.info('scheduler', 'historical_fetch_complete', {
+          newArticles: historicalResult.newArticles,
+          providers: historicalResult.providerResults,
+        });
+
+        if (io && historicalResult.newArticles > 0) {
+          io.emit('historical_fetch_complete', {
+            newArticles: historicalResult.newArticles,
+            providers: historicalResult.providerResults,
+          });
+        }
+      } catch (err) {
+        logger.error('scheduler', 'historical_fetch_error', { error: err.message });
+        // Historical fetch errors must NOT prevent Phase 2 from running
+      }
+    }
+
     // Phase 2: Process pending articles (per-source limit)
-    const pending = db.prepare(`
+    // RSS articles
+    const rssArticles = db.prepare(`
       SELECT a.*, s.domain FROM articles a
       JOIN sources s ON a.source_id = s.id
-      WHERE a.status = 'pending'
+      WHERE a.status = 'pending' AND a.source_id IS NOT NULL
         AND a.id IN (
           SELECT id FROM (
             SELECT id, source_id, ROW_NUMBER() OVER (PARTITION BY source_id ORDER BY created_at ASC) AS rn
-            FROM articles WHERE status = 'pending'
+            FROM articles WHERE status = 'pending' AND source_id IS NOT NULL
           ) WHERE rn <= ?
         )
       ORDER BY a.created_at ASC
     `).all(maxArticlesPerSource);
+
+    // Historical articles
+    const historicalArticles = db.prepare(`
+      SELECT a.*, hs.provider_key as domain FROM articles a
+      JOIN historical_sources hs ON a.historical_source_id = hs.id
+      WHERE a.status = 'pending' AND a.historical_source_id IS NOT NULL
+        AND a.id IN (
+          SELECT id FROM (
+            SELECT id, historical_source_id, ROW_NUMBER() OVER (PARTITION BY historical_source_id ORDER BY created_at ASC) AS rn
+            FROM articles WHERE status = 'pending' AND historical_source_id IS NOT NULL
+          ) WHERE rn <= ?
+        )
+      ORDER BY a.created_at ASC
+    `).all(maxArticlesPerSource);
+
+    const pending = [...rssArticles, ...historicalArticles];
 
     const newQuotes = [];
     for (const article of pending) {

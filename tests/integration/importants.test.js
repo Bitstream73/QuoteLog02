@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
+import { getAuthCookie } from '../helpers/auth.js';
 
 // Set test environment before importing app
 process.env.NODE_ENV = 'test';
@@ -27,10 +28,10 @@ describe('Importants API', () => {
     const quoteResult = db.prepare('INSERT INTO quotes (person_id, text, is_visible) VALUES (?, ?, 1)').run(testPersonId, 'Important test quote');
     testQuoteId = Number(quoteResult.lastInsertRowid);
 
-    const articleResult = db.prepare("INSERT INTO articles (url, title, status) VALUES (?, ?, 'completed')").run('https://example.com/importants-test', 'Test Article');
+    const articleResult = db.prepare("INSERT INTO articles (url, title, status) VALUES (?, ?, 'completed')").run(`https://example.com/importants-test-${Date.now()}`, 'Test Article');
     testArticleId = Number(articleResult.lastInsertRowid);
 
-    const topicResult = db.prepare("INSERT INTO topics (name, slug) VALUES (?, ?)").run('Test Topic', 'test-topic');
+    const topicResult = db.prepare("INSERT INTO topics (name, slug) VALUES (?, ?)").run(`Importants Test Topic ${Date.now()}`, `importants-test-topic-${Date.now()}`);
     testTopicId = Number(topicResult.lastInsertRowid);
   }, 30000);
 
@@ -238,6 +239,152 @@ describe('Importants API', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.quote).toHaveProperty('importantsCount');
+    });
+  });
+
+  describe('POST /api/importants/super-toggle', () => {
+    const authCookie = getAuthCookie();
+
+    beforeAll(async () => {
+      // Reset importants_count to known state for super-toggle tests
+      const { getDb } = await import('../../src/config/database.js');
+      const db = getDb();
+      db.prepare('UPDATE quotes SET importants_count = 0 WHERE id = ?').run(testQuoteId);
+      db.prepare('UPDATE articles SET importants_count = 0 WHERE id = ?').run(testArticleId);
+      db.prepare('UPDATE persons SET importants_count = 0 WHERE id = ?').run(testPersonId);
+      db.prepare('UPDATE topics SET importants_count = 0 WHERE id = ?').run(testTopicId);
+    });
+
+    it('returns 401 without auth cookie', async () => {
+      const res = await request(app)
+        .post('/api/importants/super-toggle')
+        .send({ entity_type: 'quote', entity_id: testQuoteId });
+
+      expect(res.status).toBe(401);
+    });
+
+    it('returns 400 for invalid entity_type', async () => {
+      const res = await request(app)
+        .post('/api/importants/super-toggle')
+        .set('Cookie', authCookie)
+        .send({ entity_type: 'invalid', entity_id: 1 });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBeDefined();
+    });
+
+    it('returns 400 for missing entity_id', async () => {
+      const res = await request(app)
+        .post('/api/importants/super-toggle')
+        .set('Cookie', authCookie)
+        .send({ entity_type: 'quote' });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('returns 404 for nonexistent entity', async () => {
+      const res = await request(app)
+        .post('/api/importants/super-toggle')
+        .set('Cookie', authCookie)
+        .send({ entity_type: 'quote', entity_id: 999999 });
+
+      expect(res.status).toBe(404);
+    });
+
+    it('increments importants_count by 100', async () => {
+      // Verify starting count is 0
+      const { getDb } = await import('../../src/config/database.js');
+      const db = getDb();
+      const before = db.prepare('SELECT importants_count FROM quotes WHERE id = ?').get(testQuoteId);
+      expect(before.importants_count).toBe(0);
+
+      const res = await request(app)
+        .post('/api/importants/super-toggle')
+        .set('Cookie', authCookie)
+        .send({ entity_type: 'quote', entity_id: testQuoteId });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.importants_count).toBe(100);
+
+      // Verify DB was updated
+      const after = db.prepare('SELECT importants_count FROM quotes WHERE id = ?').get(testQuoteId);
+      expect(after.importants_count).toBe(100);
+    });
+
+    it('is additive — second call adds another 100', async () => {
+      const res = await request(app)
+        .post('/api/importants/super-toggle')
+        .set('Cookie', authCookie)
+        .send({ entity_type: 'quote', entity_id: testQuoteId });
+
+      expect(res.status).toBe(200);
+      expect(res.body.importants_count).toBe(200);
+    });
+
+    it('returns correct response shape', async () => {
+      const res = await request(app)
+        .post('/api/importants/super-toggle')
+        .set('Cookie', authCookie)
+        .send({ entity_type: 'article', entity_id: testArticleId });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveProperty('success', true);
+      expect(res.body).toHaveProperty('importants_count');
+      expect(typeof res.body.importants_count).toBe('number');
+      // Should NOT have is_important (that's for regular toggle)
+      expect(res.body).not.toHaveProperty('is_important');
+    });
+
+    it('emits Socket.IO important_update event', async () => {
+      // Set up a spy on io.emit
+      const io = app.get('io');
+      const emitted = [];
+      const originalEmit = io?.emit?.bind(io);
+      if (io) {
+        io.emit = (...args) => {
+          emitted.push(args);
+          if (originalEmit) originalEmit(...args);
+        };
+      }
+
+      await request(app)
+        .post('/api/importants/super-toggle')
+        .set('Cookie', authCookie)
+        .send({ entity_type: 'person', entity_id: testPersonId });
+
+      // Restore original emit
+      if (io && originalEmit) io.emit = originalEmit;
+
+      if (io) {
+        const importantEvent = emitted.find(e => e[0] === 'important_update');
+        expect(importantEvent).toBeDefined();
+        expect(importantEvent[1]).toMatchObject({
+          entity_type: 'person',
+          entity_id: testPersonId,
+        });
+        expect(typeof importantEvent[1].importants_count).toBe('number');
+      }
+    });
+
+    it('does NOT create an importants table row', async () => {
+      const { getDb } = await import('../../src/config/database.js');
+      const db = getDb();
+
+      // Reset topic count and clear any importants rows for it
+      db.prepare('UPDATE topics SET importants_count = 0 WHERE id = ?').run(testTopicId);
+      db.prepare('DELETE FROM importants WHERE entity_type = ? AND entity_id = ?').run('topic', testTopicId);
+
+      await request(app)
+        .post('/api/importants/super-toggle')
+        .set('Cookie', authCookie)
+        .send({ entity_type: 'topic', entity_id: testTopicId });
+
+      // Verify no importants row was created
+      const row = db.prepare(
+        'SELECT id FROM importants WHERE entity_type = ? AND entity_id = ?'
+      ).get('topic', testTopicId);
+      expect(row).toBeUndefined();
     });
   });
 });
