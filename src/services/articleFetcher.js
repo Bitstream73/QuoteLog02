@@ -170,13 +170,19 @@ export async function processArticle(article, db, io) {
     await respectRateLimit(article.domain);
 
     // Step 1: Extract article text
-    let extracted = await extractArticleText(article.url);
+    // Check for prefetched text (historical articles)
+    let extracted;
+    if (article.prefetched_text && article.prefetched_text.length >= 200) {
+      extracted = { text: article.prefetched_text, title: article.title };
+    } else {
+      extracted = await extractArticleText(article.url);
 
-    // Fallback to Readability if primary fails or text too short
-    if (!extracted || !extracted.text || extracted.text.length < 200) {
-      const readabilityText = await extractWithReadability(article.url);
-      if (readabilityText && readabilityText.length >= 200) {
-        extracted = { text: readabilityText, title: article.title };
+      // Fallback to Readability if primary fails or text too short
+      if (!extracted || !extracted.text || extracted.text.length < 200) {
+        const readabilityText = await extractWithReadability(article.url);
+        if (readabilityText && readabilityText.length >= 200) {
+          extracted = { text: readabilityText, title: article.title };
+        }
       }
     }
 
