@@ -386,6 +386,46 @@ router.delete('/topics/:id', (req, res) => {
   }
 });
 
+// --- Topic Keyword Link/Unlink ---
+
+// POST /api/admin/topics/:id/keywords — link a keyword to a topic
+router.post('/topics/:id/keywords', (req, res) => {
+  try {
+    const db = getDb();
+    const topicId = parseInt(req.params.id);
+    const { keyword_id } = req.body;
+
+    const topic = db.prepare('SELECT id FROM topics WHERE id = ?').get(topicId);
+    if (!topic) return res.status(404).json({ error: 'Topic not found' });
+
+    if (!keyword_id) return res.status(400).json({ error: 'keyword_id required' });
+
+    const keyword = db.prepare('SELECT id, name FROM keywords WHERE id = ?').get(keyword_id);
+    if (!keyword) return res.status(404).json({ error: 'Keyword not found' });
+
+    db.prepare('INSERT OR IGNORE INTO topic_keywords (topic_id, keyword_id) VALUES (?, ?)').run(topicId, keyword_id);
+
+    res.json({ success: true, keyword });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to link keyword: ' + err.message });
+  }
+});
+
+// DELETE /api/admin/topics/:id/keywords/:keywordId — unlink a keyword from a topic
+router.delete('/topics/:id/keywords/:keywordId', (req, res) => {
+  try {
+    const db = getDb();
+    const topicId = parseInt(req.params.id);
+    const keywordId = parseInt(req.params.keywordId);
+
+    const result = db.prepare('DELETE FROM topic_keywords WHERE topic_id = ? AND keyword_id = ?').run(topicId, keywordId);
+
+    res.json({ success: true, deleted: result.changes > 0 });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to unlink keyword: ' + err.message });
+  }
+});
+
 // --- Standalone Keyword CRUD ---
 
 const VALID_KEYWORD_TYPES = ['person', 'organization', 'event', 'legislation', 'location', 'concept'];

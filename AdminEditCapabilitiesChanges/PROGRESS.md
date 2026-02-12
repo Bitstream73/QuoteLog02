@@ -1,7 +1,7 @@
 # Build Progress — Admin Edit Capabilities
 
 ## Current Status
-- **Current Phase:** 7
+- **Current Phase:** 8
 - **Last Updated:** 2026-02-12
 - **Last Commit:** (pending)
 
@@ -52,9 +52,9 @@
 
 ---
 
-## Phase 7: Frontend — Trending Topics Tab Admin View
-- [ ] Modify `renderTrendingTopicsTab()` and `buildTopicCardHtml()` in `public/js/home.js`. When `isAdmin`: render topic name as heading, show context, use admin quote blocks for the 3 quotes, show topic-level Important? + count + SuperImportant, show stats row, add [Topic] edit button (calls `prompt()` + `PUT /api/admin/topics/:id`). See `docs/ADMIN-QUOTE-BLOCK.md`.
-- [ ] Add keyword management to admin topic cards. Modify `GET /api/analytics/trending-topics` in `src/routes/analytics.js` to return each topic's keywords (join through `topic_keywords`→`keywords`). Render keyword chips in topic card footer: "Keywords [Edit] [Create Keyword]:" + chips. [Create] calls `prompt()` then `PUT /api/admin/topics/:id` with updated keywords. [Edit] renames individual keyword. See `docs/KEYWORD-TOPIC-CRUD.md`.
+## Phase 7: Frontend — Trending Topics Tab Admin View ✅
+- [x] Modify `renderTrendingTopicsTab()` and `buildTopicCardHtml()` in `public/js/home.js`. When `isAdmin`: render topic name as heading, show context, use admin quote blocks for the 3 quotes, show topic-level Important? + count + SuperImportant, show stats row, add [Topic] edit button (calls `prompt()` + `PUT /api/admin/topics/:id`). See `docs/ADMIN-QUOTE-BLOCK.md`.
+- [x] Add keyword management to admin topic cards. Modify `GET /api/analytics/trending-topics` in `src/routes/analytics.js` to return each topic's keywords (join through `topic_keywords`→`keywords`). Render keyword chips in topic card footer: "Keywords [Edit] [Create Keyword]:" + chips. [Create] calls `prompt()` then `PUT /api/admin/topics/:id` with updated keywords. [Edit] renames individual keyword. See `docs/KEYWORD-TOPIC-CRUD.md`.
 
 ---
 

@@ -62,8 +62,26 @@ router.get('/trending-topics', (req, res) => {
       LIMIT 3
     `);
 
+    // Fetch keywords for all topics in one query
+    const topicIds = topics.map(t => t.id);
+    const topicKeywordsMap = {};
+    if (topicIds.length > 0) {
+      const tkPlaceholders = topicIds.map(() => '?').join(',');
+      const tkRows = db.prepare(`
+        SELECT tk.topic_id, k.id, k.name, k.keyword_type
+        FROM topic_keywords tk
+        JOIN keywords k ON k.id = tk.keyword_id
+        WHERE tk.topic_id IN (${tkPlaceholders})
+      `).all(...topicIds);
+      for (const row of tkRows) {
+        if (!topicKeywordsMap[row.topic_id]) topicKeywordsMap[row.topic_id] = [];
+        topicKeywordsMap[row.topic_id].push({ id: row.id, name: row.name, keyword_type: row.keyword_type });
+      }
+    }
+
     const topicsWithQuotes = topics.map(t => ({
       ...t,
+      keywords: topicKeywordsMap[t.id] || [],
       quotes: enrichQuotesWithTopics(db, getTopQuotes.all(t.id)),
     }));
 

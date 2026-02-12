@@ -455,6 +455,52 @@ async function adminRemoveQuoteTopic(quoteId, topicId) {
   }
 }
 
+// ======= Admin Topic/Source Edit Functions =======
+
+async function adminEditTopic(topicId, currentName) {
+  const newName = prompt('Edit topic name:', currentName || '');
+  if (newName === null || newName.trim() === '' || newName.trim() === currentName) return;
+  try {
+    await API.put(`/admin/topics/${topicId}`, { name: newName.trim() });
+    showToast('Topic updated', 'success');
+  } catch (err) {
+    showToast('Error: ' + err.message, 'error');
+  }
+}
+
+async function adminCreateTopicKeyword(topicId) {
+  const name = prompt('Keyword name to add to this topic:');
+  if (name === null || name.trim() === '') return;
+  try {
+    // Create keyword if needed, then link via topic_keywords
+    const res = await API.post('/admin/keywords', { name: name.trim(), keyword_type: 'concept' });
+    const keywordId = res.keyword?.id;
+    if (keywordId) {
+      // Link keyword to topic — use a generic approach
+      await API.post(`/admin/topics/${topicId}/keywords`, { keyword_id: keywordId });
+    }
+    showToast('Keyword added to topic', 'success');
+  } catch (err) {
+    // If keyword already exists (409), try to find and link it
+    if (err.message && err.message.includes('409')) {
+      showToast('Keyword already exists', 'info');
+    } else {
+      showToast('Error: ' + err.message, 'error');
+    }
+  }
+}
+
+async function adminRemoveTopicKeyword(topicId, keywordId, btnEl) {
+  try {
+    await API.delete(`/admin/topics/${topicId}/keywords/${keywordId}`);
+    const chip = btnEl.closest('.keyword-chip');
+    if (chip) chip.remove();
+    showToast('Keyword removed from topic', 'success');
+  } catch (err) {
+    showToast('Error: ' + err.message, 'error');
+  }
+}
+
 // ======= Keyword/Topic Lazy Loading =======
 
 async function loadQuoteKeywordsTopics(quoteId) {
@@ -605,6 +651,7 @@ async function renderTrendingTopicsTab(container) {
 
 function buildTopicCardHtml(topic, isImportant) {
   const quotes = topic.quotes || [];
+  const _isAdm = typeof isAdmin !== 'undefined' && isAdmin;
 
   // Fetch important statuses for quotes
   const quoteKeys = quotes.map(q => `quote:${q.id}`);
@@ -613,6 +660,33 @@ function buildTopicCardHtml(topic, isImportant) {
     const isQImp = _importantStatuses[`quote:${q.id}`] || false;
     return buildQuoteBlockHtml(q, q.topics || [], isQImp);
   }).join('');
+
+  // Admin: stats row and edit button
+  const adminStatsHtml = _isAdm ? `
+    <div class="admin-stats-row">
+      <span>${topic.importants_count || 0} importants</span>
+      <span>${topic.quote_count || 0} quotes</span>
+    </div>
+    <div class="admin-edit-buttons">
+      <button onclick="adminEditTopic(${topic.id}, '${escapeHtml((topic.name || '').replace(/'/g, "\\'"))}')">Topic</button>
+    </div>` : '';
+
+  // Admin: keyword chips
+  const keywords = topic.keywords || [];
+  const adminKeywordsHtml = _isAdm ? `
+    <div class="admin-keywords-section">
+      <span class="admin-section-label">Keywords</span>
+      <button class="admin-inline-btn" onclick="adminCreateTopicKeyword(${topic.id})">Create Keyword</button>
+      <span>:</span>
+      <div class="admin-chips">
+        ${keywords.map(kw =>
+          `<span class="keyword-chip" data-keyword-id="${kw.id}">
+            ${escapeHtml(kw.name)}
+            <button class="chip-remove" onclick="event.stopPropagation(); adminRemoveTopicKeyword(${topic.id}, ${kw.id}, this)">x</button>
+          </span>`
+        ).join('')}
+      </div>
+    </div>` : '';
 
   return `
     <div class="topic-card" data-track-type="topic" data-track-id="${topic.id}">
@@ -630,6 +704,8 @@ function buildTopicCardHtml(topic, isImportant) {
         ${renderImportantButton('topic', topic.id, topic.importants_count || 0, isImportant)}
         ${buildShareButtonsHtml('topic', topic.id, topic.name, '')}
       </div>
+      ${adminStatsHtml}
+      ${adminKeywordsHtml}
     </div>
   `;
 }
