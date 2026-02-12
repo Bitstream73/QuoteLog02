@@ -1,7 +1,7 @@
 # Build Progress — Admin Edit Capabilities
 
 ## Current Status
-- **Current Phase:** 10
+- **Current Phase:** 11
 - **Last Updated:** 2026-02-12
 - **Last Commit:** (pending)
 
@@ -69,8 +69,8 @@
 
 ---
 
-## Phase 10: Frontend — Navigation Links
-- [ ] Verify and fix navigation in admin quote blocks: clicking quote text, author name, author description, or author portrait navigates to `/author/:personId`; clicking source URL or quote context navigates to the source page (`/article/:articleId`). Test in Puppeteer: click an author name in an admin quote block and confirm navigation to the author page. Click source link and confirm navigation to article page.
+## Phase 10: Frontend — Navigation Links ✅
+- [x] Verify and fix navigation in admin quote blocks: clicking quote text, author name, author description, or author portrait navigates to `/author/:personId`; clicking source URL or quote context navigates to the source page (`/article/:articleId`). Test in Puppeteer: click an author name in an admin quote block and confirm navigation to the author page. Click source link and confirm navigation to article page.
 
 ---
 
