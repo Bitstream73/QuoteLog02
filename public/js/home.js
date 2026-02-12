@@ -227,20 +227,9 @@ function buildQuoteBlockHtml(q, topics, isImportant) {
     : '';
 
   return `
-    <div class="quote-block" data-quote-id="${q.id}" data-track-type="quote" data-track-id="${q.id}" data-created-at="${q.created_at || ''}" data-importance="${(importantsCount + shareCount + viewCount) || 0}">
+    <div class="quote-block" data-quote-id="${q.id}" data-track-type="quote" data-track-id="${q.id}" data-created-at="${q.created_at || ''}" data-importance="${(importantsCount + shareCount + viewCount) || 0}" data-share-view="${(shareCount + viewCount) || 0}">
       <div class="quote-block__text" onclick="navigateTo('/author/${personId}')">
-        ${escapeHtml(truncatedText)}
-        ${isLong ? `<a href="#" class="show-more-toggle" onclick="toggleQuoteText(event, ${q.id})">show more</a>` : ''}
-      </div>
-
-      ${context ? `<div class="quote-block__context" onclick="navigateTo('/article/${articleId}')">${escapeHtml(context)}</div>` : ''}
-
-      <div class="quote-block__meta-row">
-        ${renderImportantButton('quote', q.id, importantsCount, isImportant)}
-        ${quoteDateTime ? `<span class="quote-block__datetime">${formatDateTime(quoteDateTime)}</span>` : ''}
-        ${viewCount > 0 ? `<span class="quote-block__views">${viewCount} views</span>` : ''}
-        ${visibilityBtn}
-        ${editBtn}
+        <span class="quote-mark quote-mark--open">\u201C</span>${escapeHtml(truncatedText)}${isLong ? `<a href="#" class="show-more-toggle" onclick="toggleQuoteText(event, ${q.id})">show more</a>` : ''}<span class="quote-mark quote-mark--close">\u201D</span>
       </div>
 
       <div class="quote-block__author" onclick="navigateTo('/author/${personId}')">
@@ -250,6 +239,15 @@ function buildQuoteBlockHtml(q, topics, isImportant) {
           ${personCategoryContext ? `<span class="quote-block__author-desc">${escapeHtml(personCategoryContext)}</span>` : ''}
         </div>
       </div>
+
+      ${context ? `<div class="quote-block__context" onclick="navigateTo('/article/${articleId}')">${escapeHtml(context)}</div>` : ''}
+
+      ${quoteDateTime || viewCount > 0 || visibilityBtn || editBtn ? `<div class="quote-block__meta-row">
+        ${quoteDateTime ? `<span class="quote-block__datetime">${formatDateTime(quoteDateTime)}</span>` : ''}
+        ${viewCount > 0 ? `<span class="quote-block__views">${viewCount} views</span>` : ''}
+        ${visibilityBtn}
+        ${editBtn}
+      </div>` : ''}
 
       <div class="quote-block__footer">
         <div class="quote-block__links">
@@ -261,6 +259,7 @@ function buildQuoteBlockHtml(q, topics, isImportant) {
         <div class="quote-block__share">
           ${buildShareButtonsHtml('quote', q.id, q.text, personName)}
           ${shareCount > 0 ? `<span class="quote-block__share-count">${shareCount}</span>` : ''}
+          ${renderImportantButton('quote', q.id, importantsCount, isImportant)}
         </div>
       </div>
       ${typeof buildAdminActionsHtml === 'function' ? buildAdminActionsHtml(q) : ''}

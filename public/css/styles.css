@@ -3135,16 +3135,35 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   font-family: 'Source Serif 4', Georgia, serif;
   font-size: 1.05rem;
   line-height: 1.6;
+  font-weight: 700;
+  font-style: italic;
   color: var(--text);
   cursor: pointer;
   margin-bottom: 0.5rem;
+}
+
+.quote-block__text .quote-mark {
+  color: var(--accent);
+  font-size: 1.4em;
+  font-weight: 700;
+  font-style: normal;
+  line-height: 0;
+  vertical-align: -0.15em;
+}
+
+.quote-block__text .quote-mark--open {
+  margin-right: 2px;
+}
+
+.quote-block__text .quote-mark--close {
+  margin-left: 2px;
 }
 
 .quote-block__context {
   font-style: italic;
   color: var(--text-muted);
   font-size: 0.9rem;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.75rem;
   cursor: pointer;
 }
 
@@ -3245,7 +3264,7 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
 .quote-block__share {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
 }
 
 .quote-block__share-count {

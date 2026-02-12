@@ -321,8 +321,11 @@ router.get('/trending-quotes', (req, res) => {
       GROUP BY q.id ORDER BY q.importants_count DESC LIMIT 1
     `).get();
 
+    const recentSort = req.query.sort === 'importance'
+      ? 'q.importants_count + q.share_count DESC'
+      : 'q.created_at DESC';
     const recentQuotes = db.prepare(`${baseSelect}
-      GROUP BY q.id ORDER BY q.created_at DESC LIMIT ? OFFSET ?
+      GROUP BY q.id ORDER BY ${recentSort} LIMIT ? OFFSET ?
     `).all(limit, offset);
 
     const total = db.prepare(
