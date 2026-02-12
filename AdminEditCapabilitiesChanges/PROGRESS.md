@@ -1,7 +1,7 @@
 # Build Progress — Admin Edit Capabilities
 
 ## Current Status
-- **Current Phase:** 11
+- **Current Phase:** 12
 - **Last Updated:** 2026-02-12
 - **Last Commit:** (pending)
 
@@ -74,9 +74,9 @@
 
 ---
 
-## Phase 11: Frontend — Settings Page Source Twirl-Down
-- [ ] Write unit test for settings page source list collapsibility in `tests/unit/settings-ui.test.js`. Test: sources list renders inside a `<details>` element; the element is closed by default.
-- [ ] Modify `public/js/settings.js` Data Management → Sources section. Wrap `#sources-list` in `<details><summary>Sources (N)</summary>...</details>` HTML5 disclosure element, closed by default. Keep the Add Source form (domain, display name, RSS URL inputs + Add Source button) visible above the twirl-down. Update `renderSourcesList()` to set the summary text with count. See `docs/REVIEW-SETTINGS-UI.md`.
+## Phase 11: Frontend — Settings Page Source Twirl-Down ✅
+- [x] Write unit test for settings page source list collapsibility in `tests/unit/settings-ui.test.js`. Test: sources list renders inside a `<details>` element; the element is closed by default.
+- [x] Modify `public/js/settings.js` Data Management → Sources section. Wrap `#sources-list` in `<details><summary>Sources (N)</summary>...</details>` HTML5 disclosure element, closed by default. Keep the Add Source form (domain, display name, RSS URL inputs + Add Source button) visible above the twirl-down. Update `renderSourcesList()` to set the summary text with count. See `docs/REVIEW-SETTINGS-UI.md`.
 
 ---
 

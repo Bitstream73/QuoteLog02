@@ -156,11 +156,14 @@ async function renderSettings() {
             <button class="btn btn-primary" onclick="addSource()">Add Source</button>
           </div>
 
-          <div id="sources-list" class="sources-list">
-            ${sources.length === 0 ? `
-              <p class="empty-message">No sources configured. Add a news source to start extracting quotes.</p>
-            ` : sources.map(s => renderSourceRow(s)).join('')}
-          </div>
+          <details class="sources-details">
+            <summary>Sources (${sources.length})</summary>
+            <div id="sources-list" class="sources-list">
+              ${sources.length === 0 ? `
+                <p class="empty-message">No sources configured. Add a news source to start extracting quotes.</p>
+              ` : sources.map(s => renderSourceRow(s)).join('')}
+            </div>
+          </details>
         </div>
 
         <!-- Backup & Restore Subsection -->
@@ -283,6 +286,9 @@ async function addSource() {
 
     sourcesList.insertAdjacentHTML('beforeend', renderSourceRow(result.source));
 
+    // Update summary count
+    updateSourcesSummaryCount();
+
     // Clear inputs
     domainInput.value = '';
     nameInput.value = '';
@@ -332,8 +338,20 @@ async function removeSource(sourceId) {
     if (!sourcesList.querySelector('.source-row')) {
       sourcesList.innerHTML = '<p class="empty-message">No sources configured. Add a news source to start extracting quotes.</p>';
     }
+
+    // Update summary count
+    updateSourcesSummaryCount();
   } catch (err) {
     showToast('Error removing source: ' + err.message, 'error', 5000);
+  }
+}
+
+function updateSourcesSummaryCount() {
+  const sourcesList = document.getElementById('sources-list');
+  const summary = document.querySelector('.sources-details summary');
+  if (summary && sourcesList) {
+    const count = sourcesList.querySelectorAll('.source-row').length;
+    summary.textContent = `Sources (${count})`;
   }
 }
 
