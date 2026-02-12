@@ -1,10 +1,22 @@
 import { getDb } from '../../config/database.js';
+import { WikiquoteProvider } from './wikiquoteProvider.js';
+import { ChroniclingAmericaProvider } from './chroniclingAmericaProvider.js';
+import { WaybackProvider } from './waybackProvider.js';
+import { GovInfoProvider } from './govInfoProvider.js';
+import { PresidencyProjectProvider } from './presidencyProjectProvider.js';
 
 const providers = new Map();
 
 export function registerProvider(provider) {
   providers.set(provider.key, provider);
 }
+
+// Register all built-in providers
+registerProvider(new WikiquoteProvider());
+registerProvider(new ChroniclingAmericaProvider());
+registerProvider(new WaybackProvider());
+registerProvider(new GovInfoProvider());
+registerProvider(new PresidencyProjectProvider());
 
 export function getAllProviders() {
   return [...providers.values()];
