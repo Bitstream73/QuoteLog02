@@ -1,9 +1,9 @@
 # Build Progress — Admin Edit Capabilities
 
 ## Current Status
-- **Current Phase:** 3
+- **Current Phase:** 4
 - **Last Updated:** 2026-02-12
-- **Last Commit:** bcc18cd
+- **Last Commit:** c36b2fb
 
 ---
 
@@ -27,9 +27,9 @@
 
 ---
 
-## Phase 3: Backend — Standalone Keyword CRUD
-- [ ] Write integration tests for standalone keyword CRUD in `tests/integration/quote-keywords.test.js`. Tests: `GET /api/admin/keywords` lists all with quote counts; `POST /api/admin/keywords` creates with name+type; `PATCH /api/admin/keywords/:id` updates name/type; `DELETE /api/admin/keywords/:id` cascade-deletes from `quote_keywords` and `topic_keywords`. All require admin. See `docs/KEYWORD-TOPIC-CRUD.md`.
-- [ ] Implement keyword CRUD routes in `src/routes/admin.js`. GET `/admin/keywords` with LEFT JOIN for quote count. POST `/admin/keywords` with name normalization. PATCH `/admin/keywords/:id`. DELETE `/admin/keywords/:id` with cascade. All use `requireAdmin`. See `docs/KEYWORD-TOPIC-CRUD.md`.
+## Phase 3: Backend — Standalone Keyword CRUD ✅
+- [x] Write integration tests for standalone keyword CRUD in `tests/integration/quote-keywords.test.js`. Tests: `GET /api/admin/keywords` lists all with quote counts; `POST /api/admin/keywords` creates with name+type; `PATCH /api/admin/keywords/:id` updates name/type; `DELETE /api/admin/keywords/:id` cascade-deletes from `quote_keywords` and `topic_keywords`. All require admin. See `docs/KEYWORD-TOPIC-CRUD.md`.
+- [x] Implement keyword CRUD routes in `src/routes/admin.js`. GET `/admin/keywords` with LEFT JOIN for quote count. POST `/admin/keywords` with name normalization. PATCH `/admin/keywords/:id`. DELETE `/admin/keywords/:id` with cascade. All use `requireAdmin`. See `docs/KEYWORD-TOPIC-CRUD.md`.
 
 ---
 

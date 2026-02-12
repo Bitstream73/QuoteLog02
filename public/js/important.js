@@ -6,16 +6,22 @@
  * @param {number} entityId
  * @param {number} importantsCount
  * @param {boolean} isImportant - whether the current user has marked it as important
+ * @param {boolean} adminView - whether to show admin features (defaults to global isAdmin)
  * @returns {string} HTML string
  */
-function renderImportantButton(entityType, entityId, importantsCount, isImportant) {
+function renderImportantButton(entityType, entityId, importantsCount, isImportant, adminView) {
+  const showAdmin = adminView !== undefined ? adminView : (typeof isAdmin !== 'undefined' && isAdmin);
   const activeClass = isImportant ? 'important-btn--active' : '';
+  const countDisplay = showAdmin ? ` <span class="important-count">${importantsCount || 0}</span>` : '';
+  const superBtn = showAdmin
+    ? ` <button class="super-important-btn" onclick="handleSuperImportant(event, '${entityType}', ${entityId})">SuperImportant</button>`
+    : '';
   return `
     <button class="important-btn ${activeClass}"
             data-entity-type="${entityType}" data-entity-id="${entityId}"
             onclick="handleImportantToggle(event, '${entityType}', ${entityId})">
-      Important? <span class="important-count">${importantsCount || 0}</span>
-    </button>
+      Important?${countDisplay}
+    </button>${superBtn}
   `;
 }
 
@@ -30,7 +36,8 @@ async function handleImportantToggle(event, entityType, entityId) {
   btn.classList.toggle('important-btn--active');
   try {
     const res = await API.post('/importants/toggle', { entity_type: entityType, entity_id: entityId });
-    btn.querySelector('.important-count').textContent = res.importants_count;
+    const countEl = btn.querySelector('.important-count');
+    if (countEl) countEl.textContent = res.importants_count;
     if (res.is_important) {
       btn.classList.add('important-btn--active');
     } else {
@@ -41,6 +48,33 @@ async function handleImportantToggle(event, entityType, entityId) {
   } catch (err) {
     btn.classList.toggle('important-btn--active'); // revert
     showToast('Failed to update', 'error');
+  }
+}
+
+/**
+ * Handle SuperImportant button click (admin-only, +100 boost)
+ */
+async function handleSuperImportant(event, entityType, entityId) {
+  event.stopPropagation();
+  const btn = event.target;
+  btn.disabled = true;
+  try {
+    const result = await API.post('/importants/super-toggle', {
+      entity_type: entityType,
+      entity_id: entityId
+    });
+    // Update count display
+    const block = btn.closest('.quote-block, .admin-quote-block');
+    if (block) {
+      const countEl = block.querySelector('.important-count');
+      if (countEl) countEl.textContent = result.importants_count;
+      block.dataset.importance = result.importants_count;
+    }
+    showToast('Boosted +100!', 'success');
+  } catch (err) {
+    showToast('Failed to boost: ' + err.message, 'error');
+  } finally {
+    btn.disabled = false;
   }
 }
 

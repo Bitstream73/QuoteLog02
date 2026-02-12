@@ -307,6 +307,8 @@ describe('Quote Keywords/Topics API', () => {
   });
 
   describe('POST /api/admin/keywords', () => {
+    const uniqueKeywordName = `Standalone Keyword ${Date.now()}`;
+
     it('returns 401 without auth', async () => {
       const res = await request(app)
         .post('/api/admin/keywords')
@@ -319,11 +321,11 @@ describe('Quote Keywords/Topics API', () => {
       const res = await request(app)
         .post('/api/admin/keywords')
         .set('Cookie', authCookie)
-        .send({ name: 'Standalone Keyword', keyword_type: 'event' });
+        .send({ name: uniqueKeywordName, keyword_type: 'event' });
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
-      expect(res.body.keyword.name).toBe('Standalone Keyword');
+      expect(res.body.keyword.name).toBe(uniqueKeywordName);
       expect(res.body.keyword.keyword_type).toBe('event');
     });
 
@@ -340,7 +342,7 @@ describe('Quote Keywords/Topics API', () => {
       const res = await request(app)
         .post('/api/admin/keywords')
         .set('Cookie', authCookie)
-        .send({ name: 'Standalone Keyword' });
+        .send({ name: uniqueKeywordName });
 
       expect(res.status).toBe(409);
     });
@@ -348,12 +350,14 @@ describe('Quote Keywords/Topics API', () => {
 
   describe('PATCH /api/admin/keywords/:id', () => {
     let keywordToUpdate;
+    const patchKeywordName = `Keyword To Update ${Date.now()}`;
+    const updatedKeywordName = `Updated Keyword Name ${Date.now()}`;
 
     beforeAll(async () => {
       const res = await request(app)
         .post('/api/admin/keywords')
         .set('Cookie', authCookie)
-        .send({ name: 'Keyword To Update', keyword_type: 'concept' });
+        .send({ name: patchKeywordName, keyword_type: 'concept' });
       keywordToUpdate = res.body.keyword;
     });
 
@@ -369,11 +373,11 @@ describe('Quote Keywords/Topics API', () => {
       const res = await request(app)
         .patch(`/api/admin/keywords/${keywordToUpdate.id}`)
         .set('Cookie', authCookie)
-        .send({ name: 'Updated Keyword Name' });
+        .send({ name: updatedKeywordName });
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
-      expect(res.body.keyword.name).toBe('Updated Keyword Name');
+      expect(res.body.keyword.name).toBe(updatedKeywordName);
     });
 
     it('updates keyword_type', async () => {
@@ -407,20 +411,21 @@ describe('Quote Keywords/Topics API', () => {
 
   describe('DELETE /api/admin/keywords/:id', () => {
     let keywordToDelete;
+    const deleteKeywordName = `Keyword To Delete ${Date.now()}`;
 
     beforeAll(async () => {
       // Create keyword and link it to quote and topic
       const res = await request(app)
         .post('/api/admin/keywords')
         .set('Cookie', authCookie)
-        .send({ name: 'Keyword To Delete', keyword_type: 'concept' });
+        .send({ name: deleteKeywordName, keyword_type: 'concept' });
       keywordToDelete = res.body.keyword;
 
       // Link to quote
       await request(app)
         .post(`/api/admin/quotes/${testQuoteId}/keywords`)
         .set('Cookie', authCookie)
-        .send({ name: 'Keyword To Delete' });
+        .send({ name: deleteKeywordName });
     });
 
     it('returns 401 without auth', async () => {
