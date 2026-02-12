@@ -28,10 +28,10 @@ describe('Importants API', () => {
     const quoteResult = db.prepare('INSERT INTO quotes (person_id, text, is_visible) VALUES (?, ?, 1)').run(testPersonId, 'Important test quote');
     testQuoteId = Number(quoteResult.lastInsertRowid);
 
-    const articleResult = db.prepare("INSERT INTO articles (url, title, status) VALUES (?, ?, 'completed')").run('https://example.com/importants-test', 'Test Article');
+    const articleResult = db.prepare("INSERT INTO articles (url, title, status) VALUES (?, ?, 'completed')").run(`https://example.com/importants-test-${Date.now()}`, 'Test Article');
     testArticleId = Number(articleResult.lastInsertRowid);
 
-    const topicResult = db.prepare("INSERT INTO topics (name, slug) VALUES (?, ?)").run('Test Topic', 'test-topic');
+    const topicResult = db.prepare("INSERT INTO topics (name, slug) VALUES (?, ?)").run(`Importants Test Topic ${Date.now()}`, `importants-test-topic-${Date.now()}`);
     testTopicId = Number(topicResult.lastInsertRowid);
   }, 30000);
 

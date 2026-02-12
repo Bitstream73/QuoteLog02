@@ -386,4 +386,124 @@ router.delete('/topics/:id', (req, res) => {
   }
 });
 
+// --- Quote-level Keyword CRUD ---
+
+const VALID_KEYWORD_TYPES = ['person', 'organization', 'event', 'legislation', 'location', 'concept'];
+
+// POST /api/admin/quotes/:id/keywords — link (or create-and-link) a keyword to a quote
+router.post('/quotes/:id/keywords', (req, res) => {
+  try {
+    const db = getDb();
+    const quoteId = parseInt(req.params.id);
+    const { name, keyword_type } = req.body;
+
+    // Validate quote exists
+    const quote = db.prepare('SELECT id FROM quotes WHERE id = ?').get(quoteId);
+    if (!quote) {
+      return res.status(404).json({ error: 'Quote not found' });
+    }
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'Keyword name is required' });
+    }
+
+    const trimmedName = name.trim();
+    const normalizedName = trimmedName.toLowerCase();
+    const type = keyword_type && VALID_KEYWORD_TYPES.includes(keyword_type) ? keyword_type : 'concept';
+
+    // Upsert keyword
+    db.prepare(
+      `INSERT INTO keywords (name, name_normalized, keyword_type) VALUES (?, ?, ?)
+       ON CONFLICT(name) DO NOTHING`
+    ).run(trimmedName, normalizedName, type);
+
+    // Get keyword ID
+    const keyword = db.prepare('SELECT id, name, keyword_type FROM keywords WHERE name = ?').get(trimmedName);
+
+    // Link to quote
+    db.prepare('INSERT OR IGNORE INTO quote_keywords (quote_id, keyword_id) VALUES (?, ?)').run(quoteId, keyword.id);
+
+    res.json({ success: true, keyword });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to add keyword: ' + err.message });
+  }
+});
+
+// DELETE /api/admin/quotes/:id/keywords/:keywordId — unlink keyword from quote
+router.delete('/quotes/:id/keywords/:keywordId', (req, res) => {
+  try {
+    const db = getDb();
+    const quoteId = parseInt(req.params.id);
+    const keywordId = parseInt(req.params.keywordId);
+
+    db.prepare('DELETE FROM quote_keywords WHERE quote_id = ? AND keyword_id = ?').run(quoteId, keywordId);
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to remove keyword: ' + err.message });
+  }
+});
+
+// --- Quote-level Topic CRUD ---
+
+// POST /api/admin/quotes/:id/topics — link (or create-and-link) a topic to a quote
+router.post('/quotes/:id/topics', (req, res) => {
+  try {
+    const db = getDb();
+    const quoteId = parseInt(req.params.id);
+    const { topic_id, name } = req.body;
+
+    // Validate quote exists
+    const quote = db.prepare('SELECT id FROM quotes WHERE id = ?').get(quoteId);
+    if (!quote) {
+      return res.status(404).json({ error: 'Quote not found' });
+    }
+
+    let topic;
+
+    if (topic_id) {
+      // Link existing topic
+      topic = db.prepare('SELECT id, name, slug FROM topics WHERE id = ?').get(topic_id);
+      if (!topic) {
+        return res.status(404).json({ error: 'Topic not found' });
+      }
+    } else if (name && name.trim()) {
+      // Create-and-link
+      const trimmedName = name.trim();
+      const slug = generateSlug(trimmedName);
+
+      // Insert or find existing by slug
+      db.prepare(
+        'INSERT OR IGNORE INTO topics (name, slug) VALUES (?, ?)'
+      ).run(trimmedName, slug);
+
+      topic = db.prepare('SELECT id, name, slug FROM topics WHERE slug = ?').get(slug);
+    } else {
+      return res.status(400).json({ error: 'Either topic_id or name is required' });
+    }
+
+    // Link to quote
+    db.prepare('INSERT OR IGNORE INTO quote_topics (quote_id, topic_id) VALUES (?, ?)').run(quoteId, topic.id);
+
+    res.json({ success: true, topic });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to add topic: ' + err.message });
+  }
+});
+
+// DELETE /api/admin/quotes/:id/topics/:topicId — unlink topic from quote
+router.delete('/quotes/:id/topics/:topicId', (req, res) => {
+  try {
+    const db = getDb();
+    const quoteId = parseInt(req.params.id);
+    const topicId = parseInt(req.params.topicId);
+
+    db.prepare('DELETE FROM quote_topics WHERE quote_id = ? AND topic_id = ?').run(quoteId, topicId);
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to remove topic: ' + err.message });
+  }
+});
+
 export default router;

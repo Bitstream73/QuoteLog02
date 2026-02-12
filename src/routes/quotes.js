@@ -305,6 +305,35 @@ function formatQuoteResult(q) {
   };
 }
 
+// Get keywords and topics for a quote
+router.get('/:id/keywords-topics', (req, res) => {
+  try {
+    const db = getDb();
+    const quoteId = parseInt(req.params.id);
+
+    const quote = db.prepare('SELECT id FROM quotes WHERE id = ?').get(quoteId);
+    if (!quote) {
+      return res.status(404).json({ error: 'Quote not found' });
+    }
+
+    const keywords = db.prepare(`
+      SELECT k.id, k.name, k.keyword_type
+      FROM keywords k JOIN quote_keywords qk ON k.id = qk.keyword_id
+      WHERE qk.quote_id = ?
+    `).all(quoteId);
+
+    const topics = db.prepare(`
+      SELECT t.id, t.name, t.slug
+      FROM topics t JOIN quote_topics qt ON t.id = qt.topic_id
+      WHERE qt.quote_id = ?
+    `).all(quoteId);
+
+    res.json({ keywords, topics });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch keywords/topics: ' + err.message });
+  }
+});
+
 // Get single quote with details
 router.get('/:id', (req, res) => {
   const db = getDb();

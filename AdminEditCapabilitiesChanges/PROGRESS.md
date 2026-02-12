@@ -1,9 +1,9 @@
 # Build Progress — Admin Edit Capabilities
 
 ## Current Status
-- **Current Phase:** 1
-- **Last Updated:** —
-- **Last Commit:** none
+- **Current Phase:** 2
+- **Last Updated:** 2026-02-12
+- **Last Commit:** 6f8b119
 
 ---
 
@@ -13,9 +13,9 @@
 
 ---
 
-## Phase 1: Backend — SuperImportant Endpoint
-- [ ] Write integration tests for `POST /api/importants/super-toggle` in `tests/integration/importants.test.js`. Tests: 401 without auth, +100 increment on valid call, proper response with updated `importants_count`, Socket.IO `important_update` emission, 404 for nonexistent entity. See `docs/SUPER-IMPORTANT.md`.
-- [ ] Implement `POST /api/importants/super-toggle` in `src/routes/importants.js`. Admin-only endpoint using `requireAdmin` middleware. Validates entity_type/entity_id against existing TABLE_MAP. Increments `importants_count` by 100 (no voter_hash row). Recalculates trending score. Emits Socket.IO `important_update`. Returns `{ success, importants_count }`. See `docs/SUPER-IMPORTANT.md`.
+## Phase 1: Backend — SuperImportant Endpoint ✅
+- [x] Write integration tests for `POST /api/importants/super-toggle` in `tests/integration/importants.test.js`. Tests: 401 without auth, +100 increment on valid call, proper response with updated `importants_count`, Socket.IO `important_update` emission, 404 for nonexistent entity. See `docs/SUPER-IMPORTANT.md`.
+- [x] Implement `POST /api/importants/super-toggle` in `src/routes/importants.js`. Admin-only endpoint using `requireAdmin` middleware. Validates entity_type/entity_id against existing TABLE_MAP. Increments `importants_count` by 100 (no voter_hash row). Recalculates trending score. Emits Socket.IO `important_update`. Returns `{ success, importants_count }`. See `docs/SUPER-IMPORTANT.md`.
 
 ---
 
