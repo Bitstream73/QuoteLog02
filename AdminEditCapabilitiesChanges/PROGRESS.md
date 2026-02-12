@@ -1,7 +1,7 @@
 # Build Progress — Admin Edit Capabilities
 
 ## Current Status
-- **Current Phase:** 12
+- **Current Phase:** 13
 - **Last Updated:** 2026-02-12
 - **Last Commit:** (pending)
 
@@ -80,9 +80,9 @@
 
 ---
 
-## Phase 12: CSS Styling
-- [ ] Add CSS for admin components in `public/css/styles.css`: `.admin-quote-block` (expanded layout with padding), `.super-important-btn` (gold/orange color, distinct from regular important), `.admin-edit-buttons` (flex row of small edit buttons), `.admin-keywords-section` and `.admin-topics-section` (sections with label + chips), `.keyword-chip` and `.topic-chip` (inline pill/tag styles), `.admin-stats-row` (muted stats display), `.disambig-tab-badge` (overlay notification bubble matching existing `#review-badge` style).
-- [ ] Add CSS for settings twirl-down in `public/css/styles.css`: `details.sources-details` styling to match settings-section aesthetic, `summary` cursor pointer and padding, open/closed chevron indicator. Ensure responsive layout on mobile.
+## Phase 12: CSS Styling ✅
+- [x] Add CSS for admin components in `public/css/styles.css`: `.admin-quote-block` (expanded layout with padding), `.super-important-btn` (gold/orange color, distinct from regular important), `.admin-edit-buttons` (flex row of small edit buttons), `.admin-keywords-section` and `.admin-topics-section` (sections with label + chips), `.keyword-chip` and `.topic-chip` (inline pill/tag styles), `.admin-stats-row` (muted stats display), `.disambig-tab-badge` (overlay notification bubble matching existing `#review-badge` style).
+- [x] Add CSS for settings twirl-down in `public/css/styles.css`: `details.sources-details` styling to match settings-section aesthetic, `summary` cursor pointer and padding, open/closed chevron indicator. Ensure responsive layout on mobile.
 
 ---
 
