@@ -1,9 +1,9 @@
 # Build Progress — Admin Edit Capabilities
 
 ## Current Status
-- **Current Phase:** 5
+- **Current Phase:** 7
 - **Last Updated:** 2026-02-12
-- **Last Commit:** b0c9142
+- **Last Commit:** (pending)
 
 ---
 
@@ -39,16 +39,16 @@
 
 ---
 
-## Phase 5: Frontend — Review Page Tab Reorder & Badge
-- [ ] Write unit tests for review page defaults in `tests/unit/review-tabs.test.js`. Tests: (a) default active tab variable is `'quotes'` not `'disambiguation'`; (b) tab render order has Quote Management first; (c) disambiguation tab includes badge element with pending count.
-- [ ] Modify `public/js/review.js`: Change `_reviewActiveTab` default from `'disambiguation'` to `'quotes'` (line 3). In `renderReview()`, swap tab button HTML order so Quote Management appears first. Add `<span class="disambig-tab-badge" id="disambig-tab-badge"></span>` inside Disambiguation Review tab button. Create `updateDisambigTabBadge(count)` function called alongside existing `updateReviewBadge()`. Badge shows count if > 0. See `docs/REVIEW-SETTINGS-UI.md`.
+## Phase 5: Frontend — Review Page Tab Reorder & Badge ✅
+- [x] Write unit tests for review page defaults in `tests/unit/review-tabs.test.js`. Tests: (a) default active tab variable is `'quotes'` not `'disambiguation'`; (b) tab render order has Quote Management first; (c) disambiguation tab includes badge element with pending count.
+- [x] Modify `public/js/review.js`: Change `_reviewActiveTab` default from `'disambiguation'` to `'quotes'` (line 3). In `renderReview()`, swap tab button HTML order so Quote Management appears first. Add `<span class="disambig-tab-badge" id="disambig-tab-badge"></span>` inside Disambiguation Review tab button. Create `updateDisambigTabBadge(count)` function called alongside existing `updateReviewBadge()`. Badge shows count if > 0. See `docs/REVIEW-SETTINGS-UI.md`.
 
 ---
 
-## Phase 6: Frontend — Admin Quote Block Redesign
-- [ ] Create `buildAdminQuoteBlockHtml(q, topics, isImportant, keywords)` function in `public/js/home.js`. Returns expanded admin layout: full-width quote text (no truncation), `[Quote context]`, `[Quote Datetime]`, circular author portrait + name + badges + description (clickable → `/author/:personId`), source URL link + top 2 topic tags, share buttons + Important? with count + SuperImportant, stats row (ViewCount, SharesCount, ImportantsCount), edit buttons row [Quote] [Context] [Topics] [Sources] [Author] [Photo]. Each edit button calls the appropriate `prompt()` + `API.patch()`. See `docs/ADMIN-QUOTE-BLOCK.md`.
-- [ ] Add keywords/topics sections to admin quote block. After the edit buttons row, render: "Keywords [Edit] [Create Keyword]:" followed by keyword chips; "Topics [Edit] [Create Topic]:" followed by topic chips. Lazy-load data from `GET /api/quotes/:id/keywords-topics` when block renders. [Create Keyword] calls `prompt()` then `POST /api/admin/quotes/:id/keywords`. [Create Topic] calls `prompt()` then `POST /api/admin/quotes/:id/topics`. [Edit] on individual chips calls `prompt()` for rename. See `docs/ADMIN-QUOTE-BLOCK.md`.
-- [ ] Modify `buildQuoteBlockHtml()` in `public/js/home.js` to call `buildAdminQuoteBlockHtml()` when `isAdmin === true`. Non-admin rendering stays unchanged. Verify with Puppeteer that admin sees expanded blocks and non-admin sees original blocks.
+## Phase 6: Frontend — Admin Quote Block Redesign ✅
+- [x] Create `buildAdminQuoteBlockHtml(q, topics, isImportant, keywords)` function in `public/js/home.js`. Returns expanded admin layout: full-width quote text (no truncation), `[Quote context]`, `[Quote Datetime]`, circular author portrait + name + badges + description (clickable → `/author/:personId`), source URL link + top 2 topic tags, share buttons + Important? with count + SuperImportant, stats row (ViewCount, SharesCount, ImportantsCount), edit buttons row [Quote] [Context] [Topics] [Sources] [Author] [Photo]. Each edit button calls the appropriate `prompt()` + `API.patch()`. See `docs/ADMIN-QUOTE-BLOCK.md`.
+- [x] Add keywords/topics sections to admin quote block. After the edit buttons row, render: "Keywords [Edit] [Create Keyword]:" followed by keyword chips; "Topics [Edit] [Create Topic]:" followed by topic chips. Lazy-load data from `GET /api/quotes/:id/keywords-topics` when block renders. [Create Keyword] calls `prompt()` then `POST /api/admin/quotes/:id/keywords`. [Create Topic] calls `prompt()` then `POST /api/admin/quotes/:id/topics`. [Edit] on individual chips calls `prompt()` for rename. See `docs/ADMIN-QUOTE-BLOCK.md`.
+- [x] Modify `buildQuoteBlockHtml()` in `public/js/home.js` to call `buildAdminQuoteBlockHtml()` when `isAdmin === true`. Non-admin rendering stays unchanged. Verify with Puppeteer that admin sees expanded blocks and non-admin sees original blocks.
 
 ---
 

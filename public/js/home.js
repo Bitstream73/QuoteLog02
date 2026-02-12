@@ -175,6 +175,11 @@ function initViewTracking() {
  * Build HTML for a single quote block (new layout)
  */
 function buildQuoteBlockHtml(q, topics, isImportant) {
+  // Admin mode: use expanded admin quote block
+  if (typeof isAdmin !== 'undefined' && isAdmin) {
+    return buildAdminQuoteBlockHtml(q, topics, isImportant);
+  }
+
   const isLong = q.text && q.text.length > 280;
   const truncatedText = isLong ? q.text.substring(0, 280) + '...' : (q.text || '');
   if (q.text) _quoteTexts[q.id] = q.text;
@@ -267,6 +272,236 @@ function buildQuoteBlockHtml(q, topics, isImportant) {
   `;
 }
 
+// ======= Admin Quote Block =======
+
+/**
+ * Build HTML for an admin quote block — expanded layout with inline editing
+ */
+function buildAdminQuoteBlockHtml(q, topics, isImportant) {
+  // Store text and metadata
+  if (q.text) _quoteTexts[q.id] = q.text;
+  _quoteMeta[q.id] = {
+    text: q.text,
+    personName: q.person_name || q.personName || '',
+    personCategoryContext: q.person_category_context || q.personCategoryContext || '',
+    context: q.context || '',
+  };
+
+  const personName = q.person_name || q.personName || '';
+  const personId = q.person_id || q.personId || '';
+  const photoUrl = q.photo_url || q.photoUrl || '';
+  const personCategoryContext = q.person_category_context || q.personCategoryContext || q.category_context || '';
+  const articleId = q.article_id || q.articleId || '';
+  const articleUrl = q.article_url || q.articleUrl || '';
+  const sourceDomain = q.source_domain || q.primarySourceDomain || '';
+  const sourceName = q.source_name || q.primarySourceName || '';
+  const importantsCount = q.importants_count || q.importantsCount || 0;
+  const shareCount = q.share_count || q.shareCount || 0;
+  const quoteDateTime = q.quote_datetime || q.quoteDateTime || '';
+  const viewCount = q.view_count || q.viewCount || 0;
+  const context = q.context || '';
+  const shareViewScore = (shareCount + viewCount) || 0;
+
+  // Author headshot
+  const initial = (personName || '?').charAt(0).toUpperCase();
+  const headshotHtml = photoUrl
+    ? `<img src="${escapeHtml(photoUrl)}" alt="${escapeHtml(personName)}" class="quote-block__headshot" onerror="this.outerHTML='<div class=\\'quote-headshot-placeholder\\'>${initial}</div>'" loading="lazy">`
+    : `<div class="quote-headshot-placeholder">${initial}</div>`;
+
+  return `
+    <div class="admin-quote-block quote-block" data-quote-id="${q.id}" data-track-type="quote" data-track-id="${q.id}" data-created-at="${q.created_at || ''}" data-importance="${(importantsCount + shareViewScore) || 0}" data-share-view="${shareViewScore}">
+
+      <div class="quote-block__text" onclick="navigateTo('/author/${personId}')">
+        <span class="quote-mark quote-mark--open">\u201C</span>${escapeHtml(q.text || '')}<span class="quote-mark quote-mark--close">\u201D</span>
+      </div>
+
+      ${context ? `<div class="quote-block__context" onclick="navigateTo('/article/${articleId}')">${escapeHtml(context)}</div>` : ''}
+
+      ${quoteDateTime ? `<div class="quote-block__datetime">${formatDateTime(quoteDateTime)}</div>` : ''}
+
+      <div class="quote-block__author" onclick="navigateTo('/author/${personId}')">
+        <div class="quote-block__headshot-wrap">
+          ${headshotHtml}
+        </div>
+        <div class="quote-block__author-info">
+          <span class="quote-block__author-name">${escapeHtml(personName)}</span>
+          ${personCategoryContext ? `<span class="quote-block__author-desc">${escapeHtml(personCategoryContext)}</span>` : ''}
+        </div>
+      </div>
+
+      <div class="quote-block__links">
+        ${articleId ? `<a class="quote-block__source-link" onclick="navigateTo('/article/${articleId}')">${escapeHtml(sourceName || sourceDomain || 'Source')}</a>` : ''}
+        ${(topics || []).slice(0, 2).map(t =>
+          `<a class="quote-block__topic-tag" onclick="navigateTo('/topic/${t.slug}')">${escapeHtml(t.name)}</a>`
+        ).join('')}
+      </div>
+
+      <div class="quote-block__share">
+        ${buildShareButtonsHtml('quote', q.id, q.text, personName)}
+        ${renderImportantButton('quote', q.id, importantsCount, isImportant)}
+      </div>
+
+      <div class="admin-stats-row">
+        <span>${viewCount} views</span>
+        <span>${shareCount} shares</span>
+        <span>${importantsCount} importants</span>
+      </div>
+
+      <div class="admin-edit-buttons">
+        <button onclick="adminEditQuoteText(${q.id}, _quoteTexts[${q.id}] || '')">Quote</button>
+        <button onclick="adminEditContext(${q.id}, _quoteMeta[${q.id}]?.context || '')">Context</button>
+        <button onclick="adminEditQuoteTopics(${q.id})">Topics</button>
+        <button onclick="navigateTo('/article/${articleId}')">Sources</button>
+        <button onclick="adminEditAuthorFromQuote(${q.person_id || q.personId})">Author</button>
+        <button onclick="adminChangeHeadshotFromQuote(${q.person_id || q.personId})">Photo</button>
+      </div>
+
+      <div class="admin-keywords-section" id="admin-keywords-${q.id}">
+        <span class="admin-section-label">Keywords</span>
+        <button class="admin-inline-btn" onclick="adminCreateKeyword(${q.id})">Create Keyword</button>
+        <span>:</span>
+        <div class="admin-chips" id="keyword-chips-${q.id}"></div>
+      </div>
+
+      <div class="admin-topics-section" id="admin-topics-${q.id}">
+        <span class="admin-section-label">Topics</span>
+        <button class="admin-inline-btn" onclick="adminCreateTopicForQuote(${q.id})">Create Topic</button>
+        <span>:</span>
+        <div class="admin-chips" id="topic-chips-${q.id}"></div>
+      </div>
+    </div>
+  `;
+}
+
+// ======= Admin Quote Edit Functions =======
+
+async function adminEditQuoteTopics(quoteId) {
+  const name = prompt('Enter topic name to add to this quote:');
+  if (name === null || name.trim() === '') return;
+  try {
+    await API.post(`/admin/quotes/${quoteId}/topics`, { name: name.trim() });
+    showToast('Topic linked', 'success');
+    loadQuoteKeywordsTopics(quoteId);
+  } catch (err) {
+    showToast('Error: ' + err.message, 'error');
+  }
+}
+
+async function adminEditAuthorFromQuote(personId) {
+  const newName = prompt('Edit author name:');
+  if (newName === null || newName.trim() === '') return;
+  try {
+    await API.patch(`/authors/${personId}`, { canonicalName: newName.trim() });
+    showToast('Author name updated', 'success');
+  } catch (err) {
+    showToast('Error: ' + err.message, 'error');
+  }
+}
+
+async function adminChangeHeadshotFromQuote(personId) {
+  const newUrl = prompt('Enter new headshot URL:');
+  if (newUrl === null) return;
+  try {
+    await API.patch(`/authors/${personId}`, { photoUrl: newUrl.trim() || null });
+    showToast('Headshot updated', 'success');
+  } catch (err) {
+    showToast('Error: ' + err.message, 'error');
+  }
+}
+
+async function adminCreateKeyword(quoteId) {
+  const name = prompt('Keyword name:');
+  if (name === null || name.trim() === '') return;
+  try {
+    await API.post(`/admin/quotes/${quoteId}/keywords`, { name: name.trim() });
+    showToast('Keyword created and linked', 'success');
+    loadQuoteKeywordsTopics(quoteId);
+  } catch (err) {
+    showToast('Error: ' + err.message, 'error');
+  }
+}
+
+async function adminCreateTopicForQuote(quoteId) {
+  const name = prompt('Topic name:');
+  if (name === null || name.trim() === '') return;
+  try {
+    await API.post(`/admin/quotes/${quoteId}/topics`, { name: name.trim() });
+    showToast('Topic created and linked', 'success');
+    loadQuoteKeywordsTopics(quoteId);
+  } catch (err) {
+    showToast('Error: ' + err.message, 'error');
+  }
+}
+
+async function adminRemoveQuoteKeyword(quoteId, keywordId) {
+  try {
+    await API.delete(`/admin/quotes/${quoteId}/keywords/${keywordId}`);
+    const chip = document.querySelector(`#keyword-chips-${quoteId} [data-keyword-id="${keywordId}"]`);
+    if (chip) chip.remove();
+    showToast('Keyword unlinked', 'success');
+  } catch (err) {
+    showToast('Error: ' + err.message, 'error');
+  }
+}
+
+async function adminRemoveQuoteTopic(quoteId, topicId) {
+  try {
+    await API.delete(`/admin/quotes/${quoteId}/topics/${topicId}`);
+    const chip = document.querySelector(`#topic-chips-${quoteId} [data-topic-id="${topicId}"]`);
+    if (chip) chip.remove();
+    showToast('Topic unlinked', 'success');
+  } catch (err) {
+    showToast('Error: ' + err.message, 'error');
+  }
+}
+
+// ======= Keyword/Topic Lazy Loading =======
+
+async function loadQuoteKeywordsTopics(quoteId) {
+  try {
+    const data = await API.get(`/quotes/${quoteId}/keywords-topics`);
+    renderKeywordChips(quoteId, data.keywords || []);
+    renderTopicChips(quoteId, data.topics || []);
+  } catch (err) {
+    // Non-blocking
+  }
+}
+
+function renderKeywordChips(quoteId, keywords) {
+  const container = document.getElementById(`keyword-chips-${quoteId}`);
+  if (!container) return;
+  container.innerHTML = keywords.map(kw =>
+    `<span class="keyword-chip" data-keyword-id="${kw.id}">
+      ${escapeHtml(kw.name)}
+      <button class="chip-remove" onclick="event.stopPropagation(); adminRemoveQuoteKeyword(${quoteId}, ${kw.id})">x</button>
+    </span>`
+  ).join('');
+}
+
+function renderTopicChips(quoteId, topics) {
+  const container = document.getElementById(`topic-chips-${quoteId}`);
+  if (!container) return;
+  container.innerHTML = topics.map(t =>
+    `<span class="topic-chip" data-topic-id="${t.id}" onclick="navigateTo('/topic/${escapeHtml(t.slug)}')">
+      ${escapeHtml(t.name)}
+      <button class="chip-remove" onclick="event.stopPropagation(); adminRemoveQuoteTopic(${quoteId}, ${t.id})">x</button>
+    </span>`
+  ).join('');
+}
+
+/**
+ * Trigger lazy loading of keywords/topics for all admin quote blocks on the page
+ */
+function initAdminQuoteBlocks() {
+  document.querySelectorAll('.admin-quote-block').forEach(block => {
+    const quoteId = block.dataset.quoteId;
+    if (quoteId && !block.dataset.adminLoaded) {
+      block.dataset.adminLoaded = 'true';
+      setTimeout(() => loadQuoteKeywordsTopics(parseInt(quoteId)), 0);
+    }
+  });
+}
+
 // ======= Navigation Helper =======
 
 function navigateTo(path) {
@@ -336,6 +571,10 @@ async function renderTabContent(tabKey) {
     }
     // Initialize view tracking for newly rendered content
     initViewTracking();
+    // Lazy-load keywords/topics for admin quote blocks
+    if (typeof isAdmin !== 'undefined' && isAdmin) {
+      initAdminQuoteBlocks();
+    }
   } catch (err) {
     container.innerHTML = `<div class="empty-state"><h3>Error loading content</h3><p>${escapeHtml(err.message)}</p></div>`;
   }
@@ -552,6 +791,7 @@ async function sortRecentQuotes(sortBy) {
   }
   listEl.innerHTML = html;
   initViewTracking();
+  if (typeof isAdmin !== 'undefined' && isAdmin) initAdminQuoteBlocks();
 }
 
 // ======= All Tab =======
@@ -760,6 +1000,7 @@ async function renderSearchResults(content, searchQuery) {
     }
 
     content.innerHTML = html;
+    if (typeof isAdmin !== 'undefined' && isAdmin) initAdminQuoteBlocks();
   } catch (err) {
     content.innerHTML = `<div class="empty-state"><h3>Error searching</h3><p>${escapeHtml(err.message)}</p></div>`;
   }
@@ -876,6 +1117,7 @@ async function renderTopicPage(slug) {
     html += '</div>';
     content.innerHTML = html;
     initViewTracking();
+    if (typeof isAdmin !== 'undefined' && isAdmin) initAdminQuoteBlocks();
   } catch (err) {
     content.innerHTML = `<div class="empty-state"><h3>Error</h3><p>${escapeHtml(err.message)}</p></div>`;
   }
