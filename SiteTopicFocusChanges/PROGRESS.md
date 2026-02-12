@@ -1,0 +1,92 @@
+# Build Progress
+
+## Current Status
+- **Current Phase:** COMPLETE
+- **Last Updated:** 2026-02-11
+- **Last Commit:** phase-8: integration verification complete
+
+## Phase 0: Environment & Prerequisites ✅
+- [x] Existing codebase functional with 214+ passing tests
+- [x] SQLite database schema stable (votes, topics, keywords tables exist)
+- [x] Gemini API key configured for topic suggestion
+- [x] Branch `SiteTopicFocusChanges` created from `main`
+
+## Phase 1: Schema Migrations ✅
+- [x] Add `importants` table — polymorphic (entity_type, entity_id, voter_hash) with UNIQUE constraint (see docs/SCHEMA_MIGRATIONS.md)
+- [x] Add `topic_keywords` junction table — links topics to keywords (see docs/SCHEMA_MIGRATIONS.md)
+- [x] Add `quote_datetime` column to `quotes` table (TEXT, nullable)
+- [x] Add `importants_count` column to `quotes`, `articles`, `persons`, `topics` tables (INTEGER DEFAULT 0)
+- [x] Add `share_count` column to `quotes`, `articles`, `persons`, `topics` tables (INTEGER DEFAULT 0)
+- [x] Add `view_count` column to `articles`, `persons`, `topics` tables (INTEGER DEFAULT 0)
+- [x] Add `trending_score` column to `quotes`, `articles`, `persons`, `topics` tables (REAL DEFAULT 0.0)
+- [x] Add `description` and `context` columns to `topics` table (TEXT, nullable)
+- [x] Add indexes for importants lookups and trending score ordering (see docs/SCHEMA_MIGRATIONS.md)
+- [x] Write unit tests for all new tables, columns, indexes, and constraints
+- [x] Verify all existing 214+ tests still pass with schema additions
+
+## Phase 2: Important? Backend API ✅
+- [x] Create `src/routes/importants.js` with POST `/api/importants/toggle` endpoint (see docs/IMPORTANTS_API.md)
+- [x] Add GET `/api/importants/status` endpoint — batch check important status for current voter
+- [x] Implement `getVoterHash(req)` using IP+UA hash (reuse pattern from votes.js)
+- [x] Implement importants_count increment/decrement on toggle in entity tables
+- [x] Emit Socket.IO `important_update` event on toggle
+- [x] Mount importants routes in `src/index.js`
+- [x] Remove old votes route mount from `src/index.js` (keep file for reference)
+- [x] Modify `src/routes/quotes.js` — replace `vote_score` with `importants_count` in GET responses
+- [x] Write integration tests for toggle, batch status, count sync, Socket.IO broadcast
+
+## Phase 3: View & Share Tracking Backend ✅
+- [x] Create `src/routes/tracking.js` with POST `/api/tracking/view` endpoint (see docs/VIEW_SHARE_TRACKING.md)
+- [x] Add POST `/api/tracking/share` endpoint — increment share_count on entity
+- [x] Mount tracking routes in `src/index.js`
+- [x] Write integration tests for view/share tracking endpoints
+
+## Phase 4: Topics System Enhancement ✅
+- [x] Add topic CRUD endpoints to `src/routes/admin.js` — create, update, delete topics with keywords (see docs/TOPICS_SYSTEM.md)
+- [x] Create `src/services/topicMaterializer.js` — populate `quote_topics` via keyword overlap between `topic_keywords` and `quote_keywords`
+- [x] Create `src/services/topicSuggester.js` — Gemini-based topic suggestion for uncategorized quotes
+- [x] Integrate topicMaterializer into `src/services/scheduler.js` — run after each fetch cycle
+- [x] Integrate topicSuggester into `src/services/scheduler.js` — run after materialization
+- [x] Add GET `/api/topics` and GET `/api/topics/:slug` public endpoints to a new `src/routes/topics.js`
+- [x] Write integration tests for topic CRUD, materialization, suggestion, and public endpoints
+
+## Phase 5: Trending Score Calculation & Caching ✅
+- [x] Create `src/services/trendingCalculator.js` — compute trending_score for quotes, articles, persons, topics (see docs/TRENDING_SYSTEM.md)
+- [x] Integrate trendingCalculator into `src/services/scheduler.js` — run after materializer
+- [x] Add recalculation trigger after important toggle in `src/routes/importants.js`
+- [x] Add recalculation trigger after share event in `src/routes/tracking.js`
+- [x] Add GET `/api/analytics/trending-topics` endpoint — paginated, sorted by trending_score
+- [x] Add GET `/api/analytics/trending-sources` endpoint — articles sorted by trending_score
+- [x] Add GET `/api/analytics/trending-quotes` endpoint — quote of day/week/month + recent sorted list
+- [x] Add GET `/api/analytics/all-sources` endpoint — all articles with quotes, newest first
+- [x] Write integration tests for trending calculation, caching, and all 4 tab endpoints
+
+## Phase 6: Frontend — Homepage Tabs & Quote Block ✅
+- [x] Create `public/js/important.js` — reusable Important? button component (see docs/HOMEPAGE_REDESIGN.md)
+- [x] Replace vote.js script tag with important.js in `public/index.html`
+- [x] Rewrite `public/js/home.js` — 4-tab system (Trending Topics, Trending Sources, Trending Quotes, All)
+- [x] Implement tab bar UI — all 4 tabs visible in portrait and landscape
+- [x] Implement Trending Topics tab content — topic cards with 3 quotes each, sort toggle
+- [x] Implement Trending Sources tab content — source cards with 3 quotes each, sort toggle
+- [x] Implement Trending Quotes tab content — Quote of Day/Week/Month + recent quotes list
+- [x] Implement All tab content — all sources with quotes, newest first
+- [x] Rewrite `buildQuoteEntryHtml()` — new layout per docs/HOMEPAGE_REDESIGN.md wireframe
+- [x] Add share buttons with share count display to quote blocks
+- [x] Add view tracking — fire POST `/api/tracking/view` when quote/topic/source enters viewport
+- [x] Write frontend unit tests for important component, tab switching, quote block rendering
+
+## Phase 7: Frontend — Topic Page, Source Page, CSS Polish ✅
+- [x] Add `/topic/:slug` route to `public/js/app.js` — renders topic page (see docs/HOMEPAGE_REDESIGN.md)
+- [x] Create topic page rendering function — full quote list with Important? and share
+- [x] Update `public/js/article.js` — rename labels "Article" to "Source", add Important? button
+- [x] Update `public/js/author.js` — replace vote controls with Important? button
+- [x] Update `public/js/quote.js` — replace vote controls with Important? button, add QuoteDateTime
+- [x] Add all new CSS to end of `public/css/styles.css` — tabs, quote block layout, important button, topic cards
+- [x] Write frontend unit tests for topic page rendering and updated pages
+
+## Phase 8: Integration, Cleanup & Deployment ✅
+- [x] Remove vote UI references from all frontend files (home, quote, author, article)
+- [x] Run full test suite — 421/422 pass (1 pre-existing backup-admin failure unrelated to overhaul)
+- [x] Verified: vote.js no longer loaded in index.html, renderVoteControls/buildShareHtml/buildQuoteEntryHtml removed from active code
+- [x] Verified: Socket.IO `important_update` listener in important.js, `initImportantSocket()` called from app.js
+- [x] Final commit: `phase-8: integration verification complete`

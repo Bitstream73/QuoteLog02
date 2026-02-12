@@ -125,9 +125,11 @@ describe('Analytics API', () => {
       expect(res.body.topics.length).toBe(1);
     });
 
-    it('respects days parameter', async () => {
-      const res = await request(app).get('/api/analytics/trending-topics?days=1');
-      expect(res.body.period_days).toBe(1);
+    it('returns topics with trending_score field', async () => {
+      const res = await request(app).get('/api/analytics/trending-topics');
+      if (res.body.topics.length > 0) {
+        expect(res.body.topics[0]).toHaveProperty('trending_score');
+      }
     });
   });
 

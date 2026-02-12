@@ -3,52 +3,15 @@ import fs from 'fs';
 import path from 'path';
 
 describe('Frontend JS files', () => {
-  describe('home.js variable ordering', () => {
+  describe('home.js 4-tab system core functions', () => {
     const homeJs = fs.readFileSync(path.join(process.cwd(), 'public/js/home.js'), 'utf-8');
 
-    it('should declare groupId before using it in buildArticleGroupHtml', () => {
-      // Extract the buildArticleGroupHtml function body
-      const funcStart = homeJs.indexOf('function buildArticleGroupHtml(group)');
-      expect(funcStart).toBeGreaterThan(-1);
-
-      const funcBody = homeJs.substring(funcStart, homeJs.indexOf('\nfunction ', funcStart + 1));
-
-      // groupId declaration must come before first usage
-      const declarationIdx = funcBody.indexOf('const groupId');
-      const firstUsageIdx = funcBody.indexOf('groupId');
-
-      expect(declarationIdx).toBeGreaterThan(-1);
-      // The first occurrence of groupId should be the declaration itself
-      expect(firstUsageIdx).toBe(declarationIdx + 6); // "const groupId" - first 'groupId' is at position of 'const ' + 'groupId'
+    it('should declare buildTabBarHtml function', () => {
+      expect(homeJs).toContain('function buildTabBarHtml');
     });
 
-    it('should not reference groupId before declaration in buildArticleGroupHtml', () => {
-      const funcStart = homeJs.indexOf('function buildArticleGroupHtml(group)');
-      const funcBody = homeJs.substring(funcStart);
-
-      // Find the const groupId declaration line
-      const lines = funcBody.split('\n');
-      let declLine = -1;
-      let firstUseLine = -1;
-
-      for (let i = 0; i < lines.length; i++) {
-        if (lines[i].includes('const groupId')) {
-          declLine = i;
-          break;
-        }
-      }
-
-      for (let i = 0; i < lines.length; i++) {
-        if (lines[i].includes('groupId') && !lines[i].includes('//')) {
-          firstUseLine = i;
-          break;
-        }
-      }
-
-      expect(declLine).toBeGreaterThan(-1);
-      expect(firstUseLine).toBeGreaterThan(-1);
-      // Declaration must be at or before first use
-      expect(declLine).toBeLessThanOrEqual(firstUseLine);
+    it('should declare switchHomepageTab function', () => {
+      expect(homeJs).toContain('function switchHomepageTab');
     });
   });
 
@@ -66,26 +29,26 @@ describe('Frontend JS files', () => {
       expect(homeJs).toContain('const _quoteMeta = {}');
     });
 
-    it('should store metadata in buildShareHtml', () => {
+    it('should store metadata in buildQuoteBlockHtml', () => {
       const homeJs = fs.readFileSync(path.join(process.cwd(), 'public/js/home.js'), 'utf-8');
       expect(homeJs).toContain('_quoteMeta[q.id]');
     });
 
-    it('should read metadata in shareQuote', () => {
+    it('should read metadata in shareEntity', () => {
       const homeJs = fs.readFileSync(path.join(process.cwd(), 'public/js/home.js'), 'utf-8');
-      expect(homeJs).toContain('const meta = _quoteMeta[quoteId]');
+      expect(homeJs).toContain('const meta = _quoteMeta[entityId]');
     });
   });
 
-  describe('home.js author stacking', () => {
-    it('should use quote-author-block wrapper', () => {
+  describe('home.js quote block author display', () => {
+    it('should use quote-block__author wrapper', () => {
       const homeJs = fs.readFileSync(path.join(process.cwd(), 'public/js/home.js'), 'utf-8');
-      expect(homeJs).toContain('quote-author-block');
+      expect(homeJs).toContain('quote-block__author');
     });
 
-    it('should use quote-author-description for category context', () => {
+    it('should use quote-block__author-desc for category context', () => {
       const homeJs = fs.readFileSync(path.join(process.cwd(), 'public/js/home.js'), 'utf-8');
-      expect(homeJs).toContain('quote-author-description');
+      expect(homeJs).toContain('quote-block__author-desc');
     });
   });
 
@@ -202,26 +165,26 @@ describe('Frontend JS files', () => {
     });
   });
 
-  describe('home.js Top Stories tab', () => {
+  describe('home.js 4-tab system tabs', () => {
     const homeJs = fs.readFileSync(path.join(process.cwd(), 'public/js/home.js'), 'utf-8');
 
-    it('should default active category to Top Stories', () => {
-      expect(homeJs).toContain("let _activeCategory = 'Top Stories'");
+    it('should default active tab to trending-topics', () => {
+      expect(homeJs).toContain("let _activeTab = 'trending-topics'");
     });
 
-    it('should include Top Stories in broadOrder tab list', () => {
-      expect(homeJs).toContain("'Top Stories'");
-      // Verify it comes before 'All'
-      const tsIdx = homeJs.indexOf("'Top Stories', 'All'");
-      expect(tsIdx).toBeGreaterThan(-1);
+    it('should include all 4 tab keys', () => {
+      expect(homeJs).toContain("'trending-topics'");
+      expect(homeJs).toContain("'trending-sources'");
+      expect(homeJs).toContain("'trending-quotes'");
+      expect(homeJs).toContain("key: 'all'");
     });
 
-    it('should use tab=top-stories query param when Top Stories is active', () => {
-      expect(homeJs).toContain("queryParams.set('tab', 'top-stories')");
+    it('should have renderTrendingTopicsTab function', () => {
+      expect(homeJs).toContain('async function renderTrendingTopicsTab');
     });
 
-    it('should show empty state message specific to Top Stories', () => {
-      expect(homeJs).toContain('No top stories yet');
+    it('should have renderAllTab function', () => {
+      expect(homeJs).toContain('async function renderAllTab');
     });
   });
 
@@ -265,7 +228,7 @@ describe('Frontend JS files', () => {
   describe('home.js admin inline actions', () => {
     const homeJs = fs.readFileSync(path.join(process.cwd(), 'public/js/home.js'), 'utf-8');
 
-    it('should call buildAdminActionsHtml in buildQuoteEntryHtml', () => {
+    it('should call buildAdminActionsHtml in buildQuoteBlockHtml', () => {
       expect(homeJs).toContain('buildAdminActionsHtml');
     });
   });
@@ -453,6 +416,214 @@ describe('Frontend JS files', () => {
 
     it('should have subsection-title styles', () => {
       expect(css).toContain('.subsection-title');
+    });
+  });
+
+  // Phase 6: Important? button component
+  describe('important.js component', () => {
+    const importantJs = fs.readFileSync(path.join(process.cwd(), 'public/js/important.js'), 'utf-8');
+
+    it('should define renderImportantButton function', () => {
+      expect(importantJs).toContain('function renderImportantButton');
+    });
+
+    it('should define handleImportantToggle function', () => {
+      expect(importantJs).toContain('async function handleImportantToggle');
+    });
+
+    it('should define initImportantSocket function', () => {
+      expect(importantJs).toContain('function initImportantSocket');
+    });
+
+    it('should use important-btn CSS class', () => {
+      expect(importantJs).toContain('important-btn');
+    });
+
+    it('should use important-btn--active class for active state', () => {
+      expect(importantJs).toContain('important-btn--active');
+    });
+
+    it('should use important-count class for count display', () => {
+      expect(importantJs).toContain('important-count');
+    });
+
+    it('should call API.post for toggle', () => {
+      expect(importantJs).toContain("API.post('/importants/toggle'");
+    });
+
+    it('should listen for important_update socket events', () => {
+      expect(importantJs).toContain("'important_update'");
+    });
+
+    it('should use optimistic toggle pattern', () => {
+      expect(importantJs).toContain('classList.toggle');
+    });
+
+    it('should call showToast on error', () => {
+      expect(importantJs).toContain('showToast');
+    });
+  });
+
+  // Phase 6: Homepage 4-tab system
+  describe('home.js 4-tab homepage system', () => {
+    const homeJs = fs.readFileSync(path.join(process.cwd(), 'public/js/home.js'), 'utf-8');
+
+    it('should define homepage-tabs container', () => {
+      expect(homeJs).toContain('homepage-tabs');
+    });
+
+    it('should have trending-topics tab', () => {
+      expect(homeJs).toContain('trending-topics');
+    });
+
+    it('should have trending-sources tab', () => {
+      expect(homeJs).toContain('trending-sources');
+    });
+
+    it('should have trending-quotes tab', () => {
+      expect(homeJs).toContain('trending-quotes');
+    });
+
+    it('should have all tab key defined', () => {
+      expect(homeJs).toContain("key: 'all'");
+    });
+
+    it('should define buildQuoteBlockHtml function', () => {
+      expect(homeJs).toContain('function buildQuoteBlockHtml');
+    });
+
+    it('should define buildShareButtonsHtml function', () => {
+      expect(homeJs).toContain('function buildShareButtonsHtml');
+    });
+
+    it('should define shareEntity function', () => {
+      expect(homeJs).toContain('async function shareEntity');
+    });
+
+    it('should define initViewTracking function', () => {
+      expect(homeJs).toContain('function initViewTracking');
+    });
+
+    it('should use IntersectionObserver for view tracking', () => {
+      expect(homeJs).toContain('IntersectionObserver');
+    });
+
+    it('should have topic-card class for topic tab', () => {
+      expect(homeJs).toContain('topic-card');
+    });
+
+    it('should have quote-block class in buildQuoteBlockHtml', () => {
+      expect(homeJs).toContain('quote-block');
+    });
+
+    it('should include Important? button in quote blocks', () => {
+      expect(homeJs).toContain('renderImportantButton');
+    });
+
+    it('should have sort toggle for tabs', () => {
+      expect(homeJs).toContain('sort-btn');
+    });
+  });
+
+  // Phase 6: index.html important.js script tag
+  describe('index.html important.js integration', () => {
+    const indexHtml = fs.readFileSync(path.join(process.cwd(), 'public/index.html'), 'utf-8');
+
+    it('should include important.js script', () => {
+      expect(indexHtml).toContain('important.js');
+    });
+
+    it('should not include vote.js script', () => {
+      expect(indexHtml).not.toContain('vote.js');
+    });
+  });
+
+  // Phase 6: app.js important socket initialization
+  describe('app.js important socket integration', () => {
+    const appJs = fs.readFileSync(path.join(process.cwd(), 'public/js/app.js'), 'utf-8');
+
+    it('should call initImportantSocket instead of initVoteSocket', () => {
+      expect(appJs).toContain('initImportantSocket');
+      expect(appJs).not.toContain('initVoteSocket');
+    });
+
+    it('should have /topic/:slug route', () => {
+      expect(appJs).toContain('/topic/');
+    });
+  });
+
+  // Phase 6: CSS for important button, tabs, quote block
+  describe('styles.css Phase 6 new classes', () => {
+    const css = fs.readFileSync(path.join(process.cwd(), 'public/css/styles.css'), 'utf-8');
+
+    it('should have important-btn styles', () => {
+      expect(css).toContain('.important-btn');
+    });
+
+    it('should have important-btn--active styles', () => {
+      expect(css).toContain('.important-btn--active');
+    });
+
+    it('should have homepage-tabs styles', () => {
+      expect(css).toContain('.homepage-tabs');
+    });
+
+    it('should have homepage-tab styles', () => {
+      expect(css).toContain('.homepage-tab');
+    });
+
+    it('should have quote-block styles', () => {
+      expect(css).toContain('.quote-block');
+    });
+
+    it('should have topic-card styles', () => {
+      expect(css).toContain('.topic-card');
+    });
+
+    it('should have share-buttons styles', () => {
+      expect(css).toContain('.share-buttons');
+    });
+  });
+
+  // Phase 7: Topic page rendering
+  describe('home.js topic page rendering', () => {
+    const homeJs = fs.readFileSync(path.join(process.cwd(), 'public/js/home.js'), 'utf-8');
+
+    it('should define renderTopicPage function', () => {
+      expect(homeJs).toContain('async function renderTopicPage');
+    });
+  });
+
+  // Phase 7: quote.js replaces vote with Important?
+  describe('quote.js Important? integration', () => {
+    const quoteJs = fs.readFileSync(path.join(process.cwd(), 'public/js/quote.js'), 'utf-8');
+
+    it('should use renderImportantButton instead of renderVoteControls', () => {
+      expect(quoteJs).toContain('renderImportantButton');
+      expect(quoteJs).not.toContain('renderVoteControls');
+    });
+  });
+
+  // Phase 7: article.js uses Source label and Important?
+  describe('article.js Source label and Important?', () => {
+    const articleJs = fs.readFileSync(path.join(process.cwd(), 'public/js/article.js'), 'utf-8');
+
+    it('should use renderImportantButton for article', () => {
+      expect(articleJs).toContain('renderImportantButton');
+    });
+
+    it('should label as Source not Article in heading', () => {
+      expect(articleJs).toContain('Source');
+    });
+  });
+
+  // Phase 7: author.js replaces vote with Important?
+  describe('author.js Important? integration', () => {
+    const authorJs = fs.readFileSync(path.join(process.cwd(), 'public/js/author.js'), 'utf-8');
+
+    it('should use renderImportantButton instead of renderVoteControls', () => {
+      expect(authorJs).toContain('renderImportantButton');
+      expect(authorJs).not.toContain('renderVoteControls');
     });
   });
 });

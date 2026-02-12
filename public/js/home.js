@@ -1,4 +1,4 @@
-// Homepage - Quote List Display
+// Homepage - 4-Tab System (Trending Topics, Trending Sources, Trending Quotes, All)
 
 // Store full quote texts for show more/less toggle
 const _quoteTexts = {};
@@ -6,20 +6,14 @@ const _quoteTexts = {};
 // Store quote metadata for sharing
 const _quoteMeta = {};
 
-// Current active category filter
-let _activeCategory = 'Top Stories';
-let _activeSubFilter = '';
-let _currentSearch = '';
+// Current active tab
+let _activeTab = 'trending-topics';
 
 // Pending new quotes count (for non-jarring updates)
 let _pendingNewQuotes = 0;
 
-// Sub-filter definitions per broad category
-const SUB_FILTERS = {
-  Politicians: ['U.S.', 'UK', 'EU', 'Republican', 'Democrat', 'Labor', 'Candidate'],
-  Professionals: ['Law', 'STEM', 'Philosophy', 'Author', 'Historian', 'Business', 'Science'],
-  Other: ['Entertainment', 'Sports', 'Activist', 'Religious', 'Media'],
-};
+// Important status cache (entity_type:entity_id -> boolean)
+let _importantStatuses = {};
 
 /**
  * Format a timestamp as mm/dd/yyyy - hh:mm:ss
@@ -38,7 +32,6 @@ function formatDateTime(timestamp) {
 
 /**
  * Format a timestamp as a relative time string (e.g., "5m ago", "3h ago")
- * Falls back to formatDateTime() for dates older than 7 days.
  */
 function formatRelativeTime(timestamp) {
   if (!timestamp) return '';
@@ -46,7 +39,6 @@ function formatRelativeTime(timestamp) {
   const then = new Date(timestamp).getTime();
   if (isNaN(then)) return '';
   const diff = now - then;
-
   if (diff < 0) return formatDateTime(timestamp);
 
   const minutes = Math.floor(diff / 60000);
@@ -81,90 +73,29 @@ function buildSkeletonHtml(count = 5) {
   return html;
 }
 
-/**
- * Extract domain from URL for display
- */
-function extractDomain(url) {
-  try {
-    const urlObj = new URL(url);
-    return urlObj.hostname.replace(/^www\./, '');
-  } catch {
-    return url;
-  }
+function escapeHtml(str) {
+  if (!str) return '';
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-/**
- * Group quotes by article for display
- */
-function groupQuotesByArticle(quotes) {
-  const groups = new Map();
-  const ungrouped = [];
-
-  for (const q of quotes) {
-    if (q.articleId) {
-      if (!groups.has(q.articleId)) {
-        groups.set(q.articleId, {
-          articleId: q.articleId,
-          articleTitle: q.articleTitle,
-          articlePublishedAt: q.articlePublishedAt,
-          articleUrl: q.articleUrl,
-          primarySourceDomain: q.primarySourceDomain,
-          primarySourceName: q.primarySourceName,
-          quotes: [],
-        });
-      }
-      groups.get(q.articleId).quotes.push(q);
-    } else {
-      ungrouped.push(q);
-    }
-  }
-
-  // Convert to array — all article groups rendered the same way
-  const multiQuoteGroups = [];
-  const singleQuoteGroups = [];
-
-  for (const group of groups.values()) {
-    if (group.quotes.length > 1) {
-      multiQuoteGroups.push(group);
-    } else {
-      singleQuoteGroups.push(group);
-    }
-  }
-
-  return { multiQuoteGroups, singleQuoteGroups, ungrouped };
-}
+// ======= Share Buttons =======
 
 /**
- * Build share buttons HTML
+ * Build share buttons for any entity type
  */
-function buildShareHtml(q) {
-  // Store metadata for sharing
-  _quoteMeta[q.id] = {
-    text: q.text,
-    personName: q.personName,
-    personCategoryContext: q.personCategoryContext || q.personDisambiguation || '',
-    context: q.context || '',
-    articleTitle: q.articleTitle || '',
-    primarySourceName: q.primarySourceName || q.primarySourceDomain || '',
-    articlePublishedAt: q.articlePublishedAt || q.createdAt || '',
-  };
-
-  const quoteText = q.text.length > 200 ? q.text.substring(0, 200) + '...' : q.text;
-  const shareText = encodeURIComponent(`"${quoteText}" - ${q.personName}`);
-  const shareUrl = encodeURIComponent(window.location.origin + '/quote/' + q.id);
-
+function buildShareButtonsHtml(entityType, entityId, text, authorName) {
   return `
-    <div class="share-row">
-      <button class="share-btn" onclick="shareQuote(event, ${q.id}, 'x')" title="Share on X">
+    <div class="share-buttons" data-entity-type="${entityType}" data-entity-id="${entityId}">
+      <button class="share-btn" onclick="shareEntity(event, '${entityType}', ${entityId}, 'twitter')" title="Share on X">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
       </button>
-      <button class="share-btn" onclick="shareQuote(event, ${q.id}, 'facebook')" title="Share on Facebook">
+      <button class="share-btn" onclick="shareEntity(event, '${entityType}', ${entityId}, 'facebook')" title="Share on Facebook">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
       </button>
-      <button class="share-btn" onclick="shareQuote(event, ${q.id}, 'email')" title="Share via Email">
+      <button class="share-btn" onclick="shareEntity(event, '${entityType}', ${entityId}, 'email')" title="Share via Email">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
       </button>
-      <button class="share-btn" onclick="shareQuote(event, ${q.id}, 'copy')" title="Copy to Clipboard">
+      <button class="share-btn" onclick="shareEntity(event, '${entityType}', ${entityId}, 'copy')" title="Copy link">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
       </button>
     </div>
@@ -172,331 +103,551 @@ function buildShareHtml(q) {
 }
 
 /**
- * Share a quote via different channels
+ * Handle share action for any entity type
  */
-function shareQuote(event, quoteId, channel) {
+async function shareEntity(event, entityType, entityId, platform) {
+  event.stopPropagation();
   event.preventDefault();
-  const meta = _quoteMeta[quoteId] || {};
-  const el = document.getElementById('qe-' + quoteId);
 
-  const quoteText = meta.text || _quoteTexts[quoteId] || (el && el.querySelector('.quote-text')?.textContent) || '';
-  const authorName = meta.personName || (el && el.querySelector('.author-link')?.textContent) || '';
-  const authorDesc = meta.personCategoryContext || (el && el.querySelector('.quote-author-description')?.textContent) || '';
-  const context = meta.context || (el && el.querySelector('.quote-context')?.textContent) || '';
-  const source = meta.primarySourceName || (el && el.querySelector('.quote-primary-source')?.textContent) || '';
-  const articleTitle = meta.articleTitle || (el && el.querySelector('.quote-article-title-link')?.textContent) || '';
-  const date = meta.articlePublishedAt ? formatDateTime(meta.articlePublishedAt) : (el && el.querySelector('.quote-date-inline')?.textContent) || '';
-  const shareUrl = window.location.origin + '/quote/' + quoteId;
-  const fullText = `"${quoteText}" - ${authorName}`;
+  // Increment share count via API
+  try {
+    await API.post('/tracking/share', { entity_type: entityType, entity_id: entityId });
+  } catch (err) {
+    // Non-blocking — sharing still works even if tracking fails
+  }
 
-  // Build metadata lines for rich sharing
-  const metaLines = [];
-  if (authorDesc) metaLines.push(authorDesc);
-  if (context) metaLines.push(context);
-  if (articleTitle) metaLines.push(`Article: ${articleTitle}`);
-  if (source) metaLines.push(`Source: ${source}`);
-  if (date) metaLines.push(date);
-  const metaBlock = metaLines.length > 0 ? '\n' + metaLines.join('\n') : '';
+  const url = window.location.origin + '/' + entityType + '/' + entityId;
+  const meta = _quoteMeta[entityId] || {};
+  const text = meta.text || '';
+  const authorName = meta.personName || '';
+  const fullText = text ? `"${text.substring(0, 200)}..." - ${authorName}` : '';
 
-  switch (channel) {
-    case 'x':
-      window.open(`https://x.com/intent/tweet?text=${encodeURIComponent(fullText)}&url=${encodeURIComponent(shareUrl)}`, '_blank');
+  switch (platform) {
+    case 'twitter':
+      window.open(`https://x.com/intent/tweet?text=${encodeURIComponent(fullText)}&url=${encodeURIComponent(url)}`, '_blank');
       break;
     case 'facebook':
-      window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`, '_blank');
+      window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`, '_blank');
       break;
     case 'email': {
       const subject = encodeURIComponent(`Quote from ${authorName} - WhatTheySaid.News`);
-      const body = encodeURIComponent(`${fullText}${metaBlock}\n\nRead more: ${shareUrl}\n\n---\nShared from WhatTheySaid.News - Accountability Through Quotes`);
+      const body = encodeURIComponent(`${fullText}\n\nRead more: ${url}\n\n---\nShared from WhatTheySaid.News`);
       window.open(`mailto:?subject=${subject}&body=${body}`, '_self');
       break;
     }
     case 'copy':
-      navigator.clipboard.writeText(`${fullText}${metaBlock}\n${shareUrl}`).then(() => {
+      navigator.clipboard.writeText(`${fullText}\n${url}`).then(() => {
         const btn = event.currentTarget;
         btn.classList.add('share-copied');
         setTimeout(() => btn.classList.remove('share-copied'), 1500);
+        showToast('Link copied to clipboard', 'success');
       }).catch(() => {});
       break;
   }
 }
 
+// ======= View Tracking =======
+
 /**
- * Build HTML for a single quote entry with layout:
- * |Headshot| |Quote text| - |Author|
- * |       | |Primary Source| |addl. sources|
- * |       | |context|
- * |       | |share options|
+ * Initialize IntersectionObserver-based view tracking
  */
-function buildQuoteEntryHtml(q, insideGroup, gangOpts) {
-  const hideAuthor = gangOpts?.hideAuthor || false;
-  const showAuthorAfter = gangOpts?.showAuthorAfter || false;
-  const isLong = q.text.length > 280;
-  const truncatedText = isLong ? q.text.substring(0, 280) + '...' : q.text;
+function initViewTracking() {
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const el = entry.target;
+        const type = el.dataset.trackType;
+        const id = el.dataset.trackId;
+        if (type && id && !el.dataset.tracked) {
+          el.dataset.tracked = 'true';
+          API.post('/tracking/view', { entity_type: type, entity_id: parseInt(id) }).catch(() => {});
+        }
+      }
+    });
+  }, { threshold: 0.5 });
 
-  if (isLong) {
-    _quoteTexts[q.id] = q.text;
-  } else {
-    _quoteTexts[q.id] = q.text;
-  }
+  document.querySelectorAll('[data-track-type]').forEach(el => observer.observe(el));
+}
 
-  // Headshot or initial placeholder
-  const initial = (q.personName || '?').charAt(0).toUpperCase();
-  const placeholderDiv = `<div class="quote-headshot-placeholder">${initial}</div>`;
+// ======= Quote Block =======
+
+/**
+ * Build HTML for a single quote block (new layout)
+ */
+function buildQuoteBlockHtml(q, topics, isImportant) {
+  const isLong = q.text && q.text.length > 280;
+  const truncatedText = isLong ? q.text.substring(0, 280) + '...' : (q.text || '');
+  if (q.text) _quoteTexts[q.id] = q.text;
+
+  // Store metadata for sharing
+  _quoteMeta[q.id] = {
+    text: q.text,
+    personName: q.person_name || q.personName || '',
+    personCategoryContext: q.person_category_context || q.personCategoryContext || '',
+    context: q.context || '',
+  };
+
+  const personName = q.person_name || q.personName || '';
+  const personId = q.person_id || q.personId || '';
+  const photoUrl = q.photo_url || q.photoUrl || '';
+  const personCategoryContext = q.person_category_context || q.personCategoryContext || q.category_context || '';
+  const articleId = q.article_id || q.articleId || '';
+  const articleTitle = q.article_title || q.articleTitle || '';
+  const articleUrl = q.article_url || q.articleUrl || '';
+  const sourceDomain = q.source_domain || q.primarySourceDomain || '';
+  const sourceName = q.source_name || q.primarySourceName || '';
+  const importantsCount = q.importants_count || q.importantsCount || 0;
+  const shareCount = q.share_count || q.shareCount || 0;
+  const quoteDateTime = q.quote_datetime || q.quoteDateTime || '';
+  const viewCount = q.view_count || q.viewCount || 0;
+  const context = q.context || '';
+
+  // Headshot
+  const initial = (personName || '?').charAt(0).toUpperCase();
   const _isAdm = typeof isAdmin !== 'undefined' && isAdmin;
-  const _safeName = escapeHtml((q.personName || '').replace(/'/g, "\\'"));
-  const headshotHtml = q.photoUrl
+  const _safeName = escapeHtml((personName || '').replace(/'/g, "\\'"));
+  const headshotHtml = photoUrl
     ? (_isAdm
-      ? `<img src="${escapeHtml(q.photoUrl)}" alt="${escapeHtml(q.personName)}" class="quote-headshot admin-headshot-clickable" onclick="adminChangeHeadshot(${q.personId}, '${_safeName}')" title="Click to change photo" style="cursor:pointer" onerror="this.outerHTML='<div class=\\'quote-headshot-placeholder\\'>${initial}</div>'">`
-      : `<img src="${escapeHtml(q.photoUrl)}" alt="${escapeHtml(q.personName)}" class="quote-headshot" onerror="this.outerHTML='<div class=\\'quote-headshot-placeholder\\'>${initial}</div>'">`)
+      ? `<img src="${escapeHtml(photoUrl)}" alt="${escapeHtml(personName)}" class="quote-block__headshot admin-headshot-clickable" onclick="adminChangeHeadshot(${personId}, '${_safeName}')" title="Click to change photo" style="cursor:pointer" onerror="this.outerHTML='<div class=\\'quote-headshot-placeholder\\'>${initial}</div>'" loading="lazy">`
+      : `<img src="${escapeHtml(photoUrl)}" alt="${escapeHtml(personName)}" class="quote-block__headshot" onerror="this.outerHTML='<div class=\\'quote-headshot-placeholder\\'>${initial}</div>'" loading="lazy">`)
     : (_isAdm
-      ? `<a href="https://www.google.com/search?tbm=isch&q=${encodeURIComponent((q.personName || '') + ' ' + (q.personDisambiguation || q.personCategoryContext || ''))}" target="_blank" rel="noopener" class="admin-headshot-search" title="Search Google Images">${placeholderDiv}</a>`
-      : placeholderDiv);
+      ? `<a href="https://www.google.com/search?tbm=isch&q=${encodeURIComponent((personName || '') + ' ' + (personCategoryContext || ''))}" target="_blank" rel="noopener" class="admin-headshot-search" title="Search Google Images"><div class="quote-headshot-placeholder">${initial}</div></a>`
+      : `<div class="quote-headshot-placeholder">${initial}</div>`);
 
-  // Quote type indicator (direct vs indirect)
-  const quoteTypeHtml = q.quoteType === 'indirect'
-    ? `<span class="quote-type-badge quote-type-indirect">Indirect</span>`
-    : '';
-
-  // Category context (party, team, etc.)
-  const categoryCtxHtml = q.personCategoryContext
-    ? `<span class="quote-category-context">${escapeHtml(q.personCategoryContext)}</span>`
-    : '';
-
-  // Primary source display (only if not in group) — links to article page when available
-  const primarySource = q.primarySourceName || q.primarySourceDomain || '';
-  const primarySourceHtml = !insideGroup && primarySource
-    ? (q.articleId
-      ? `<a href="/article/${q.articleId}" onclick="navigate(event, '/article/${q.articleId}')" class="quote-primary-source quote-primary-source-link">${escapeHtml(primarySource)}</a>`
-      : `<span class="quote-primary-source">${escapeHtml(primarySource)}</span>`)
-    : '';
-
-  // Article title (only if not in group) — clickable link to article detail page
-  const articleTitleHtml = !insideGroup && q.articleTitle && q.articleId
-    ? `<a href="/article/${q.articleId}" onclick="navigate(event, '/article/${q.articleId}')" class="quote-article-title-link">${escapeHtml(q.articleTitle)}</a>`
-    : !insideGroup && q.articleTitle
-    ? `<span class="quote-article-title">${escapeHtml(q.articleTitle)}</span>`
-    : '';
-
-  // Publish date (relative format with full date tooltip)
-  const dateStr = formatRelativeTime(q.articlePublishedAt);
-  const dateHtml = !insideGroup && dateStr
-    ? `<time class="quote-date-inline" datetime="${q.articlePublishedAt ? new Date(q.articlePublishedAt).toISOString() : ''}" title="${formatDateTime(q.articlePublishedAt)}">${dateStr}</time>`
-    : '';
-
-  // Visibility toggle (admin only)
-  const hiddenClass = q.isVisible === 0 ? ' quote-hidden' : '';
-  const visibilityBtn = isAdmin
-    ? `<button class="btn-visibility" onclick="toggleVisibility(event, ${q.id}, ${q.isVisible === 0 ? 'true' : 'false'})" title="${q.isVisible === 0 ? 'Show quote' : 'Hide quote'}">${q.isVisible === 0
-      ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>'
-      : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'
+  // Admin buttons
+  const visibilityBtn = _isAdm && typeof q.is_visible !== 'undefined'
+    ? `<button class="btn-visibility" onclick="toggleVisibility(event, ${q.id}, ${q.is_visible === 0 ? 'true' : 'false'})" title="${q.is_visible === 0 ? 'Show' : 'Hide'}">${q.is_visible === 0
+      ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>'
+      : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'
     }</button>`
     : '';
 
-  // Admin edit button
-  const editBtn = isAdmin
-    ? `<button class="btn-edit-quote" onclick="editQuoteInline(event, ${q.id})" title="Edit quote"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>`
-    : '';
-
-  // Context section — always visible, only if not in group
-  const contextHtml = !insideGroup && q.context
-    ? `<div class="quote-context">${escapeHtml(q.context)}</div>`
-    : '';
-
-  // Share options (only if not inside group — group shows share at bottom)
-  const shareHtml = !insideGroup ? buildShareHtml(q) : '';
-
-  // When ganged (consecutive same author in group), hide headshot and author row
-  const showHeadshot = !hideAuthor;
-  const showAuthorRow = !hideAuthor;
-
-  // Vote controls
-  const voteHtml = typeof renderVoteControls === 'function'
-    ? renderVoteControls(q.id, q.voteScore || 0, q.userVote || 0)
+  const editBtn = _isAdm
+    ? `<button class="btn-edit-quote" onclick="editQuoteInline(event, ${q.id})" title="Edit quote"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>`
     : '';
 
   return `
-    <div class="quote-entry${hiddenClass}" id="qe-${q.id}">
-      <div class="quote-layout">
-        ${voteHtml}
-        ${showHeadshot ? `<div class="quote-headshot-col">${headshotHtml}</div>` : `<div class="quote-headshot-col quote-headshot-spacer"></div>`}
-        <div class="quote-content-col">
-          <div class="quote-text-row">
-            <p class="quote-text" id="qt-${q.id}">${escapeHtml(truncatedText)}</p>
-            ${isLong ? `<a href="#" class="show-more-toggle" onclick="toggleQuoteText(event, ${q.id})">show more</a>` : ''}
-          </div>
-          ${showAuthorRow ? `<div class="quote-author-block">
-            <div class="quote-author-row">
-              <a href="/author/${q.personId}" onclick="navigate(event, '/author/${q.personId}')" class="author-link">${escapeHtml(q.personName)}</a>
-              ${quoteTypeHtml}
-              ${dateHtml}
-              ${visibilityBtn}
-              ${editBtn}
-            </div>
-            ${q.personCategoryContext ? `<div class="quote-author-description">${escapeHtml(q.personCategoryContext)}</div>` : ''}
-          </div>` : ''}
-          ${showAuthorAfter ? `<div class="quote-author-block">
-            <div class="quote-author-row">
-              <a href="/author/${q.personId}" onclick="navigate(event, '/author/${q.personId}')" class="author-link">${escapeHtml(q.personName)}</a>
-              ${quoteTypeHtml}
-              ${visibilityBtn}
-              ${editBtn}
-            </div>
-            ${q.personCategoryContext ? `<div class="quote-author-description">${escapeHtml(q.personCategoryContext)}</div>` : ''}
-          </div>` : ''}
-          ${contextHtml}
-          <div class="quote-sources-row">
-            ${primarySourceHtml}
-            ${articleTitleHtml}
-          </div>
-          ${shareHtml}
-          ${typeof buildAdminActionsHtml === 'function' ? buildAdminActionsHtml(q) : ''}
+    <div class="quote-block" data-quote-id="${q.id}" data-track-type="quote" data-track-id="${q.id}" data-created-at="${q.created_at || ''}" data-importance="${(importantsCount + shareCount + viewCount) || 0}">
+      <div class="quote-block__text" onclick="navigateTo('/author/${personId}')">
+        ${escapeHtml(truncatedText)}
+        ${isLong ? `<a href="#" class="show-more-toggle" onclick="toggleQuoteText(event, ${q.id})">show more</a>` : ''}
+      </div>
+
+      ${context ? `<div class="quote-block__context" onclick="navigateTo('/article/${articleId}')">${escapeHtml(context)}</div>` : ''}
+
+      <div class="quote-block__meta-row">
+        ${renderImportantButton('quote', q.id, importantsCount, isImportant)}
+        ${quoteDateTime ? `<span class="quote-block__datetime">${formatDateTime(quoteDateTime)}</span>` : ''}
+        ${viewCount > 0 ? `<span class="quote-block__views">${viewCount} views</span>` : ''}
+        ${visibilityBtn}
+        ${editBtn}
+      </div>
+
+      <div class="quote-block__author" onclick="navigateTo('/author/${personId}')">
+        ${headshotHtml}
+        <div class="quote-block__author-info">
+          <span class="quote-block__author-name">${escapeHtml(personName)}</span>
+          ${personCategoryContext ? `<span class="quote-block__author-desc">${escapeHtml(personCategoryContext)}</span>` : ''}
         </div>
       </div>
+
+      <div class="quote-block__footer">
+        <div class="quote-block__links">
+          ${articleId ? `<a class="quote-block__source-link" onclick="navigateTo('/article/${articleId}')">${escapeHtml(sourceName || sourceDomain || 'Source')}</a>` : ''}
+          ${(topics || []).slice(0, 2).map(t =>
+            `<a class="quote-block__topic-tag" onclick="navigateTo('/topic/${t.slug}')">${escapeHtml(t.name)}</a>`
+          ).join('')}
+        </div>
+        <div class="quote-block__share">
+          ${buildShareButtonsHtml('quote', q.id, q.text, personName)}
+          ${shareCount > 0 ? `<span class="quote-block__share-count">${shareCount}</span>` : ''}
+        </div>
+      </div>
+      ${typeof buildAdminActionsHtml === 'function' ? buildAdminActionsHtml(q) : ''}
     </div>
   `;
 }
 
-/**
- * Build HTML for an article group (multiple quotes from same article)
- * Groups with 3+ quotes collapse by default, showing first 2 with fade.
- */
-function buildArticleGroupHtml(group) {
-  const groupId = group.articleId;
-  const dateStr = formatRelativeTime(group.articlePublishedAt);
+// ======= Navigation Helper =======
 
-  const primarySource = group.primarySourceName || group.primarySourceDomain || '';
-  const primarySourceHtml = primarySource
-    ? `<a href="/article/${groupId}" onclick="navigate(event, '/article/${groupId}')" class="source-link source-link-primary">${escapeHtml(primarySource)}</a>`
-    : '';
-
-  // Find a context from any quote in the group — always visible
-  const contextQuote = group.quotes.find(q => q.context);
-  const contextHtml = contextQuote
-    ? `<div class="quote-context">${escapeHtml(contextQuote.context)}</div>`
-    : '';
-
-  // First quote's share button (share the article group)
-  const firstQ = group.quotes[0];
-  const shareHtml = buildShareHtml(firstQ);
-
-  // Gang consecutive same-author quotes
-  let quotesHtml = '';
-  for (let i = 0; i < group.quotes.length; i++) {
-    const q = group.quotes[i];
-    const prevAuthor = i > 0 ? group.quotes[i - 1].personId : null;
-    const nextAuthor = i < group.quotes.length - 1 ? group.quotes[i + 1].personId : null;
-    const isConsecutiveSameAuthor = q.personId === prevAuthor;
-    const isLastInRun = q.personId !== nextAuthor;
-
-    quotesHtml += buildQuoteEntryHtml(q, true, { hideAuthor: isConsecutiveSameAuthor, showAuthorAfter: isLastInRun && isConsecutiveSameAuthor });
+function navigateTo(path) {
+  if (typeof navigate === 'function') {
+    navigate(null, path);
+  } else {
+    window.location.href = path;
   }
+}
+
+// ======= Tab System =======
+
+/**
+ * Build the 4-tab bar HTML
+ */
+function buildTabBarHtml(activeTab) {
+  const tabs = [
+    { key: 'trending-topics', label: 'Trending Topics' },
+    { key: 'trending-sources', label: 'Trending Sources' },
+    { key: 'trending-quotes', label: 'Trending Quotes' },
+    { key: 'all', label: 'All' },
+  ];
 
   return `
-    <div class="article-group" id="ag-${groupId}">
-      <div class="article-group-header">
-        <a href="/article/${groupId}" onclick="navigate(event, '/article/${groupId}')" class="article-group-title-link">${escapeHtml(group.articleTitle || 'Untitled Article')}</a>
-        <time class="article-group-date" datetime="${group.articlePublishedAt ? new Date(group.articlePublishedAt).toISOString() : ''}" title="${formatDateTime(group.articlePublishedAt)}">${dateStr}</time>
-      </div>
-      <div class="article-group-quotes" id="agq-${groupId}" onclick="navigateToArticle(event, ${groupId})" style="cursor:pointer">
-        ${quotesHtml}
-      </div>
-      <div class="article-group-footer">
-        ${contextHtml}
-        <div class="article-group-sources">
-          ${primarySourceHtml}
-        </div>
-        ${shareHtml}
-      </div>
+    <div class="homepage-tabs">
+      ${tabs.map(t => `<button class="homepage-tab ${t.key === activeTab ? 'active' : ''}" data-tab="${t.key}" onclick="switchHomepageTab('${t.key}')">${t.label}</button>`).join('')}
     </div>
+    <div id="homepage-tab-content"></div>
   `;
 }
 
 /**
- * Toggle article group collapse/expand
+ * Switch homepage tab
  */
+function switchHomepageTab(tabKey) {
+  _activeTab = tabKey;
+  // Update active tab styling
+  document.querySelectorAll('.homepage-tab').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tabKey);
+  });
+  // Render tab content
+  renderTabContent(tabKey);
+}
+
 /**
- * Navigate to article page when clicking on quotes area (skip if clicking interactive elements)
+ * Render the content for the selected tab
  */
-function navigateToArticle(event, articleId) {
-  const tag = event.target.tagName.toLowerCase();
-  if (tag === 'a' || tag === 'button' || tag === 'input' || tag === 'svg' || tag === 'path' || event.target.closest('a') || event.target.closest('button')) {
+async function renderTabContent(tabKey) {
+  const container = document.getElementById('homepage-tab-content');
+  if (!container) return;
+  container.innerHTML = buildSkeletonHtml(4);
+
+  try {
+    switch (tabKey) {
+      case 'trending-topics':
+        await renderTrendingTopicsTab(container);
+        break;
+      case 'trending-sources':
+        await renderTrendingSourcesTab(container);
+        break;
+      case 'trending-quotes':
+        await renderTrendingQuotesTab(container);
+        break;
+      case 'all':
+        await renderAllTab(container);
+        break;
+    }
+    // Initialize view tracking for newly rendered content
+    initViewTracking();
+  } catch (err) {
+    container.innerHTML = `<div class="empty-state"><h3>Error loading content</h3><p>${escapeHtml(err.message)}</p></div>`;
+  }
+}
+
+// ======= Trending Topics Tab =======
+
+async function renderTrendingTopicsTab(container) {
+  const data = await API.get('/analytics/trending-topics');
+  const topics = data.topics || [];
+
+  if (topics.length === 0) {
+    container.innerHTML = `<div class="empty-state"><h3>No trending topics yet</h3><p>Topics will appear as quotes are extracted and categorized.</p></div>`;
     return;
   }
-  event.preventDefault();
-  navigate(event, '/article/' + articleId);
+
+  // Fetch important statuses for all topics
+  await fetchImportantStatuses(topics.map(t => `topic:${t.id}`));
+
+  let html = '';
+  for (const topic of topics) {
+    const isImp = _importantStatuses[`topic:${topic.id}`] || false;
+    html += buildTopicCardHtml(topic, isImp);
+  }
+
+  container.innerHTML = html;
 }
 
-function toggleArticleGroup(event, groupId) {
-  event.preventDefault();
-  const group = document.getElementById('ag-' + groupId);
-  const twirl = document.getElementById('twirl-' + groupId);
-  if (!group) return;
+function buildTopicCardHtml(topic, isImportant) {
+  const quotes = topic.quotes || [];
 
-  if (group.classList.contains('article-group-collapsed')) {
-    group.classList.remove('article-group-collapsed');
-    if (twirl) twirl.innerHTML = '&#x25bc;';
-  } else {
-    group.classList.add('article-group-collapsed');
-    if (twirl) twirl.innerHTML = '&#x25b6;';
-  }
-}
+  // Fetch important statuses for quotes
+  const quoteKeys = quotes.map(q => `quote:${q.id}`);
+  // These will be fetched in batch, use cached values
+  const quotesHtml = quotes.map(q => {
+    const isQImp = _importantStatuses[`quote:${q.id}`] || false;
+    return buildQuoteBlockHtml(q, q.topics || [], isQImp);
+  }).join('');
 
-function toggleGroupContext(event, groupId) {
-  event.preventDefault();
-  const ctx = document.getElementById('ctx-' + groupId);
-  const arrow = document.getElementById('ctx-arrow-' + groupId);
-  if (!ctx) return;
-
-  if (ctx.style.display === 'none') {
-    ctx.style.display = 'block';
-    if (arrow) arrow.innerHTML = '&#x25bc;';
-  } else {
-    ctx.style.display = 'none';
-    if (arrow) arrow.innerHTML = '&#x25b6;';
-  }
+  return `
+    <div class="topic-card" data-track-type="topic" data-track-id="${topic.id}">
+      <h2 class="topic-card__name" onclick="navigateTo('/topic/${escapeHtml(topic.slug)}')">${escapeHtml(topic.name)}</h2>
+      ${topic.context ? `<p class="topic-card__context">${escapeHtml(topic.context)}</p>` : ''}
+      <div class="card-sort-toggle" data-card-id="topic-${topic.id}">
+        Sort by: <button class="sort-btn active" onclick="sortCardQuotes(this, 'topic-${topic.id}', 'date')">Date</button>
+        <button class="sort-btn" onclick="sortCardQuotes(this, 'topic-${topic.id}', 'importance')">Importance</button>
+      </div>
+      <div class="card-quotes-container" id="card-quotes-topic-${topic.id}">
+        ${quotesHtml}
+      </div>
+      <div class="topic-card__actions">
+        <a class="topic-card__see-more" onclick="navigateTo('/topic/${escapeHtml(topic.slug)}')">See More</a>
+        ${renderImportantButton('topic', topic.id, topic.importants_count || 0, isImportant)}
+        ${buildShareButtonsHtml('topic', topic.id, topic.name, '')}
+      </div>
+    </div>
+  `;
 }
 
 /**
- * Toggle context expand/collapse
+ * Sort quotes within a topic/source card by date or importance
  */
-function toggleContext(event, quoteId) {
-  event.preventDefault();
-  const ctx = document.getElementById('ctx-' + quoteId);
-  const arrow = document.getElementById('ctx-arrow-' + quoteId);
-  if (!ctx) return;
+function sortCardQuotes(btn, cardId, sortBy) {
+  // Update active button in this card's sort toggle
+  const toggle = btn.closest('.card-sort-toggle');
+  if (toggle) {
+    toggle.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  }
 
-  if (ctx.style.display === 'none') {
-    ctx.style.display = 'block';
-    if (arrow) arrow.innerHTML = '&#x25bc;';
+  const container = document.getElementById(`card-quotes-${cardId}`);
+  if (!container) return;
+
+  const quotes = Array.from(container.querySelectorAll('.quote-block'));
+  quotes.sort((a, b) => {
+    if (sortBy === 'importance') {
+      return (parseInt(b.dataset.importance) || 0) - (parseInt(a.dataset.importance) || 0);
+    }
+    // Date sort: newest first
+    return (b.dataset.createdAt || '').localeCompare(a.dataset.createdAt || '');
+  });
+
+  quotes.forEach(q => container.appendChild(q));
+}
+
+// ======= Trending Sources Tab =======
+
+async function renderTrendingSourcesTab(container) {
+  const data = await API.get('/analytics/trending-sources');
+  const articles = data.articles || [];
+
+  if (articles.length === 0) {
+    container.innerHTML = `<div class="empty-state"><h3>No trending sources yet</h3><p>Sources will appear as articles are processed.</p></div>`;
+    return;
+  }
+
+  await fetchImportantStatuses(articles.map(a => `article:${a.id}`));
+
+  let html = '';
+  for (const article of articles) {
+    const isImp = _importantStatuses[`article:${article.id}`] || false;
+    html += buildSourceCardHtml(article, isImp);
+  }
+
+  container.innerHTML = html;
+}
+
+function buildSourceCardHtml(article, isImportant) {
+  const quotes = article.quotes || [];
+  const quotesHtml = quotes.map(q => {
+    const isQImp = _importantStatuses[`quote:${q.id}`] || false;
+    return buildQuoteBlockHtml(q, q.topics || [], isQImp);
+  }).join('');
+
+  const dateStr = formatRelativeTime(article.published_at);
+
+  return `
+    <div class="source-card" data-track-type="article" data-track-id="${article.id}">
+      <div class="source-card__header">
+        <h2 class="source-card__title" onclick="navigateTo('/article/${article.id}')">${escapeHtml(article.title || 'Untitled Source')}</h2>
+        <div class="source-card__meta">
+          ${article.source_name || article.source_domain ? `<span class="source-card__domain">${escapeHtml(article.source_name || article.source_domain)}</span>` : ''}
+          ${dateStr ? `<time class="source-card__date">${dateStr}</time>` : ''}
+        </div>
+      </div>
+      <div class="card-sort-toggle" data-card-id="source-${article.id}">
+        Sort by: <button class="sort-btn active" onclick="sortCardQuotes(this, 'source-${article.id}', 'date')">Date</button>
+        <button class="sort-btn" onclick="sortCardQuotes(this, 'source-${article.id}', 'importance')">Importance</button>
+      </div>
+      <div class="card-quotes-container" id="card-quotes-source-${article.id}">
+        ${quotesHtml}
+      </div>
+      <div class="source-card__actions">
+        <a class="source-card__see-more" onclick="navigateTo('/article/${article.id}')">See More</a>
+        ${renderImportantButton('article', article.id, article.importants_count || 0, isImportant)}
+        ${buildShareButtonsHtml('article', article.id, article.title, '')}
+      </div>
+    </div>
+  `;
+}
+
+// ======= Trending Quotes Tab =======
+
+async function renderTrendingQuotesTab(container) {
+  const data = await API.get('/analytics/trending-quotes');
+
+  // Collect all quote IDs for important status batch fetch
+  const allQuoteIds = [];
+  if (data.quote_of_day) allQuoteIds.push(`quote:${data.quote_of_day.id}`);
+  if (data.quote_of_week) allQuoteIds.push(`quote:${data.quote_of_week.id}`);
+  if (data.quote_of_month) allQuoteIds.push(`quote:${data.quote_of_month.id}`);
+  (data.recent_quotes || []).forEach(q => allQuoteIds.push(`quote:${q.id}`));
+  await fetchImportantStatuses(allQuoteIds);
+
+  let html = '';
+
+  // Quote of the Day
+  if (data.quote_of_day) {
+    html += `<h2 class="trending-section-heading">Quote of the Day</h2>`;
+    html += buildQuoteBlockHtml(data.quote_of_day, data.quote_of_day.topics || [], _importantStatuses[`quote:${data.quote_of_day.id}`] || false);
+  }
+
+  // Quote of the Week
+  if (data.quote_of_week) {
+    html += `<h2 class="trending-section-heading">Quote of the Week</h2>`;
+    html += buildQuoteBlockHtml(data.quote_of_week, data.quote_of_week.topics || [], _importantStatuses[`quote:${data.quote_of_week.id}`] || false);
+  }
+
+  // Quote of the Month
+  if (data.quote_of_month) {
+    html += `<h2 class="trending-section-heading">Quote of the Month</h2>`;
+    html += buildQuoteBlockHtml(data.quote_of_month, data.quote_of_month.topics || [], _importantStatuses[`quote:${data.quote_of_month.id}`] || false);
+  }
+
+  html += `<p class="trending-disclaimer"><em>*Trending quotes change over time as views and shares change</em></p>`;
+
+  // Recent Quotes
+  const recentQuotes = data.recent_quotes || [];
+  if (recentQuotes.length > 0) {
+    html += `<h2 class="trending-section-heading">Recent Quotes</h2>`;
+    html += `<div class="trending-quotes__sort">
+      Sort by: <button class="sort-btn active" data-sort="date" onclick="sortRecentQuotes('date')">Date</button>
+      <button class="sort-btn" data-sort="importance" onclick="sortRecentQuotes('importance')">Importance</button>
+    </div>`;
+    html += `<div id="recent-quotes-list">`;
+    for (const q of recentQuotes) {
+      html += buildQuoteBlockHtml(q, q.topics || [], _importantStatuses[`quote:${q.id}`] || false);
+    }
+    html += `</div>`;
+  }
+
+  if (!data.quote_of_day && !data.quote_of_week && !data.quote_of_month && recentQuotes.length === 0) {
+    html = `<div class="empty-state"><h3>No quotes yet</h3><p>Quotes will appear here as they are extracted from news articles.</p></div>`;
+  }
+
+  container.innerHTML = html;
+}
+
+async function sortRecentQuotes(sortBy) {
+  // Update active sort button
+  document.querySelectorAll('.trending-quotes__sort .sort-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.sort === sortBy);
+  });
+
+  const sortParam = sortBy === 'importance' ? '&sort=importance' : '';
+  const data = await API.get('/analytics/trending-quotes?limit=20' + sortParam);
+  const recentQuotes = data.recent_quotes || [];
+  const listEl = document.getElementById('recent-quotes-list');
+  if (!listEl) return;
+
+  let html = '';
+  for (const q of recentQuotes) {
+    html += buildQuoteBlockHtml(q, q.topics || [], _importantStatuses[`quote:${q.id}`] || false);
+  }
+  listEl.innerHTML = html;
+  initViewTracking();
+}
+
+// ======= All Tab =======
+
+let _allSortBy = 'date';
+let _allPage = 1;
+
+async function renderAllTab(container, page, sortBy) {
+  _allPage = page || 1;
+  _allSortBy = sortBy || 'date';
+
+  const sortParam = _allSortBy === 'importance' ? '&sort=importance' : '';
+  const data = await API.get(`/analytics/all-sources?page=${_allPage}&limit=20${sortParam}`);
+  const articles = data.articles || [];
+
+  let html = `<div class="all-tab__sort">
+    Sort by: <button class="sort-btn ${_allSortBy === 'date' ? 'active' : ''}" data-sort="date" onclick="switchAllSort('date')">Date</button>
+    <button class="sort-btn ${_allSortBy === 'importance' ? 'active' : ''}" data-sort="importance" onclick="switchAllSort('importance')">Importance</button>
+  </div>`;
+
+  if (articles.length === 0) {
+    html += `<div class="empty-state"><h3>No sources yet</h3><p>Sources will appear here as articles are processed.</p></div>`;
   } else {
-    ctx.style.display = 'none';
-    if (arrow) arrow.innerHTML = '&#x25b6;';
+    await fetchImportantStatuses(articles.map(a => `article:${a.id}`));
+
+    for (const article of articles) {
+      const isImp = _importantStatuses[`article:${article.id}`] || false;
+      html += buildSourceCardHtml(article, isImp);
+    }
+
+    // Pagination
+    if (data.total > 20) {
+      const totalPages = Math.ceil(data.total / 20);
+      html += '<div class="pagination">';
+      for (let i = 1; i <= Math.min(totalPages, 10); i++) {
+        html += `<button class="page-btn ${i === _allPage ? 'active' : ''}" onclick="loadAllPage(${i})">${i}</button>`;
+      }
+      if (totalPages > 10) {
+        html += `<span class="pagination-ellipsis">...</span>`;
+        html += `<button class="page-btn" onclick="loadAllPage(${totalPages})">${totalPages}</button>`;
+      }
+      html += '</div>';
+    }
+  }
+
+  container.innerHTML = html;
+}
+
+function switchAllSort(sortBy) {
+  const container = document.getElementById('homepage-tab-content');
+  if (container) renderAllTab(container, 1, sortBy);
+}
+
+function loadAllPage(page) {
+  const container = document.getElementById('homepage-tab-content');
+  if (container) renderAllTab(container, page, _allSortBy);
+}
+
+// ======= Important Status Batch Fetch =======
+
+async function fetchImportantStatuses(entityKeys) {
+  if (!entityKeys || entityKeys.length === 0) return;
+  // Filter out already cached
+  const uncached = entityKeys.filter(k => _importantStatuses[k] === undefined);
+  if (uncached.length === 0) return;
+
+  try {
+    const res = await API.get('/importants/status?entities=' + encodeURIComponent(uncached.join(',')));
+    if (res.statuses) {
+      Object.assign(_importantStatuses, res.statuses);
+    }
+  } catch (err) {
+    // Non-blocking
   }
 }
+
+// ======= Admin Functions =======
 
 /**
  * Toggle quote visibility (admin PATCH call)
  */
 async function toggleVisibility(event, quoteId, newVisible) {
   event.preventDefault();
+  event.stopPropagation();
   try {
     await API.patch(`/quotes/${quoteId}/visibility`, { isVisible: newVisible });
-    const entry = document.getElementById('qe-' + quoteId);
+    const entry = document.querySelector(`.quote-block[data-quote-id="${quoteId}"]`);
     if (entry) {
-      if (newVisible) {
-        entry.classList.remove('quote-hidden');
-      } else {
-        entry.classList.add('quote-hidden');
-      }
-      // Re-render just the visibility button
       const btn = entry.querySelector('.btn-visibility');
       if (btn) {
         btn.setAttribute('onclick', `toggleVisibility(event, ${quoteId}, ${!newVisible})`);
-        btn.setAttribute('title', newVisible ? 'Hide quote' : 'Show quote');
+        btn.setAttribute('title', newVisible ? 'Hide' : 'Show');
         btn.innerHTML = newVisible
-          ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'
-          : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+          ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'
+          : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
       }
     }
   } catch (err) {
@@ -509,10 +660,11 @@ async function toggleVisibility(event, quoteId, newVisible) {
  */
 async function editQuoteInline(event, quoteId) {
   event.preventDefault();
-  const textEl = document.getElementById('qt-' + quoteId);
+  event.stopPropagation();
+  const textEl = document.querySelector(`.quote-block[data-quote-id="${quoteId}"] .quote-block__text`);
   if (!textEl) return;
 
-  const currentText = _quoteTexts[quoteId] || textEl.textContent.replace(/^\u201c|\u201d$/g, '');
+  const currentText = _quoteTexts[quoteId] || textEl.textContent.trim();
   const newText = prompt('Edit quote text:', currentText);
   if (newText === null || newText.trim() === '' || newText.trim() === currentText) return;
 
@@ -526,266 +678,105 @@ async function editQuoteInline(event, quoteId) {
 }
 
 /**
- * Build category tabs HTML with sub-filters
+ * Toggle between truncated and full quote text
  */
-function buildCategoryTabsHtml(categories, activeCategory) {
-  const catMap = {};
-  for (const c of categories) {
-    catMap[c.category] = c.count;
+function toggleQuoteText(event, quoteId) {
+  event.preventDefault();
+  event.stopPropagation();
+  const block = document.querySelector(`.quote-block[data-quote-id="${quoteId}"] .quote-block__text`);
+  const toggle = event.target;
+  const fullText = _quoteTexts[quoteId];
+  if (!block || !fullText) return;
+
+  if (toggle.textContent === 'show more') {
+    // Replace only the text content, keep the toggle link
+    const textNode = block.childNodes[0];
+    if (textNode) textNode.textContent = fullText + ' ';
+    toggle.textContent = 'show less';
+  } else {
+    const textNode = block.childNodes[0];
+    if (textNode) textNode.textContent = fullText.substring(0, 280) + '... ';
+    toggle.textContent = 'show more';
   }
-
-  const broadOrder = ['Top Stories', 'All', 'Politicians', 'Professionals', 'Other'];
-
-  let tabs = `<div class="category-tabs">`;
-  for (const cat of broadOrder) {
-    const count = catMap[cat] || 0;
-    tabs += `<button class="category-tab ${activeCategory === cat ? 'active' : ''}" onclick="filterByCategory('${escapeHtml(cat)}')">${escapeHtml(cat)} ${count > 0 ? `<span class="cat-count">${count}</span>` : ''}</button>`;
-  }
-  tabs += `</div>`;
-
-  // Sub-filters for the active category
-  const subs = SUB_FILTERS[activeCategory];
-  if (subs && activeCategory !== 'All') {
-    tabs += `<div class="sub-filters">`;
-    tabs += `<button class="sub-filter-btn ${_activeSubFilter === '' ? 'active' : ''}" onclick="filterBySub('')">All</button>`;
-    for (const sf of subs) {
-      tabs += `<button class="sub-filter-btn ${_activeSubFilter === sf ? 'active' : ''}" onclick="filterBySub('${escapeHtml(sf)}')">${escapeHtml(sf)}</button>`;
-    }
-    tabs += `</div>`;
-  }
-
-  return tabs;
 }
 
-/**
- * Filter by broad category
- */
-function filterByCategory(category) {
-  _activeCategory = category;
-  _activeSubFilter = '';
-  renderHome();
-}
+// ======= Main Render Function =======
 
 /**
- * Filter by sub-filter within category
- */
-function filterBySub(sub) {
-  _activeSubFilter = sub;
-  renderHome();
-}
-
-/**
- * Render the homepage with quotes
+ * Render the homepage with the 4-tab system
  */
 async function renderHome() {
   const content = document.getElementById('content');
+
+  // Check for search query
+  const params = new URLSearchParams(window.location.search);
+  const searchQuery = params.get('search') || '';
+
+  if (searchQuery) {
+    // If there's a search query, render search results instead of tabs
+    await renderSearchResults(content, searchQuery);
+    return;
+  }
+
+  // Render tab bar
+  content.innerHTML = buildTabBarHtml(_activeTab);
+
+  // Render active tab content
+  await renderTabContent(_activeTab);
+
+  // Restore scroll position if returning
+  if (_pendingScrollRestore) {
+    _pendingScrollRestore = false;
+    requestAnimationFrame(() => {
+      window.scrollTo(0, _homeScrollY);
+    });
+  }
+}
+
+/**
+ * Render search results (preserves existing search functionality)
+ */
+async function renderSearchResults(content, searchQuery) {
   content.innerHTML = buildSkeletonHtml(6);
 
-  // Check for search query param
-  const params = new URLSearchParams(window.location.search);
-  _currentSearch = params.get('search') || '';
-
-  // Update search input
   const searchInput = document.getElementById('header-search-input');
-  if (searchInput) searchInput.value = _currentSearch;
+  if (searchInput) searchInput.value = searchQuery;
 
   try {
-    // Use semantic search API when search is active, otherwise use main quotes endpoint
-    let quotesPromise;
-    if (_currentSearch) {
-      const searchParams = new URLSearchParams({ q: _currentSearch, page: '1', limit: '50' });
-      quotesPromise = API.get('/quotes/search?' + searchParams.toString());
-    } else {
-      const queryParams = new URLSearchParams({ page: '1', limit: '50' });
-      if (_activeCategory === 'Top Stories') {
-        queryParams.set('tab', 'top-stories');
-      } else {
-        queryParams.set('category', _activeCategory);
-      }
-      if (_activeSubFilter) queryParams.set('subFilter', _activeSubFilter);
-      quotesPromise = API.get('/quotes?' + queryParams.toString());
-    }
+    const searchParams = new URLSearchParams({ q: searchQuery, page: '1', limit: '50' });
+    const quotesData = await API.get('/quotes/search?' + searchParams.toString());
 
-    const [quotesData, reviewStats] = await Promise.all([
-      quotesPromise,
-      API.get('/review/stats').catch(() => ({ pending: 0 })),
-    ]);
-
-    // Update review badge
-    updateReviewBadge(reviewStats.pending);
-
-    let html = '';
-
-    // Search results header
-    if (_currentSearch) {
-      const methodLabel = quotesData.searchMethod === 'semantic' ? ' (semantic)' : '';
-      html += `<div class="search-results-header">
-        <h2>Search results for "${escapeHtml(_currentSearch)}"${methodLabel}</h2>
-        <button class="btn btn-secondary btn-sm" onclick="clearSearch()">Clear Search</button>
-      </div>`;
-    }
-
-    // Category tabs
-    if (quotesData.categories && quotesData.categories.length > 0) {
-      html += buildCategoryTabsHtml(quotesData.categories, _activeCategory);
-    }
+    let html = `<div class="search-results-header">
+      <h2>Search results for "${escapeHtml(searchQuery)}"${quotesData.searchMethod === 'semantic' ? ' (semantic)' : ''}</h2>
+      <button class="btn btn-secondary btn-sm" onclick="clearSearch()">Clear Search</button>
+    </div>`;
 
     if (quotesData.quotes.length === 0) {
-      const emptyMessage = _activeCategory === 'Top Stories'
-        ? '<h3>No top stories yet</h3><p>Top stories will appear here when sources or articles are marked as top stories in Settings.</p>'
-        : '<h3>No quotes yet</h3><p>Quotes will appear here as they are extracted from news articles.</p><p>Add news sources in <a href="/settings" onclick="navigate(event, \'/settings\')" style="color:var(--accent)">Settings</a> to start extracting quotes.</p>';
-      html += `
-        <div class="empty-state">
-          <svg width="64" height="64" viewBox="0 0 24 24" fill="var(--border)" style="margin-bottom:1rem">
-            <path d="M6 17h3l2-4V7H5v6h3zm8 0h3l2-4V7h-6v6h3z"/>
-          </svg>
-          ${emptyMessage}
-        </div>
-      `;
+      html += `<div class="empty-state"><h3>No results found</h3></div>`;
     } else {
-      html += `<p class="quote-count">${quotesData.total} quotes collected</p>`;
-
-      // Group quotes by article
-      const { multiQuoteGroups, singleQuoteGroups, ungrouped } = groupQuotesByArticle(quotesData.quotes);
-
-      // Render multi-quote article groups first
-      for (const group of multiQuoteGroups) {
-        html += buildArticleGroupHtml(group);
-      }
-
-      // Render single-quote article groups with same card format
-      for (const group of singleQuoteGroups) {
-        html += buildArticleGroupHtml(group);
-      }
-
-      // Render ungrouped quotes as individual entries
-      for (const q of ungrouped) {
-        html += buildQuoteEntryHtml(q, false);
-      }
-
-      // Pagination
-      if (quotesData.totalPages > 1) {
-        html += '<div class="pagination">';
-        for (let i = 1; i <= Math.min(quotesData.totalPages, 10); i++) {
-          html += `<button class="page-btn ${i === quotesData.page ? 'active' : ''}" onclick="loadQuotesPage(${i})">${i}</button>`;
-        }
-        if (quotesData.totalPages > 10) {
-          html += `<span class="pagination-ellipsis">...</span>`;
-          html += `<button class="page-btn" onclick="loadQuotesPage(${quotesData.totalPages})">${quotesData.totalPages}</button>`;
-        }
-        html += '</div>';
+      html += `<p class="quote-count">${quotesData.total} quotes found</p>`;
+      for (const q of quotesData.quotes) {
+        html += buildQuoteBlockHtml(q, q.topics || [], false);
       }
     }
 
     content.innerHTML = html;
-
-    // Restore scroll position if returning from article/quote page
-    if (_pendingScrollRestore) {
-      _pendingScrollRestore = false;
-      requestAnimationFrame(() => {
-        window.scrollTo(0, _homeScrollY);
-      });
-    }
   } catch (err) {
-    content.innerHTML = `<div class="empty-state"><h3>Error loading quotes</h3><p>${escapeHtml(err.message)}</p></div>`;
+    content.innerHTML = `<div class="empty-state"><h3>Error searching</h3><p>${escapeHtml(err.message)}</p></div>`;
   }
 }
 
 function clearSearch() {
-  _currentSearch = '';
   const searchInput = document.getElementById('header-search-input');
   if (searchInput) searchInput.value = '';
   window.history.pushState({}, '', '/');
   renderHome();
 }
 
-/**
- * Load a specific page of quotes
- */
-async function loadQuotesPage(page) {
-  const content = document.getElementById('content');
-  try {
-    const queryParams = new URLSearchParams({
-      page: String(page),
-      limit: '50',
-    });
-    if (_activeCategory === 'Top Stories') {
-      queryParams.set('tab', 'top-stories');
-    } else {
-      queryParams.set('category', _activeCategory);
-    }
-    if (_activeSubFilter) queryParams.set('subFilter', _activeSubFilter);
-    if (_currentSearch) queryParams.set('search', _currentSearch);
-
-    const quotesData = await API.get('/quotes?' + queryParams.toString());
-
-    let html = '';
-
-    // Category tabs
-    if (quotesData.categories && quotesData.categories.length > 0) {
-      html += buildCategoryTabsHtml(quotesData.categories, _activeCategory);
-    }
-
-    html += `<p class="quote-count">Page ${page} of ${quotesData.totalPages} &middot; ${quotesData.total} quotes collected</p>`;
-
-    const { multiQuoteGroups, singleQuoteGroups, ungrouped } = groupQuotesByArticle(quotesData.quotes);
-
-    for (const group of multiQuoteGroups) {
-      html += buildArticleGroupHtml(group);
-    }
-    for (const group of singleQuoteGroups) {
-      html += buildArticleGroupHtml(group);
-    }
-    for (const q of ungrouped) {
-      html += buildQuoteEntryHtml(q, false);
-    }
-
-    // Pagination
-    if (quotesData.totalPages > 1) {
-      html += '<div class="pagination">';
-      const startPage = Math.max(1, page - 4);
-      const endPage = Math.min(quotesData.totalPages, page + 4);
-
-      if (startPage > 1) {
-        html += `<button class="page-btn" onclick="loadQuotesPage(1)">1</button>`;
-        if (startPage > 2) html += `<span class="pagination-ellipsis">...</span>`;
-      }
-
-      for (let i = startPage; i <= endPage; i++) {
-        html += `<button class="page-btn ${i === page ? 'active' : ''}" onclick="loadQuotesPage(${i})">${i}</button>`;
-      }
-
-      if (endPage < quotesData.totalPages) {
-        if (endPage < quotesData.totalPages - 1) html += `<span class="pagination-ellipsis">...</span>`;
-        html += `<button class="page-btn" onclick="loadQuotesPage(${quotesData.totalPages})">${quotesData.totalPages}</button>`;
-      }
-      html += '</div>';
-    }
-
-    content.innerHTML = html;
-  } catch (err) {
-    console.error('Error loading page:', err);
-  }
-}
-
-/**
- * Update the review badge count
- */
-function updateReviewBadge(count) {
-  const badge = document.getElementById('review-badge');
-  if (badge) {
-    if (count > 0) {
-      badge.textContent = count > 99 ? '99+' : count;
-      badge.style.display = 'inline';
-    } else {
-      badge.style.display = 'none';
-    }
-  }
-}
+// ======= Socket.IO Handlers =======
 
 /**
  * Handle new quotes from Socket.IO
- * Show a non-jarring notification banner instead of re-rendering the page.
  */
 function handleNewQuotes(quotes) {
   if (window.location.pathname === '/' || window.location.pathname === '') {
@@ -794,9 +785,6 @@ function handleNewQuotes(quotes) {
   }
 }
 
-/**
- * Show a banner at the top of the feed indicating new quotes are available.
- */
 function showNewQuotesBanner() {
   if (_pendingNewQuotes <= 0) return;
 
@@ -816,39 +804,107 @@ function showNewQuotesBanner() {
   banner.style.display = '';
 }
 
-/**
- * Load new quotes: re-render while preserving scroll position.
- */
 function loadNewQuotes() {
   _pendingNewQuotes = 0;
   const banner = document.getElementById('new-quotes-banner');
   if (banner) banner.remove();
-  const scrollY = window.scrollY;
-  renderHome().then(() => {
-    window.scrollTo(0, scrollY);
-  });
+  _importantStatuses = {}; // Clear cache on refresh
+  renderHome();
 }
 
-function escapeHtml(str) {
-  if (!str) return '';
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+// ======= Topic Page =======
+
+/**
+ * Render a full topic page at /topic/:slug
+ */
+async function renderTopicPage(slug) {
+  const content = document.getElementById('content');
+  content.innerHTML = buildSkeletonHtml(4);
+
+  try {
+    const data = await API.get(`/topics/${slug}`);
+    if (!data.topic) {
+      content.innerHTML = '<div class="empty-state"><h3>Topic not found</h3><p><a href="/" onclick="navigate(event, \'/\')" style="color:var(--accent)">Back to home</a></p></div>';
+      return;
+    }
+
+    const topic = data.topic;
+    const quotes = data.quotes || [];
+
+    // Fetch important statuses
+    const entityKeys = [`topic:${topic.id}`, ...quotes.map(q => `quote:${q.id}`)];
+    await fetchImportantStatuses(entityKeys);
+
+    const isTopicImportant = _importantStatuses[`topic:${topic.id}`] || false;
+
+    let html = `
+      <div class="topic-page">
+        <p style="margin-bottom:1rem;font-family:var(--font-ui);font-size:0.85rem">
+          <a href="/" onclick="navigate(event, '/')" style="color:var(--accent);text-decoration:none">&larr; Back to home</a>
+        </p>
+        <h1>${escapeHtml(topic.name)}</h1>
+        ${topic.description ? `<p class="topic-page__description">${escapeHtml(topic.description)}</p>` : ''}
+        ${topic.context ? `<p class="topic-page__description">${escapeHtml(topic.context)}</p>` : ''}
+        <div class="topic-page__actions">
+          ${renderImportantButton('topic', topic.id, topic.importants_count || 0, isTopicImportant)}
+          ${buildShareButtonsHtml('topic', topic.id, topic.name, '')}
+        </div>
+    `;
+
+    if (quotes.length === 0) {
+      html += '<div class="empty-state"><h3>No quotes in this topic yet</h3></div>';
+    } else {
+      html += `<p class="quote-count">${data.total || quotes.length} quotes</p>`;
+      for (const q of quotes) {
+        const isQImp = _importantStatuses[`quote:${q.id}`] || false;
+        html += buildQuoteBlockHtml(q, q.topics || [], isQImp);
+      }
+
+      // Pagination
+      const total = data.total || quotes.length;
+      const limit = data.limit || 20;
+      const page = data.page || 1;
+      const totalPages = Math.ceil(total / limit);
+      if (totalPages > 1) {
+        html += '<div class="pagination">';
+        for (let i = 1; i <= Math.min(totalPages, 10); i++) {
+          html += `<button class="page-btn ${i === page ? 'active' : ''}" onclick="loadTopicPage('${escapeHtml(slug)}', ${i})">${i}</button>`;
+        }
+        html += '</div>';
+      }
+    }
+
+    html += '</div>';
+    content.innerHTML = html;
+    initViewTracking();
+  } catch (err) {
+    content.innerHTML = `<div class="empty-state"><h3>Error</h3><p>${escapeHtml(err.message)}</p></div>`;
+  }
+}
+
+async function loadTopicPage(slug, page) {
+  const content = document.getElementById('content');
+  content.innerHTML = buildSkeletonHtml(4);
+  try {
+    const data = await API.get(`/topics/${slug}?page=${page}`);
+    // Re-render the full page
+    renderTopicPage(slug);
+  } catch (err) {
+    content.innerHTML = `<div class="empty-state"><h3>Error</h3><p>${escapeHtml(err.message)}</p></div>`;
+  }
 }
 
 /**
- * Toggle between truncated and full quote text
+ * Update the review badge count
  */
-function toggleQuoteText(event, quoteId) {
-  event.preventDefault();
-  const el = document.getElementById('qt-' + quoteId);
-  const toggle = event.target;
-  const fullText = _quoteTexts[quoteId];
-  if (!el || !fullText) return;
-
-  if (toggle.textContent === 'show more') {
-    el.textContent = '\u201c' + fullText + '\u201d';
-    toggle.textContent = 'show less';
-  } else {
-    el.textContent = '\u201c' + fullText.substring(0, 280) + '...\u201d';
-    toggle.textContent = 'show more';
+function updateReviewBadge(count) {
+  const badge = document.getElementById('review-badge');
+  if (badge) {
+    if (count > 0) {
+      badge.textContent = count > 99 ? '99+' : count;
+      badge.style.display = 'inline';
+    } else {
+      badge.style.display = 'none';
+    }
   }
 }
