@@ -31,6 +31,7 @@ import importantsRouter from './routes/importants.js';
 import trackingRouter from './routes/tracking.js';
 import topicsRouter from './routes/topics.js';
 import analyticsRouter from './routes/analytics.js';
+import historicalSourcesRouter from './routes/historicalSources.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -114,6 +115,7 @@ export function createApp({ skipDbInit = false } = {}) {
   app.use('/api/tracking', trackingRouter);
   app.use('/api/topics', topicsRouter);
   app.use('/api/analytics', analyticsRouter);
+  app.use('/api/historical-sources', historicalSourcesRouter);
 
   // SPA fallback - serve index.html for all non-API routes
   // For /quote/:id, inject OG/Twitter meta tags for social sharing
