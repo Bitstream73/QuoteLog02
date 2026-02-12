@@ -573,6 +573,37 @@ function initializeTables(db) {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_quotes_importants ON quotes(importants_count DESC) WHERE is_visible = 1`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_quotes_datetime ON quotes(quote_datetime DESC) WHERE is_visible = 1`);
 
+  // Quote context analysis cache (AI "Get More Context" results)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS quote_context_cache (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      quote_id INTEGER NOT NULL UNIQUE REFERENCES quotes(id) ON DELETE CASCADE,
+      analysis TEXT NOT NULL,
+      related_quote_ids TEXT NOT NULL DEFAULT '[]',
+      model_version TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      expires_at TEXT NOT NULL DEFAULT (datetime('now', '+7 days'))
+    )
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_context_cache_quote ON quote_context_cache(quote_id)`);
+
+  // Smart related quote classifications (contradictions, context, mentions)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS quote_smart_related (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      quote_id INTEGER NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,
+      related_type TEXT NOT NULL CHECK(related_type IN ('contradiction', 'context', 'mention')),
+      related_quote_id INTEGER NOT NULL REFERENCES quotes(id),
+      confidence REAL NOT NULL DEFAULT 0.0,
+      explanation TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      expires_at TEXT NOT NULL DEFAULT (datetime('now', '+7 days')),
+      UNIQUE(quote_id, related_quote_id, related_type)
+    )
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_smart_related_quote ON quote_smart_related(quote_id)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_smart_related_type ON quote_smart_related(quote_id, related_type)`);
+
   // App settings (key-value)
   db.exec(`
     CREATE TABLE IF NOT EXISTS settings (
