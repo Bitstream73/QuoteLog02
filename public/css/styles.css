@@ -3864,3 +3864,218 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
     min-width: 150px;
   }
 }
+
+/* ===================================
+   Context Analysis & Smart Related
+   =================================== */
+
+/* "Get More Context" button */
+.context-btn {
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.5rem 1rem;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+}
+.context-btn:hover:not(:disabled) { background: var(--accent-hover); }
+.context-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* CSS-only loading spinner */
+.context-loading-spinner {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: context-spin 0.6s linear infinite;
+}
+@keyframes context-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Loading state for smart related */
+.smart-related-loading {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem 0;
+}
+
+/* Summary block (blue left border) */
+.context-summary {
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  line-height: 1.6;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1.25rem;
+  border-left: 3px solid var(--info, #2563eb);
+  background: var(--bg-secondary);
+  border-radius: var(--radius);
+}
+
+/* Per-claim block */
+.context-claim {
+  padding: 1rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.context-claim:last-child { border-bottom: none; }
+
+/* Claim type badge */
+.claim-type-badge {
+  display: inline-block;
+  font-family: var(--font-ui);
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.15rem 0.5rem;
+  color: #fff;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+/* Evidence blocks */
+.context-evidence {
+  margin: 0.5rem 0 0.5rem 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius);
+}
+.context-evidence-supporting { border-left: 3px solid var(--success, #16a34a); }
+.context-evidence-contradicting { border-left: 3px solid var(--error, #c41e3a); }
+.context-evidence-context { border-left: 3px solid var(--info, #2563eb); }
+
+.context-evidence-label {
+  font-family: var(--font-ui);
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-bottom: 0.35rem;
+}
+
+/* Individual evidence item */
+.context-evidence-item {
+  padding: 0.4rem 0;
+}
+.context-evidence-item + .context-evidence-item {
+  border-top: 1px solid var(--border);
+}
+
+/* Source label (database / general knowledge) */
+.evidence-source-label {
+  display: inline-block;
+  font-family: var(--font-ui);
+  font-size: 0.6rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.1rem 0.4rem;
+  border-radius: 2px;
+  margin-bottom: 0.25rem;
+}
+.evidence-source-database {
+  background: var(--accent-light);
+  color: var(--accent);
+}
+.evidence-source-knowledge {
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+}
+
+/* Evidence quote link */
+.evidence-quote-link {
+  display: block;
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  font-style: italic;
+  color: var(--accent);
+  text-decoration: none;
+  margin: 0.25rem 0;
+}
+.evidence-quote-link:hover { text-decoration: underline; }
+
+.evidence-author {
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.evidence-explanation {
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+/* Confidence note */
+.context-confidence-note {
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+  font-style: italic;
+  color: var(--text-muted);
+  padding-top: 0.75rem;
+  margin-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+/* Error state */
+.context-error {
+  font-family: var(--font-ui);
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  padding: 1rem;
+  background: var(--bg-secondary);
+  border-radius: var(--radius);
+}
+.context-error .context-btn { margin-top: 0.75rem; }
+
+/* Smart related quote cards */
+.smart-related-group { margin-bottom: 1.5rem; }
+
+.smart-related-group-title {
+  font-family: var(--font-ui);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 0 0 0.75rem;
+}
+
+.smart-related-card {
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.5rem;
+  background: var(--bg-card);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.smart-related-card:hover {
+  border-color: var(--border-dark);
+  box-shadow: var(--shadow);
+}
+
+.smart-related-contradiction { border-left: 3px solid var(--error, #c41e3a); }
+.smart-related-mention { border-left: 3px solid var(--info, #2563eb); }
+.smart-related-context { border-left: 3px solid var(--border-dark); }
+
+.smart-related-explanation {
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+  font-style: italic;
+  color: var(--text-muted);
+  margin-top: 0.35rem;
+}
+
+.smart-related-author {
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
