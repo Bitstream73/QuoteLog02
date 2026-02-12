@@ -1,7 +1,7 @@
 # Build Progress — Admin Edit Capabilities
 
 ## Current Status
-- **Current Phase:** 8
+- **Current Phase:** 9
 - **Last Updated:** 2026-02-12
 - **Last Commit:** (pending)
 
@@ -58,9 +58,9 @@
 
 ---
 
-## Phase 8: Frontend — Trending Sources & All Tab Admin View
-- [ ] Modify `buildSourceCardHtml()` in `public/js/home.js`. When `isAdmin`: render source name as heading, show context, use admin quote blocks for the 3 quotes, show source-level stats row (ViewCount, SharesCount, ImportantsCount), show keyword/topic management sections (same pattern as topic cards). See `docs/ADMIN-QUOTE-BLOCK.md`.
-- [ ] Verify `renderAllTab()` in `public/js/home.js` correctly inherits admin formatting from the shared `buildSourceCardHtml()` function. Add any missing admin-specific elements. Puppeteer verify both Trending Sources and All tabs render correctly in admin mode.
+## Phase 8: Frontend — Trending Sources & All Tab Admin View ✅
+- [x] Modify `buildSourceCardHtml()` in `public/js/home.js`. When `isAdmin`: render source name as heading, show context, use admin quote blocks for the 3 quotes, show source-level stats row (ViewCount, SharesCount, ImportantsCount), show keyword/topic management sections (same pattern as topic cards). See `docs/ADMIN-QUOTE-BLOCK.md`.
+- [x] Verify `renderAllTab()` in `public/js/home.js` correctly inherits admin formatting from the shared `buildSourceCardHtml()` function. Add any missing admin-specific elements. Puppeteer verify both Trending Sources and All tabs render correctly in admin mode.
 
 ---
 

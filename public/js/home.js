@@ -760,12 +760,21 @@ async function renderTrendingSourcesTab(container) {
 
 function buildSourceCardHtml(article, isImportant) {
   const quotes = article.quotes || [];
+  const _isAdm = typeof isAdmin !== 'undefined' && isAdmin;
   const quotesHtml = quotes.map(q => {
     const isQImp = _importantStatuses[`quote:${q.id}`] || false;
     return buildQuoteBlockHtml(q, q.topics || [], isQImp);
   }).join('');
 
   const dateStr = formatRelativeTime(article.published_at);
+
+  // Admin: stats row
+  const adminStatsHtml = _isAdm ? `
+    <div class="admin-stats-row">
+      <span>${article.view_count || 0} views</span>
+      <span>${article.share_count || 0} shares</span>
+      <span>${article.importants_count || 0} importants</span>
+    </div>` : '';
 
   return `
     <div class="source-card" data-track-type="article" data-track-id="${article.id}">
@@ -788,6 +797,7 @@ function buildSourceCardHtml(article, isImportant) {
         ${renderImportantButton('article', article.id, article.importants_count || 0, isImportant)}
         ${buildShareButtonsHtml('article', article.id, article.title, '')}
       </div>
+      ${adminStatsHtml}
     </div>
   `;
 }
