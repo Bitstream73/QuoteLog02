@@ -12,51 +12,51 @@ Everything inside the `<!-- TODO -->` block below is the user's raw input. It ma
 
 <!-- TODO START -->
 
-Put the files that result from this prompt in a folder in the root called "SiteTopicFocusChanges." Do not edit the root/Claude.md file in the root or the root/Prompt.md file. If you generate those files with those names as part of this prompt, put them in the "SiteTopicFocusChanges" folder
+Put the files that result from this prompt in a folder in the root called "AdminEditCapabilitiesChanges." Do not edit the root/Claude.md file in the root or the root/Prompt.md file. If you generate those files with those names as part of this prompt, put them in the "SAdminEditCapabilitiesChanges" folder
 
 ** Setup and testing **
-- These changes should be made on a new github branch called "SiteTopicFocusChanges" forked off of "main" and deployed in the "development" environment on Railway. All visual changes should be verified using Google Chrome at "https://quotelog02-development.up.railway.app"
+- These changes should be made on a new github branch called "AdminEditCapabilitiesChanges" forked off of "main" and deployed in the "main" environment on Railway. All visual changes should be verified using Puppeteer at "hhttps://whattheysaid.news/"
+
+** Required Credentials **
+
+You will need to enter these credentials at https://whattheysaid.news/login to enter the admin part of the site:
+
+Username: jakob@karlsmark.com	
+Password: Ferret@00
+
+
 
 Overall goals:
 
-- Remove the UI for the reddit-style upvote downvote system
+Add UI throughout admin version to CRUD backend data from the homepage, topics page, source page, quotes
 
-- Add the following fields to the database most appropriate for the datatype - either pinecone or the sqlite database: QuoteDateTime, ImportantsCount, ShareCount, ViewCount
+When not in admin mode, remove the ImportantsCount number from [ IMPORTANT? ] buttons throughout the app
 
-	- QuoteDateTime = This should be the DateTime that the quote was uttered. If that isn't available, fall back to the DateTime of the source
-	- Sharecount = the number of times the corresponding Topic, Source, Quote, or Author was shared
-	- ViewCount = The number of times the corresponding Topic Page, Source Page, Author Page or Quote was viewed
-	- ImportantsCount = The number of times users clicked the "Important?" button for the corresponding Topic, Source, Quote or Author
+In admin mode, wherever an [ IMPORTANT? ] button appears, add the value for ImportantsCount for that item and a new button called [ SUPERIMPORTANT ] that +=100 ImportantsCount for the item
 
-- The site should be re-focused around four tabs on the homepage: "Trending Topic" (more on this later), Trending Sources (What's now called articles), Trending Quotes (Quotes users have marked as important), and All (every source and a source's corresponding quotes ordered from newest to oldest. All four tabs should be visible when in portrait mode and landscape mode
-
-- "Trending Topics" should be the default open tab on the website's homepage.
-
-- The "Topics" in "Trending Topics" are collections of keywords along with a Topic Name string either entered by the user in admin mode or created by the app or by the AI when sources and quotes are added to the site. Topics are populated by the search results for the topic's keyword(s). In the admin section, there should be an option to CRUD topics and their keywords. If no Topic currently exists to encapsulate a new source and its quotes, the AI should suggest a title for a new topic along with what keywords the title should include and that new topic should be implemented. 
-
-
-- The Trending Topics tab will contain multiple topics. Topics that show up in Trending Topics will be ordered highest to lowest by the sum of the topic's Importantscount and the ImportantsCounts for all the quotes related to the topic. Each topic on the Trending Topics tab will display three quotes with the highest ImportantsCounts for the Topic . If no quotes have ImportantsCounts greater than zero, show up to the first three most recent quotes for the topic.
- 
-- Each Topic has a corresponding Topic Page, similar to the article page we have currently.
-
-- What was previously called articles, will not be called sources. Sources that show up in Trending Source will be ordered highest to lowest by the sum of the source's Importantscount and the ImportantsCounts for all the quotes related to the source.
-
-- Any derived values (for instance, the sum of the topic's Importantscount and the ImportantsCounts for all the quotes related to the topic), should be recalculated after each Source fetch and cached so it isn't recalculated over and over again.
-
+Reverse the order of the "Disambiguation Review" and "Quote Management" tabs on the "Review" page
+Review Page should have "Quote Management" Tab the default open tab.
+If there are pending Disambiguiation items, add the count of disambiguiations as an overlayed notification on the "Review" main header menu item and the "Disambiguiation Review" tab on Review page
 
 ** UI UX Changes **
 
-** Quote Blocks should be formatted like this: **
+** When Logged in as Admin, Quote Blocks should be formatted like this: **
 
 ┌──────────────────────────────────────┐
 │ "Quote text spans full width..."    
 |
 | [Quote context]                                     
-│ [ IMPORTANT? ]  [ Quote Datetime ]  [Quote ViewCount]                 
+│  [ Quote Datetime ]                  
 │ (Circular  Author Name  [badges]                  
 │ Portrait)  Author description                     
 │ [Source Url with linktext "Source"] [Topic 1] [Topic 2] <-- Top two topics maxmimum                                  
-│ [Quote Share buttons]  [Share count ] <--if share count > 0        
+│ [Share buttons]  [ IMPORTANT? ] ImportantsCount [ SUPERIMPORTANT ]       
+| ViewCount SharesCount ImportantsCount   
+| [ Quote ] [ Context ] [ Topics ] [ Sources ] [ Author ] [ Photo ] <-- edits the associated item
+| Keywords [ Edit ] [ Create Keyword ]:
+| [ keyword 1 ] [ keyword 2 ] [ keyword 3 ] ...
+| Topics [ Edit ] [ Create Topic ]:
+| [ Topic 1 ] [ Topic 2 ] ...
 └──────────────────────────────────────┘
 
 Clicking on the actual quote, the author name, description, or the author portrait takes you to the author's page
@@ -69,81 +69,99 @@ Trending tabs are populated in order from highest to lowest of "ImportantsCount"
 [TOPIC NAME IN HEADING FONT]
 [Topic context]
 
-["Sort by " ["Date" <-- this is the default] ["Importance" <-- Sorted High to low according to the sum of a quote's ImportantsCount + ShareCount + ViewCount
-[ Quote Block 1]
+"Sort by " ["Date" <-- this is the default] ["Importance" ]<-- Sorted High to low according to the sum of a quote's ImportantsCount + ShareCount + ViewCount
+[ Admin Quote Block 1]
 
-[ Quote Block 2]
+[ Admin Quote Block 2]
 
-[ Quote Block 3]
+[ Admin Quote Block 3]
 
 [ See More ] <--takes you to the corresponding Topic page
-[ IMPORTANT? ] <-- +=1's the important count for the Topic.
-[Topic Share buttons] 
+│ [Share buttons]  [ IMPORTANT? ] ImportantsCount [ SUPERIMPORTANT ]       
+| ViewCount SharesCount ImportantsCount   
+| [ Topic ]  <-- edits the associated item
+| Keywords [ Edit ] [ Create Keyword ]:
+| [ keyword 1 ] [ keyword 2 ] [ keyword 3 ] ...
 
 
-** Items in Trending Sources tab should be formatted like this: **
-
-[SOURCE TITLE IN HEADING FONT]
-[Source context]
-
-["Sort by " ["Date" <-- this is the default] ["Importance" <-- Sorted High to low according to the sum of a quote's ImportantsCount + ShareCount + ViewCount
-[ Quote Block 1]
-
-[ Quote Block 2]
-
-[ Quote Block 3]
-
-[ See More ] <--takes you to the corresponding Source page
-[ IMPORTANT? ] <-- +=1's the important count for the Source.
-[Source Share buttons] 
-
-
-** Items in All tab should be formatted the same way as Trending Sources: **
+** When Logged in as Admin, Items in Trending Sources tab should be formatted like this: **
 
 [SOURCE TITLE IN HEADING FONT]
 [Source context]
 
-["Sort by " ["Date" <-- this is the default] ["Importance" <-- Sorted High to low according to the sum of a quote's ImportantsCount + ShareCount + ViewCount
-[ Quote Block 1]
+"Sort by " ["Date" <-- this is the default] ["Importance" ]<-- Sorted High to low according to the sum of a quote's ImportantsCount + ShareCount + ViewCount
+[ Admin Quote Block 1]
 
-[ Quote Block 2]
+[ Admin Quote Block 2]
 
-[ Quote Block 3]
+[ Admin Quote Block 3]
 
 [ See More ] <--takes you to the corresponding Source page
-[ IMPORTANT? ] <-- +=1's the important count for the Source.
-[Source Share buttons] 
+│ [Share buttons]  [ IMPORTANT? ] ImportantsCount [ SUPERIMPORTANT ]       
+| ViewCount SharesCount ImportantsCount   
+| Keywords [ Edit ] [ Create Keyword ]:
+| [ keyword 1 ] [ keyword 2 ] [ keyword 3 ] ...
+| Topics [ Edit ] [ Create Topic ]:
+| [ Topic 1 ] [ Topic 2 ] ...
+
+
+** When Logged in as Admin, Items in All tab should be formatted the same way as Trending Sources: **
+
+[SOURCE TITLE IN HEADING FONT]
+[Source context]
+
+"Sort by " ["Date" <-- this is the default] ["Importance"] <-- Sorted High to low according to the sum of a quote's ImportantsCount + ShareCount + ViewCount
+[ Admin Quote Block 1]
+
+[ Admin Quote Block 2]
+
+[ Admin Quote Block 3]
+
+[ See More ] <--takes you to the corresponding Source page
 
 
 
 
-** Items in the Trending Quotes tab should look like this: **
+** When Logged in as Admin, Items in the Trending Quotes tab should look like this: **
 
 ["Quote of the Day" heading]
-[ Quote Block for quote with highest ImportantsCount for the Day]
+[ Admin Quote Block for quote with highest ImportantsCount for the Day]
 
 ["Quote of the Week" heading]
-[ Quote Block for quote with highest ImportantsCount for the Week]
+[ Admin Quote Block for quote with highest ImportantsCount for the Week]
 
 ["Quote of the Month" heading]
-[ Quote Block for quote with highest ImportantsCount for the Day]
+[ Admin Quote Block for quote with highest ImportantsCount for the Day]
 
 ["*Trending quotes change over time as views and shares change" small italic type]
 
 ["Recent Quotes" heading] 
 
 ["Sort by " ["Date" <-- this is the default] ["Importance" <-- Sorted High to low according to the sum of a quote's ImportantsCount + ShareCount + ViewCount
-[ Quote Block 1] <-- quotes sorted from newest to oldest.
+[ Admin Quote Block 1] <-- quotes sorted from newest to oldest.
 
-[ Quote Block 2]
+[ Admin Quote Block 2]
 
-[ Quote Block 3]
+[ Admin Quote Block 3]
 .
 .
 .
 .
 
+** Settings Page Changes **
 
+Data Management
+
+Sources
+
+[ "e.g., reuters.com " textbox]
+[ "Display name (optional) " textbox]
+[ "RSS feed URL (Optional, auto-detected)" textbox]
+[ "Add Source" button]
+
+"> Sources " <-- Twirl down section with all currently added sources. Minimized by default
+
+Everything Else stays the same on Settings page
 
 
 <!-- TODO END -->
@@ -248,6 +266,7 @@ After committing, update `PROGRESS.md`:
 - **Never skip verification.** Run the full test suite after every task.
 - **Never output the completion promise unless all work is done.**
 - **Reference docs/*.md for detailed specs** — don't guess at schemas, APIs, or security rules.
+- **Using Puppeteer, visually verify features that have a visual component work correctly.** — don't assume a UI change is implemented correctly. Always look at it using Puppeteer.
 ```
 
 **Why this structure works with Ralph:**
@@ -274,38 +293,7 @@ This is the most important file in the system. It is Claude's "memory" across Ra
 - **Last Updated:** [timestamp]
 - **Last Commit:** [hash or "none"]
 
-## Phase 0: Environment & Credentials ✅
-- [x] Verify all API keys and services
-- [x] Create .env and .env.example
-- [x] Confirm all connections
 
-## Phase 1: Project Initialization 🔄
-- [x] Create directory structure
-- [ ] Install dependencies
-- [ ] Configure package.json
-- [ ] Set up test runner
-- [ ] Create .gitignore
-- [ ] Initial commit and push
-
-## Phase 2: Database & Configuration
-- [ ] Config loader with env validation
-- [ ] Database setup with migrations
-- [ ] Logger service
-- [ ] Tests for config, database, logger
-
-## Phase 3: [Service Name]
-- [ ] Task 1
-- [ ] Task 2
-- [ ] Tests
-
-...
-
-## Phase N: Deployment & Verification
-- [ ] Dockerfile
-- [ ] CI/CD workflow
-- [ ] Deploy
-- [ ] Verify all endpoints
-- [ ] Final test suite green
 ```
 
 **Rules for PROGRESS.md:**
@@ -377,6 +365,7 @@ Add this recommendation to your output.
 
 ### Step 6: Write the Verification Command
 What single command proves everything works? Usually: `npx vitest run` or `npm test` or `pytest`. This goes in PROMPT.md Section 2.
+Are there visual changes to the app? If so, verify they work using Puppeteer.
 
 ---
 

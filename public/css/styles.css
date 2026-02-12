@@ -3547,3 +3547,36 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   display: flex;
   flex-direction: column;
 }
+
+/* ===================================
+   Historical Sources
+   =================================== */
+.historical-source-row .source-info {
+  gap: 0.75rem;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: inline-block;
+}
+
+.status-dot-working {
+  background: var(--success, #22c55e);
+}
+
+.status-dot-failed {
+  background: var(--error, #ef4444);
+}
+
+.status-dot-disabled {
+  background: var(--text-muted, #9ca3af);
+}
+
+.historical-stat {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
