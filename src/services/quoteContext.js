@@ -125,7 +125,7 @@ Rules:
   let analysis;
   try {
     const evidenceBlock = evidenceList.map((eq, i) =>
-      `[${i + 1}] (ID: ${eq.id}) "${eq.text.substring(0, 300)}" \u2014 ${eq.canonical_name}${eq.quote_datetime ? ` (${eq.quote_datetime})` : ''}`
+      `[${i + 1}] (ID: ${eq.id}) "${eq.text.substring(0, 300)}" — ${eq.canonical_name}${eq.quote_datetime ? ` (${eq.quote_datetime})` : ''}`
     ).join('\n');
 
     const analysisPrompt = `You are analyzing a political/news quote to provide context and fact-checking.
@@ -169,7 +169,7 @@ Return a JSON object (no markdown, just raw JSON):
 Rules:
 - Keep explanations concise (1-2 sentences each)
 - Only include evidence items that are genuinely relevant
-- Be balanced \u2014 include both supporting and contradicting evidence when available
+- Be balanced — include both supporting and contradicting evidence when available
 - For "database" source items, quoteId must match an evidence quote ID above
 - For "general_knowledge" source items, set quoteId to null
 - Maximum 3 items per category (supporting/contradicting/addingContext) per claim`;
@@ -232,7 +232,7 @@ Rules:
 
 /**
  * Get smart related quotes: contradictions, supporting context (same author),
- * and mentions by other authors within \u00b17 days.
+ * and mentions by other authors within ±7 days.
  */
 export async function getSmartRelatedQuotes(quoteId) {
   const db = getDb();
@@ -315,9 +315,9 @@ CANDIDATE QUOTES (same author):
 ${candidateBlock}
 
 For each candidate, classify as one of:
-- "contradiction" \u2014 directly contradicts the original quote
-- "supporting_context" \u2014 supports, expands on, or adds context to the original
-- "unrelated" \u2014 no meaningful connection
+- "contradiction" — directly contradicts the original quote
+- "supporting_context" — supports, expands on, or adds context to the original
+- "unrelated" — no meaningful connection
 
 Return a JSON array (no markdown, just raw JSON):
 [
@@ -359,7 +359,7 @@ Rules:
     }
   }
 
-  // Section B: Mentions by others (\u00b17 days)
+  // Section B: Mentions by others (±7 days)
   const personName = quote.canonical_name;
   const lastName = personName.split(' ').pop();
   const refDate = quote.quote_datetime || quote.created_at;
