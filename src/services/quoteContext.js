@@ -472,8 +472,10 @@ function formatSmartRelated(db, rows, fromCache) {
 
   for (const row of rows) {
     const rq = db.prepare(`
-      SELECT q.id, q.text, q.created_at, q.quote_datetime, p.canonical_name,
-             a.url AS article_url, s.name AS source_name, s.domain AS source_domain
+      SELECT q.id, q.text, q.context, q.created_at, q.quote_datetime,
+             q.person_id, q.importants_count, p.canonical_name, p.photo_url,
+             a.id AS article_id, a.url AS article_url, a.title AS article_title,
+             s.name AS source_name, s.domain AS source_domain
       FROM quotes q
       JOIN persons p ON q.person_id = p.id
       LEFT JOIN quote_articles qa ON qa.quote_id = q.id
@@ -484,15 +486,33 @@ function formatSmartRelated(db, rows, fromCache) {
 
     if (!rq) continue;
 
+    // Fetch topics for this related quote
+    const topicRows = db.prepare(`
+      SELECT t.id, t.name, t.slug FROM topics t
+      JOIN quote_topics qt ON qt.topic_id = t.id
+      WHERE qt.quote_id = ?
+    `).all(rq.id);
+
     const item = {
       id: rq.id,
-      text: rq.text.length > 200 ? rq.text.substring(0, 200) + '...' : rq.text,
+      text: rq.text,
+      context: rq.context || '',
+      person_id: rq.person_id,
+      person_name: rq.canonical_name,
+      photo_url: rq.photo_url || '',
+      importants_count: rq.importants_count || 0,
       authorName: rq.canonical_name,
       date: rq.quote_datetime || rq.created_at,
+      quote_datetime: rq.quote_datetime || '',
       confidence: row.confidence,
       explanation: row.explanation,
       sourceUrl: rq.article_url || null,
       sourceName: rq.source_name || rq.source_domain || null,
+      article_id: rq.article_id || null,
+      article_title: rq.article_title || null,
+      source_domain: rq.source_domain || null,
+      source_name: rq.source_name || null,
+      topics: topicRows,
     };
 
     if (row.related_type === 'contradiction') contradictions.push(item);

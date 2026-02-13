@@ -55,6 +55,7 @@ function setupTestDb() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       canonical_name TEXT NOT NULL,
       disambiguation TEXT,
+      photo_url TEXT,
       quote_count INTEGER NOT NULL DEFAULT 0,
       metadata TEXT DEFAULT '{}',
       first_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -73,6 +74,7 @@ function setupTestDb() {
       canonical_quote_id INTEGER,
       source_urls TEXT NOT NULL DEFAULT '[]',
       quote_datetime TEXT,
+      importants_count INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       first_seen_at TEXT NOT NULL DEFAULT (datetime('now'))
     )

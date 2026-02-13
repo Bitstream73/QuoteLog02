@@ -8,56 +8,34 @@ async function renderQuote(id) {
       return;
     }
     const q = data.quote;
-    const dateStr = formatDateTime(q.createdAt);
 
-    // Headshot
-    const initial = (q.personName || '?').charAt(0).toUpperCase();
-    const placeholderDiv = `<div class="quote-headshot-placeholder">${initial}</div>`;
-    const headshotHtml = q.photoUrl
-      ? `<img src="${escapeHtml(q.photoUrl)}" alt="${escapeHtml(q.personName)}" class="quote-headshot" onerror="this.outerHTML='<div class=\\'quote-headshot-placeholder\\'>${initial}</div>'">`
-      : (typeof isAdmin !== 'undefined' && isAdmin
-        ? `<a href="https://www.google.com/search?tbm=isch&q=${encodeURIComponent((q.personName || '') + ' ' + (q.personDisambiguation || ''))}" target="_blank" rel="noopener" class="admin-headshot-search" title="Search Google Images">${placeholderDiv}</a>`
-        : placeholderDiv);
-
-    // Quote type
-    const quoteTypeHtml = q.quoteType === 'indirect'
-      ? `<span class="quote-type-badge quote-type-indirect">Indirect</span>`
-      : '';
-
-    // Important? button for detail page
-    const importantHtml = typeof renderImportantButton === 'function'
-      ? renderImportantButton('quote', q.id, q.importantsCount || q.importants_count || 0, false)
-      : '';
+    // Build main quote using homepage quote block layout
+    const mainQuoteData = {
+      id: q.id,
+      text: q.text,
+      context: q.context || '',
+      person_name: q.personName,
+      person_id: q.personId,
+      photo_url: q.photoUrl || '',
+      person_category_context: q.personDisambiguation || '',
+      importants_count: q.importantsCount || q.importants_count || 0,
+      quote_datetime: q.quote_datetime || q.quoteDateTime || '',
+      article_id: (data.articles && data.articles[0]) ? data.articles[0].id : '',
+      article_title: (data.articles && data.articles[0]) ? data.articles[0].title : '',
+      source_domain: (data.articles && data.articles[0]) ? (data.articles[0].domain || '') : '',
+      source_name: (data.articles && data.articles[0]) ? (data.articles[0].source_name || '') : '',
+      is_visible: q.isVisible,
+    };
+    const mainQuoteTopics = q.topics || [];
 
     let html = `
       <p style="margin-bottom:1.5rem;font-family:var(--font-ui);font-size:0.85rem">
         <a href="/" onclick="navigateBackToQuotes(event)" style="color:var(--accent);text-decoration:none">&larr; Back to quotes</a>
       </p>
-      <div class="quote-detail-card">
-        <div class="quote-layout" style="gap:1.25rem">
-          <div class="quote-headshot-col">${headshotHtml}</div>
-          <div class="quote-content-col">
-            <div class="quote-detail-text">${escapeHtml(q.text)}</div>
-            <div class="quote-author-block" style="margin-top:0.75rem">
-              <div class="quote-author-row">
-                <a href="/author/${q.personId}" onclick="navigate(event, '/author/${q.personId}')" class="author-link">${escapeHtml(q.personName)}</a>
-                ${quoteTypeHtml}
-              </div>
-              ${q.personDisambiguation ? `<div class="quote-author-description">${escapeHtml(q.personDisambiguation)}</div>` : ''}
-            </div>
-            ${q.context ? `<div class="quote-context" style="margin-top:0.75rem">${escapeHtml(q.context)}</div>` : ''}
-            ${q.quote_datetime || q.quoteDateTime ? `<div class="quote-date-inline" style="margin-top:0.5rem"><strong>Quote Date:</strong> ${escapeHtml(q.quote_datetime || q.quoteDateTime)}</div>` : ''}
-            ${dateStr ? `<div class="quote-date-inline" style="margin-top:0.5rem">${dateStr}</div>` : ''}
-            <div style="margin-top:0.75rem">${importantHtml}</div>
-            ${typeof buildAdminActionsHtml === 'function' ? buildAdminActionsHtml({
-              id: q.id, personId: q.personId, personName: q.personName,
-              text: q.text, context: q.context, isVisible: q.isVisible,
-              personCategory: null, personCategoryContext: null,
-              disambiguation: q.personDisambiguation
-            }) : ''}
-          </div>
-        </div>
-      </div>
+      ${typeof buildQuoteBlockHtml === 'function'
+        ? buildQuoteBlockHtml(mainQuoteData, mainQuoteTopics, false)
+        : `<div class="quote-detail-card"><div class="quote-detail-text">${escapeHtml(q.text)}</div></div>`
+      }
     `;
 
     // Articles / Sources
@@ -145,7 +123,7 @@ async function loadSmartRelated(quoteId) {
       html += '<div id="contradictions-section" class="smart-related-group">';
       html += '<h3 class="smart-related-group-title" style="color:var(--danger, #dc3545)">Contradictions from Same Author</h3>';
       for (const c of data.contradictions) {
-        html += buildSmartRelatedCard(c, 'smart-related-contradiction');
+        html += buildSmartRelatedQuoteBlock(c);
       }
       html += '</div>';
     }
@@ -155,7 +133,7 @@ async function loadSmartRelated(quoteId) {
       html += '<div id="supporting-context-section" class="smart-related-group">';
       html += '<h3 class="smart-related-group-title">More Context from Same Author</h3>';
       for (const c of data.supportingContext) {
-        html += buildSmartRelatedCard(c, 'smart-related-context');
+        html += buildSmartRelatedQuoteBlock(c);
       }
       html += '</div>';
     }
@@ -165,7 +143,7 @@ async function loadSmartRelated(quoteId) {
       html += '<div id="mentions-section" class="smart-related-group">';
       html += '<h3 class="smart-related-group-title" style="color:var(--accent)">What Others Say</h3>';
       for (const m of data.mentionsByOthers) {
-        html += buildSmartRelatedCard(m, 'smart-related-mention');
+        html += buildSmartRelatedQuoteBlock(m);
       }
       html += '</div>';
     }
@@ -181,23 +159,29 @@ async function loadSmartRelated(quoteId) {
 }
 
 /**
- * Build a smart related quote card.
+ * Build a smart related quote using the homepage quote block layout.
  */
-function buildSmartRelatedCard(item, cssClass) {
-  const dateStr = item.date ? formatDateTime(item.date) : '';
-  return `
-    <a href="/quote/${item.id}" class="card-link" onclick="navigate(event, '/quote/${item.id}')">
-      <div class="smart-related-card ${cssClass}">
-        <div class="quote-text" style="font-size:0.9rem">${escapeHtml(item.text)}</div>
-        ${item.explanation ? `<div class="smart-related-explanation">${escapeHtml(item.explanation)}</div>` : ''}
-        <div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;margin-top:0.5rem">
-          <span class="smart-related-author">${escapeHtml(item.authorName)}</span>
-          ${dateStr ? `<span class="quote-date-inline">${dateStr}</span>` : ''}
-          ${item.sourceUrl ? `<span class="evidence-source-cite" onclick="event.preventDefault();event.stopPropagation();window.open('${escapeHtml(item.sourceUrl)}','_blank')">Source: ${escapeHtml(item.sourceName || 'Article')} &rarr;</span>` : ''}
-        </div>
-      </div>
-    </a>
-  `;
+function buildSmartRelatedQuoteBlock(item) {
+  if (typeof buildQuoteBlockHtml !== 'function') {
+    // Fallback if buildQuoteBlockHtml not available
+    return `<div class="quote-block"><p class="quote-block__text">${escapeHtml(item.text)}</p></div>`;
+  }
+  const quoteData = {
+    id: item.id,
+    text: item.text,
+    context: item.context || '',
+    person_name: item.person_name || item.authorName,
+    person_id: item.person_id || '',
+    photo_url: item.photo_url || '',
+    importants_count: item.importants_count || 0,
+    quote_datetime: item.quote_datetime || item.date || '',
+    article_id: item.article_id || '',
+    article_title: item.article_title || '',
+    source_domain: item.source_domain || '',
+    source_name: item.source_name || item.sourceName || '',
+  };
+  const topics = item.topics || [];
+  return buildQuoteBlockHtml(quoteData, topics, false);
 }
 
 /**

@@ -22,7 +22,7 @@ async function renderArticle(id) {
         <div style="font-family:var(--font-ui);font-size:0.85rem;color:var(--text-secondary);display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center">
           ${sourceLabel ? `<span class="quote-primary-source">${escapeHtml(sourceLabel)}</span>` : ''}
           ${dateStr ? `<span>${dateStr}</span>` : ''}
-          ${a.url ? `<a href="${escapeHtml(a.url)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">View original &rarr;</a>` : ''}
+          ${a.url ? `<a href="${escapeHtml(a.url)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">View source &rarr;</a>` : ''}
           ${isAdmin ? `<label class="top-story-label" title="Mark as Top Story">
             <input type="checkbox" ${a.isTopStory ? 'checked' : ''} onchange="toggleArticleTopStory(${a.id}, this.checked)">
             <span class="top-story-label-text">Top Story</span>
@@ -38,24 +38,6 @@ async function renderArticle(id) {
       html += '<div class="empty-state"><h3>No quotes from this source</h3></div>';
     } else {
       html += `<p class="quote-count">${data.quotes.length} quote${data.quotes.length !== 1 ? 's' : ''} from this source</p>`;
-
-      // Chart section (only if 2+ quotes)
-      if (data.quotes.length >= 2) {
-        html += `
-          <div class="article-charts-section" id="article-charts">
-            <div class="chart-row">
-              <div class="chart-panel">
-                <h3>Quotes by Author</h3>
-                <div class="chart-container" style="height:200px"><canvas id="chart-article-authors"></canvas></div>
-              </div>
-              <div class="chart-panel">
-                <h3>Topic Distribution</h3>
-                <div class="chart-container" style="height:200px"><canvas id="chart-article-topics"></canvas></div>
-              </div>
-            </div>
-          </div>
-        `;
-      }
 
       for (const q of data.quotes) {
         // Use buildQuoteBlockHtml — provides new layout with Important? and share buttons
@@ -73,6 +55,24 @@ async function renderArticle(id) {
               importants_count: q.importantsCount || q.importants_count || 0,
             }, [], false)
           : `<div class="quote-block"><p class="quote-block__text">${escapeHtml(q.text)}</p></div>`;
+      }
+
+      // Chart section at bottom (only if 2+ quotes)
+      if (data.quotes.length >= 2) {
+        html += `
+          <div class="article-charts-section" id="article-charts">
+            <div class="chart-row">
+              <div class="chart-panel">
+                <h3>Quotes by Author</h3>
+                <div class="chart-container" style="height:200px"><canvas id="chart-article-authors"></canvas></div>
+              </div>
+              <div class="chart-panel">
+                <h3>Topic Distribution</h3>
+                <div class="chart-container" style="height:200px"><canvas id="chart-article-topics"></canvas></div>
+              </div>
+            </div>
+          </div>
+        `;
       }
     }
 
