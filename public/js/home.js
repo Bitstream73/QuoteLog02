@@ -860,7 +860,7 @@ function buildTopicCardHtml(topic, isImportant) {
       <span>${topic.quote_count || 0} quotes</span>
     </div>
     <div class="admin-edit-buttons">
-      <button onclick="adminEditTopic(${topic.id}, '${escapeHtml((topic.name || '').replace(/'/g, "\\'"))}')">Topic</button>
+      <button onclick="adminEditTopic(${topic.id}, '${escapeHtml((topic.name || '').replace(/'/g, "\\'"))}')">${escapeHtml('Topic')}</button>
     </div>` : '';
 
   // Admin: keyword chips
