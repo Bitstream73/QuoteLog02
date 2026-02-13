@@ -1,39 +1,56 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI } from '@google/genai';
 import config from '../../config/index.js';
 import logger from '../logger.js';
 
-let genAI = null;
-const TEXT_MODEL = 'gemini-2.5-flash';
+let client = null;
+const TEXT_MODEL = 'gemini-3-flash-preview';
 const EMBEDDING_MODEL = 'text-embedding-004';
 
 function getClient() {
-  if (!genAI && config.geminiApiKey) {
-    genAI = new GoogleGenerativeAI(config.geminiApiKey);
+  if (!client && config.geminiApiKey) {
+    client = new GoogleGenAI({ apiKey: config.geminiApiKey });
   }
-  return genAI;
+  return client;
 }
 
 const gemini = {
   async generateText(prompt, options = {}) {
     const start = Date.now();
-    const client = getClient();
-    if (!client) throw new Error('Gemini API key not configured');
-    const model = client.getGenerativeModel({ model: options.model || TEXT_MODEL });
-    const result = await model.generateContent(prompt);
-    const text = result.response.text();
+    const ai = getClient();
+    if (!ai) throw new Error('Gemini API key not configured');
+    const response = await ai.models.generateContent({
+      model: options.model || TEXT_MODEL,
+      contents: prompt,
+    });
+    const text = response.text;
     const duration = Date.now() - start;
     logger.info('ai', 'gemini_text', { model: options.model || TEXT_MODEL, promptLength: prompt.length, responseLength: text.length, duration });
     return text;
   },
+  async generateJSON(prompt, options = {}) {
+    const start = Date.now();
+    const ai = getClient();
+    if (!ai) throw new Error('Gemini API key not configured');
+    const genConfig = { responseMimeType: 'application/json' };
+    if (options.temperature !== undefined) genConfig.temperature = options.temperature;
+    const response = await ai.models.generateContent({
+      model: options.model || TEXT_MODEL,
+      contents: prompt,
+      config: genConfig,
+    });
+    const text = response.text;
+    const duration = Date.now() - start;
+    logger.info('ai', 'gemini_json', { model: options.model || TEXT_MODEL, promptLength: prompt.length, responseLength: text.length, duration });
+    return JSON.parse(text);
+  },
   async generateEmbedding(text) {
     const start = Date.now();
-    const client = getClient();
-    if (!client) throw new Error('Gemini API key not configured');
-    const model = client.getGenerativeModel({ model: EMBEDDING_MODEL });
-    const result = await model.embedContent(text);
+    const ai = getClient();
+    if (!ai) throw new Error('Gemini API key not configured');
+    const response = await ai.models.embedContent({ model: EMBEDDING_MODEL, contents: text });
     const duration = Date.now() - start;
     logger.info('ai', 'gemini_embedding', { model: EMBEDDING_MODEL, textLength: text.length, duration });
-    return result.embedding.values;
+    return response.embeddings[0].values;
   },
   async extractQuotes(articleText) {
     const start = Date.now();
@@ -52,13 +69,15 @@ const gemini = {
   },
   async chat(messages) {
     const start = Date.now();
-    const client = getClient();
-    if (!client) throw new Error('Gemini API key not configured');
-    const model = client.getGenerativeModel({ model: TEXT_MODEL });
-    const chat = model.startChat({ history: messages.slice(0, -1).map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })) });
+    const ai = getClient();
+    if (!ai) throw new Error('Gemini API key not configured');
+    const chat = ai.chats.create({
+      model: TEXT_MODEL,
+      history: messages.slice(0, -1).map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
+    });
     const lastMessage = messages[messages.length - 1];
-    const result = await chat.sendMessage(lastMessage.content);
-    const text = result.response.text();
+    const result = await chat.sendMessage({ message: lastMessage.content });
+    const text = result.text;
     const duration = Date.now() - start;
     logger.info('ai', 'gemini_chat', { model: TEXT_MODEL, messageCount: messages.length, responseLength: text.length, duration });
     return text;

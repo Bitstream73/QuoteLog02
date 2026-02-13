@@ -8,7 +8,7 @@ describe('Project Setup', () => {
     expect(pkg.dependencies).toHaveProperty('better-sqlite3');
     expect(pkg.dependencies).toHaveProperty('@pinecone-database/pinecone');
     expect(pkg.dependencies).toHaveProperty('socket.io');
-    expect(pkg.dependencies).toHaveProperty('@google/generative-ai');
+    expect(pkg.dependencies).toHaveProperty('@google/genai');
   });
 
   it('should have required directory structure', () => {

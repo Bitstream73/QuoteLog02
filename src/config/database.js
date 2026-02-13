@@ -679,6 +679,7 @@ function initializeTables(db) {
     log_level: 'info',
     historical_fetch_enabled: '1',
     historical_articles_per_source_per_cycle: '5',
+    min_significance_score: '5',
   };
 
   let seedSettings = defaultSettings;

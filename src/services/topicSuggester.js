@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import gemini from './ai/gemini.js';
 import { getDb } from '../config/database.js';
 import config from '../config/index.js';
 import logger from './logger.js';
@@ -42,15 +42,6 @@ export async function suggestTopics(dbOverride) {
   }
 
   try {
-    const genAI = new GoogleGenerativeAI(config.geminiApiKey);
-    const model = genAI.getGenerativeModel({
-      model: 'gemini-2.5-flash',
-      generationConfig: {
-        responseMimeType: 'application/json',
-        temperature: 0.1,
-      },
-    });
-
     const quoteTexts = uncategorized.slice(0, 10).map(q =>
       `"${q.text}" — ${q.canonical_name}${q.context ? ` (${q.context})` : ''}`
     ).join('\n');
@@ -59,15 +50,25 @@ export async function suggestTopics(dbOverride) {
 
 ${quoteTexts}
 
-Use consistent topic names like: "U.S. Politics", "Foreign Policy", "Criminal Justice", "Healthcare", "Economy", "Technology", "Entertainment", "Sports", "Climate & Environment", "Education", "Immigration", "Civil Rights", "National Security", "Business", "Science", "Media", "Religion", "Housing", "Labor", "Trade".
+Use the most specific applicable topic name from this taxonomy:
 
-Only suggest a NEW topic if the quotes don't fit existing categories. Keywords should be specific named entities, events, or concepts.
+Politics: "U.S. Presidential Politics", "U.S. Congressional Politics", "UK Politics", "EU Politics", "State/Local Politics", "Voting Rights"
+Government: "U.S. Foreign Policy", "Diplomacy", "Intelligence & Espionage", "Military & Defense", "Governance"
+Law: "Supreme Court", "Criminal Justice", "Constitutional Law", "Civil Rights & Liberties", "Law Enforcement"
+Economy: "U.S. Finance", "Global Economy", "Federal Reserve", "Trade & Tariffs", "Labor & Employment", "Cryptocurrency"
+Business: "Big Tech", "Startups", "Corporate Governance", "Energy Industry"
+Social: "Healthcare", "Education", "Immigration", "Housing", "Gun Control", "Reproductive Rights"
+Science: "Climate & Environment", "Space Exploration", "Artificial Intelligence", "Public Health"
+Culture: "Film & Television", "Music", "Olympic Sports", "NFL", "NBA", "MLB", "Soccer", "Social Media"
+World: "Middle East Conflict", "Ukraine War", "China-Taiwan Relations", "African Affairs", "Latin American Affairs"
+Media: "Journalism", "Misinformation", "Media Industry"
+Philosophy: "Philosophy", "Ethics", "Religion"
+
+Only suggest a NEW topic if the quotes don't fit existing categories. Keywords should be specific named entities — use FULL proper names ("Donald Trump" not "Trump"), never generic words. If no specific named entities exist, use an empty array.
 
 Return: { "name": "Topic Name", "keywords": ["keyword1", "keyword2", ...] }`;
 
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const parsed = JSON.parse(response.text());
+    const parsed = await gemini.generateJSON(prompt);
 
     if (!parsed.name || !parsed.keywords || !Array.isArray(parsed.keywords)) {
       return { suggested: false, reason: 'invalid_response' };
