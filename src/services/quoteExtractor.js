@@ -283,6 +283,18 @@ export async function extractQuotesFromArticle(articleText, article, db, io) {
 
       if (quoteResult) {
         insertedQuotes.push(quoteResult);
+        logger.info('extractor', 'quote_extracted', {
+          quoteId: quoteResult.id,
+          speaker: q.speaker,
+          category: q.speaker_category || null,
+          quote: q.quote_text.substring(0, 200),
+          context: (q.context || articleSummary || '').substring(0, 200),
+          topics: q.topics || [],
+          keywords: q.keywords || [],
+          significance,
+          isVisible,
+          articleUrl: article.url,
+        });
       }
     } catch (err) {
       logger.error('extractor', 'quote_insert_failed', {
