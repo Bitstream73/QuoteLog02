@@ -37,8 +37,10 @@ router.get('/trending-topics', (req, res) => {
     const topics = db.prepare(`
       SELECT t.id, t.name, t.slug, t.description, t.context,
         t.importants_count, t.trending_score,
-        (SELECT COUNT(*) FROM quote_topics WHERE topic_id = t.id) as quote_count
+        (SELECT COUNT(*) FROM quote_topics qt2 JOIN quotes q ON q.id = qt2.quote_id AND q.is_visible = 1 WHERE qt2.topic_id = t.id) as quote_count
       FROM topics t
+      GROUP BY t.id
+      HAVING quote_count > 0
       ORDER BY t.trending_score DESC
       LIMIT ?
     `).all(limit);
@@ -260,10 +262,11 @@ router.get('/trending-sources', (req, res) => {
       SELECT a.id, a.url, a.title, a.published_at, a.importants_count, a.share_count,
         a.view_count, a.trending_score,
         s.domain as source_domain, s.name as source_name,
-        (SELECT COUNT(*) FROM quote_articles WHERE article_id = a.id) as quote_count
+        (SELECT COUNT(*) FROM quote_articles qa2 JOIN quotes q ON q.id = qa2.quote_id AND q.is_visible = 1 WHERE qa2.article_id = a.id) as quote_count
       FROM articles a
       LEFT JOIN sources s ON s.id = a.source_id
       WHERE a.trending_score > 0
+        AND (SELECT COUNT(*) FROM quote_articles qa3 JOIN quotes q ON q.id = qa3.quote_id AND q.is_visible = 1 WHERE qa3.article_id = a.id) > 0
       ORDER BY a.trending_score DESC
       LIMIT ?
     `).all(limit);
@@ -384,17 +387,20 @@ router.get('/all-sources', (req, res) => {
       SELECT a.id, a.url, a.title, a.published_at, a.importants_count, a.share_count,
         a.view_count, a.trending_score,
         s.domain as source_domain, s.name as source_name,
-        (SELECT COUNT(*) FROM quote_articles WHERE article_id = a.id) as quote_count
+        (SELECT COUNT(*) FROM quote_articles qa2 JOIN quotes q ON q.id = qa2.quote_id AND q.is_visible = 1 WHERE qa2.article_id = a.id) as quote_count
       FROM articles a
       LEFT JOIN sources s ON s.id = a.source_id
-      WHERE a.status = 'completed' AND a.quote_count > 0
+      WHERE a.status = 'completed'
+        AND (SELECT COUNT(*) FROM quote_articles qa3 JOIN quotes q ON q.id = qa3.quote_id AND q.is_visible = 1 WHERE qa3.article_id = a.id) > 0
       ORDER BY ${sort}
       LIMIT ? OFFSET ?
     `).all(limit, offset);
 
-    const total = db.prepare(
-      "SELECT COUNT(*) as count FROM articles WHERE status = 'completed' AND quote_count > 0"
-    ).get().count;
+    const total = db.prepare(`
+      SELECT COUNT(*) as count FROM articles a
+      WHERE a.status = 'completed'
+        AND (SELECT COUNT(*) FROM quote_articles qa3 JOIN quotes q ON q.id = qa3.quote_id AND q.is_visible = 1 WHERE qa3.article_id = a.id) > 0
+    `).get().count;
 
     // For each article, get top 3 quotes
     const getTopQuotes = db.prepare(`
