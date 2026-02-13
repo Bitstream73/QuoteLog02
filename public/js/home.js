@@ -829,11 +829,19 @@ async function renderTrendingTopicsTab(container) {
     return;
   }
 
+  // Filter out topics with no quotes
+  const visibleTopics = topics.filter(t => (t.quotes || []).length > 0);
+
+  if (visibleTopics.length === 0) {
+    container.innerHTML = `<div class="empty-state"><h3>No trending topics yet</h3><p>Topics will appear as quotes are extracted and categorized.</p></div>`;
+    return;
+  }
+
   // Fetch important statuses for all topics
-  await fetchImportantStatuses(topics.map(t => `topic:${t.id}`));
+  await fetchImportantStatuses(visibleTopics.map(t => `topic:${t.id}`));
 
   let html = '';
-  for (const topic of topics) {
+  for (const topic of visibleTopics) {
     const isImp = _importantStatuses[`topic:${topic.id}`] || false;
     html += buildTopicCardHtml(topic, isImp);
   }

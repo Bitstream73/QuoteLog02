@@ -147,26 +147,6 @@ async function renderAuthor(id) {
       }
     }
 
-    // Chart section
-    html += `
-      <div class="author-charts-section" id="author-charts">
-        <div class="chart-row">
-          <div class="chart-panel">
-            <h3>Quote Activity (30 days)</h3>
-            <div class="chart-container" style="height:220px"><canvas id="chart-author-timeline"></canvas></div>
-          </div>
-          <div class="chart-panel">
-            <h3>Topic Distribution</h3>
-            <div class="chart-container" style="height:220px"><canvas id="chart-author-topics"></canvas></div>
-          </div>
-        </div>
-        <div class="chart-panel" id="chart-author-peers-panel" style="display:none">
-          <h3>vs. Peers</h3>
-          <div class="chart-container" style="height:220px"><canvas id="chart-author-peers"></canvas></div>
-        </div>
-      </div>
-    `;
-
     html += '<h2 style="margin:2rem 0 1rem;font-family:var(--font-headline);font-size:1.3rem">Quotes</h2>';
 
     if (quotesData.quotes.length === 0) {
@@ -186,6 +166,26 @@ async function renderAuthor(id) {
         `;
       }
     }
+
+    // Chart section at bottom
+    html += `
+      <div class="author-charts-section" id="author-charts">
+        <div class="chart-row">
+          <div class="chart-panel">
+            <h3>Quote Activity (30 days)</h3>
+            <div class="chart-container" style="height:220px"><canvas id="chart-author-timeline"></canvas></div>
+          </div>
+          <div class="chart-panel">
+            <h3>Topic Distribution</h3>
+            <div class="chart-container" style="height:220px"><canvas id="chart-author-topics"></canvas></div>
+          </div>
+        </div>
+        <div class="chart-panel" id="chart-author-peers-panel" style="display:none">
+          <h3>vs. Peers</h3>
+          <div class="chart-container" style="height:220px"><canvas id="chart-author-peers"></canvas></div>
+        </div>
+      </div>
+    `;
 
     content.innerHTML = html;
 

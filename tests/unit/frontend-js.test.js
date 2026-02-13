@@ -53,22 +53,22 @@ describe('Frontend JS files', () => {
   });
 
   describe('quote.js author stacking', () => {
-    it('should use quote-author-block wrapper', () => {
+    it('should use buildQuoteBlockHtml for main quote (which includes author block)', () => {
       const quoteJs = fs.readFileSync(path.join(process.cwd(), 'public/js/quote.js'), 'utf-8');
-      expect(quoteJs).toContain('quote-author-block');
+      expect(quoteJs).toContain('buildQuoteBlockHtml');
     });
 
-    it('should use quote-author-description for disambiguation', () => {
+    it('should pass person_category_context for disambiguation', () => {
       const quoteJs = fs.readFileSync(path.join(process.cwd(), 'public/js/quote.js'), 'utf-8');
-      expect(quoteJs).toContain('quote-author-description');
+      expect(quoteJs).toContain('person_category_context');
     });
   });
 
   describe('quote.js admin inline actions', () => {
     const quoteJs = fs.readFileSync(path.join(process.cwd(), 'public/js/quote.js'), 'utf-8');
 
-    it('should call buildAdminActionsHtml in quote detail page', () => {
-      expect(quoteJs).toContain('buildAdminActionsHtml');
+    it('should delegate to buildQuoteBlockHtml which includes admin actions', () => {
+      expect(quoteJs).toContain('buildQuoteBlockHtml');
     });
   });
 
@@ -291,10 +291,10 @@ describe('Frontend JS files', () => {
       expect(homeJs).toContain('adminChangeHeadshot');
     });
 
-    it('should have admin-headshot-search link in quote.js for missing photos', () => {
+    it('should use buildQuoteBlockHtml in quote.js which includes headshot search', () => {
       const quoteJs = fs.readFileSync(path.join(process.cwd(), 'public/js/quote.js'), 'utf-8');
-      expect(quoteJs).toContain('admin-headshot-search');
-      expect(quoteJs).toContain('google.com/search?tbm=isch');
+      expect(quoteJs).toContain('buildQuoteBlockHtml');
+      expect(quoteJs).toContain('photo_url');
     });
 
     it('should have admin-headshot-search link in author.js for missing photos', () => {
@@ -675,8 +675,9 @@ describe('Frontend JS files', () => {
   describe('quote.js Important? integration', () => {
     const quoteJs = fs.readFileSync(path.join(process.cwd(), 'public/js/quote.js'), 'utf-8');
 
-    it('should use renderImportantButton instead of renderVoteControls', () => {
-      expect(quoteJs).toContain('renderImportantButton');
+    it('should use buildQuoteBlockHtml which includes renderImportantButton', () => {
+      expect(quoteJs).toContain('buildQuoteBlockHtml');
+      expect(quoteJs).toContain('importants_count');
       expect(quoteJs).not.toContain('renderVoteControls');
     });
   });
