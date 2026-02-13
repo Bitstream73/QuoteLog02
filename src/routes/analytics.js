@@ -378,7 +378,7 @@ router.get('/all-sources', (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = Math.min(parseInt(req.query.limit) || 20, 50);
     const offset = (page - 1) * limit;
-    const sort = req.query.sort === 'importance' ? 'a.trending_score DESC' : 'a.published_at DESC';
+    const sort = req.query.sort === 'importance' ? 'a.trending_score DESC' : 'a.created_at DESC';
 
     const articles = db.prepare(`
       SELECT a.id, a.url, a.title, a.published_at, a.importants_count, a.share_count,
@@ -425,6 +425,110 @@ router.get('/all-sources', (req, res) => {
     res.json({ articles: articlesWithQuotes, total, page, limit });
   } catch (err) {
     console.error('All sources error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/analytics/trends/article/:id - Chart data for an article
+router.get('/trends/article/:id', (req, res) => {
+  try {
+    const db = getDb();
+    const articleId = parseInt(req.params.id);
+
+    // Authors who were quoted in this article
+    const authors = db.prepare(`
+      SELECT p.canonical_name as name, COUNT(q.id) as quote_count
+      FROM quotes q
+      JOIN quote_articles qa ON qa.quote_id = q.id AND qa.article_id = ?
+      JOIN persons p ON p.id = q.person_id
+      WHERE q.is_visible = 1
+      GROUP BY p.id
+      ORDER BY quote_count DESC
+    `).all(articleId);
+
+    // Topics (via keywords) for quotes in this article
+    const topics = db.prepare(`
+      SELECT t.name as keyword, COUNT(DISTINCT q.id) as count
+      FROM quotes q
+      JOIN quote_articles qa ON qa.quote_id = q.id AND qa.article_id = ?
+      JOIN quote_topics qt ON qt.quote_id = q.id
+      JOIN topics t ON t.id = qt.topic_id
+      WHERE q.is_visible = 1
+      GROUP BY t.id
+      ORDER BY count DESC
+      LIMIT 8
+    `).all(articleId);
+
+    res.json({ authors, topics });
+  } catch (err) {
+    console.error('Article trends error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/analytics/trends/author/:id - Chart data for an author
+router.get('/trends/author/:id', (req, res) => {
+  try {
+    const db = getDb();
+    const authorId = parseInt(req.params.id);
+    const period = req.query.period === 'week' ? 7 : 30;
+
+    const author = db.prepare(
+      'SELECT id, canonical_name as name FROM persons WHERE id = ?'
+    ).get(authorId);
+    if (!author) return res.status(404).json({ error: 'Author not found' });
+
+    // Timeline: quotes per day for the period
+    const timeline = db.prepare(`
+      SELECT date(q.created_at) as bucket, COUNT(*) as count
+      FROM quotes q
+      WHERE q.person_id = ? AND q.is_visible = 1
+        AND q.created_at >= datetime('now', ?)
+      GROUP BY bucket
+      ORDER BY bucket
+    `).all(authorId, `-${period} days`);
+
+    // Topics for this author
+    const topics = db.prepare(`
+      SELECT t.name as keyword, COUNT(DISTINCT q.id) as count
+      FROM quotes q
+      JOIN quote_topics qt ON qt.quote_id = q.id
+      JOIN topics t ON t.id = qt.topic_id
+      WHERE q.person_id = ? AND q.is_visible = 1
+      GROUP BY t.id
+      ORDER BY count DESC
+      LIMIT 8
+    `).all(authorId);
+
+    // Peer comparison: top 3 authors in similar topics
+    const peerIds = db.prepare(`
+      SELECT p.id, p.canonical_name as name, COUNT(DISTINCT q2.id) as overlap
+      FROM quotes q1
+      JOIN quote_topics qt1 ON qt1.quote_id = q1.id
+      JOIN quote_topics qt2 ON qt2.topic_id = qt1.topic_id AND qt2.quote_id != q1.id
+      JOIN quotes q2 ON q2.id = qt2.quote_id AND q2.is_visible = 1
+      JOIN persons p ON p.id = q2.person_id AND p.id != ?
+      WHERE q1.person_id = ? AND q1.is_visible = 1
+      GROUP BY p.id
+      ORDER BY overlap DESC
+      LIMIT 3
+    `).all(authorId, authorId);
+
+    const peers = peerIds.map(peer => {
+      const buckets = db.prepare(`
+        SELECT date(q.created_at) as bucket, COUNT(*) as count
+        FROM quotes q
+        WHERE q.person_id = ? AND q.is_visible = 1
+          AND q.created_at >= datetime('now', ?)
+        GROUP BY bucket
+        ORDER BY bucket
+      `).all(peer.id, `-${period} days`);
+      return { name: peer.name, buckets };
+    });
+
+    res.json({ author, timeline, topics, peers });
+  } catch (err) {
+    console.error('Author trends error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
