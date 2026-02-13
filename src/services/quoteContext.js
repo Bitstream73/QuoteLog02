@@ -84,9 +84,14 @@ Rules:
         if (qId && qId !== quoteId && !evidenceQuotes.has(qId)) {
           const eq = db.prepare(`
             SELECT q.id, q.text, q.context, q.created_at, q.quote_datetime,
-                   p.canonical_name, p.disambiguation
+                   p.canonical_name, p.disambiguation,
+                   a.url AS article_url, a.title AS article_title,
+                   s.name AS source_name, s.domain AS source_domain
             FROM quotes q
             JOIN persons p ON q.person_id = p.id
+            LEFT JOIN quote_articles qa ON qa.quote_id = q.id
+            LEFT JOIN articles a ON qa.article_id = a.id
+            LEFT JOIN sources s ON a.source_id = s.id
             WHERE q.id = ? AND q.is_visible = 1 AND q.canonical_quote_id IS NULL
           `).get(qId);
           if (eq) evidenceQuotes.set(qId, eq);
@@ -100,9 +105,14 @@ Rules:
     try {
       const topicQuotes = db.prepare(`
         SELECT DISTINCT q.id, q.text, q.context, q.created_at, q.quote_datetime,
-               p.canonical_name, p.disambiguation
+               p.canonical_name, p.disambiguation,
+               a.url AS article_url, a.title AS article_title,
+               s.name AS source_name, s.domain AS source_domain
         FROM quotes q
         JOIN persons p ON q.person_id = p.id
+        LEFT JOIN quote_articles qa ON qa.quote_id = q.id
+        LEFT JOIN articles a ON qa.article_id = a.id
+        LEFT JOIN sources s ON a.source_id = s.id
         JOIN quote_topics qt1 ON qt1.quote_id = q.id
         JOIN quote_topics qt2 ON qt2.topic_id = qt1.topic_id
         WHERE qt2.quote_id = ? AND q.id != ? AND q.is_visible = 1 AND q.canonical_quote_id IS NULL
@@ -142,11 +152,13 @@ EVIDENCE QUOTES FROM OUR DATABASE:
 ${evidenceBlock || '(No evidence quotes found)'}
 
 INSTRUCTIONS:
-For each claim, find supporting evidence, contradicting evidence, and additional context.
-You may use BOTH the evidence quotes above AND your general knowledge.
-For each piece of evidence, clearly label the source:
-- "database" if it references one of the numbered evidence quotes above (include the quote ID)
-- "general_knowledge" if it comes from your training data
+For each claim, find supporting evidence, contradicting evidence, and additional context
+ONLY from the evidence quotes provided above. Do NOT include conclusions from your own
+training data or general knowledge.
+
+If no evidence quotes are relevant to a claim, leave its arrays empty — do not fabricate
+or assume evidence. Every evidence item MUST reference one of the numbered evidence quotes
+above by its ID.
 
 Return a JSON object (no markdown, just raw JSON):
 {
@@ -155,23 +167,22 @@ Return a JSON object (no markdown, just raw JSON):
       "claim": "The claim text",
       "type": "factual|opinion|prediction|promise|accusation",
       "supporting": [
-        {"quoteId": 123, "explanation": "Why this supports the claim", "source": "database"},
-        {"quoteId": null, "explanation": "General knowledge supporting context", "source": "general_knowledge"}
+        {"quoteId": 123, "explanation": "Why this supports the claim"}
       ],
       "contradicting": [],
       "addingContext": []
     }
   ],
   "summary": "2-3 sentence editorial summary of the overall context",
-  "confidenceNote": "Brief note about the confidence/limitations of this analysis"
+  "confidenceNote": "Note: analysis is based solely on quotes in our database. Claims without evidence listed may still be true or false — we simply lack sourced quotes to confirm."
 }
 
 Rules:
+- ONLY cite evidence quotes from the numbered list above — never general knowledge
+- Every evidence item MUST have a valid quoteId matching an evidence quote ID above
+- If a claim has no relevant evidence, leave supporting/contradicting/addingContext as empty arrays
 - Keep explanations concise (1-2 sentences each)
-- Only include evidence items that are genuinely relevant
 - Be balanced — include both supporting and contradicting evidence when available
-- For "database" source items, quoteId must match an evidence quote ID above
-- For "general_knowledge" source items, set quoteId to null
 - Maximum 3 items per category (supporting/contradicting/addingContext) per claim`;
 
     const analysisResponse = await gemini.generateText(analysisPrompt);
@@ -182,19 +193,28 @@ Rules:
     throw new Error('Failed to generate contextual analysis');
   }
 
-  // Hydrate evidence quotes with full data
+  // Strip any unsourced items (general_knowledge) and hydrate with full data
   for (const claim of analysis.claims) {
     for (const category of ['supporting', 'contradicting', 'addingContext']) {
-      if (!claim[category]) continue;
+      if (!claim[category]) {
+        claim[category] = [];
+        continue;
+      }
+      // Filter out items without a valid quoteId (e.g. general_knowledge)
+      claim[category] = claim[category].filter(item => item.quoteId != null);
+      // Hydrate remaining items with quote text, author, and source URL
       for (const item of claim[category]) {
-        if (item.source === 'database' && item.quoteId) {
-          const eq = evidenceQuotes.get(item.quoteId);
-          if (eq) {
-            item.quoteText = eq.text.length > 200 ? eq.text.substring(0, 200) + '...' : eq.text;
-            item.authorName = eq.canonical_name;
-            item.quoteDate = eq.quote_datetime || eq.created_at;
-          }
+        const eq = evidenceQuotes.get(item.quoteId);
+        if (eq) {
+          item.quoteText = eq.text.length > 200 ? eq.text.substring(0, 200) + '...' : eq.text;
+          item.authorName = eq.canonical_name;
+          item.quoteDate = eq.quote_datetime || eq.created_at;
+          item.sourceUrl = eq.article_url || null;
+          item.sourceTitle = eq.article_title || null;
+          item.sourceName = eq.source_name || eq.source_domain || null;
         }
+        // Remove legacy source field
+        delete item.source;
       }
     }
   }
@@ -452,9 +472,13 @@ function formatSmartRelated(db, rows, fromCache) {
 
   for (const row of rows) {
     const rq = db.prepare(`
-      SELECT q.id, q.text, q.created_at, q.quote_datetime, p.canonical_name
+      SELECT q.id, q.text, q.created_at, q.quote_datetime, p.canonical_name,
+             a.url AS article_url, s.name AS source_name, s.domain AS source_domain
       FROM quotes q
       JOIN persons p ON q.person_id = p.id
+      LEFT JOIN quote_articles qa ON qa.quote_id = q.id
+      LEFT JOIN articles a ON qa.article_id = a.id
+      LEFT JOIN sources s ON a.source_id = s.id
       WHERE q.id = ?
     `).get(row.related_quote_id);
 
@@ -467,6 +491,8 @@ function formatSmartRelated(db, rows, fromCache) {
       date: rq.quote_datetime || rq.created_at,
       confidence: row.confidence,
       explanation: row.explanation,
+      sourceUrl: rq.article_url || null,
+      sourceName: rq.source_name || rq.source_domain || null,
     };
 
     if (row.related_type === 'contradiction') contradictions.push(item);

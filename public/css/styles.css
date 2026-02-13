@@ -3968,24 +3968,20 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   border-top: 1px solid var(--border);
 }
 
-/* Source label (database / general knowledge) */
-.evidence-source-label {
+/* Source citation link */
+.evidence-source-cite {
   display: inline-block;
   font-family: var(--font-ui);
-  font-size: 0.6rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  padding: 0.1rem 0.4rem;
-  border-radius: 2px;
-  margin-bottom: 0.25rem;
-}
-.evidence-source-database {
-  background: var(--accent-light);
+  font-size: 0.7rem;
   color: var(--accent);
+  text-decoration: none;
+  margin-top: 0.25rem;
+  cursor: pointer;
 }
-.evidence-source-knowledge {
-  background: var(--bg-secondary);
+a.evidence-source-cite:hover {
+  text-decoration: underline;
+}
+span.evidence-source-cite {
   color: var(--text-muted);
 }
 

@@ -92,17 +92,17 @@ describe('Quote Context API', () => {
         overallTheme: 'Economic growth',
       }));
 
-      // Mock analysis
+      // Mock analysis (no general_knowledge items)
       gemini.generateText.mockResolvedValueOnce(JSON.stringify({
         claims: [{
           claim: 'Economy is growing',
           type: 'factual',
           supporting: [],
           contradicting: [],
-          addingContext: [{ quoteId: null, explanation: 'GDP data shows moderate growth', source: 'general_knowledge' }],
+          addingContext: [],
         }],
         summary: 'An optimistic claim about economic growth.',
-        confidenceNote: 'Limited internal evidence available.',
+        confidenceNote: 'Analysis based solely on quotes in our database.',
       }));
 
       const res = await request(app).post(`/api/quotes/${testQuoteId}/context`);
@@ -111,6 +111,16 @@ describe('Quote Context API', () => {
       expect(res.body.summary).toBeDefined();
       expect(res.body.cachedAt).toBeDefined();
       expect(res.body.expiresAt).toBeDefined();
+
+      // Verify no general_knowledge items in response
+      for (const claim of res.body.claims) {
+        for (const category of ['supporting', 'contradicting', 'addingContext']) {
+          for (const item of claim[category] || []) {
+            expect(item.quoteId).not.toBeNull();
+            expect(item.source).toBeUndefined();
+          }
+        }
+      }
     });
 
     it('should return cached result on second call', async () => {
