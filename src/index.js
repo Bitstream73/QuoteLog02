@@ -166,9 +166,9 @@ export function createApp({ skipDbInit = false } = {}) {
     <meta name="twitter:title" content="${title}">
     <meta name="twitter:description" content="${esc(description)}">
     ${image ? `<meta name="twitter:image" content="${esc(image)}">` : ''}
-    <title>${title} | Quote Log</title>`;
+    <title>${title} | WhatTheySaid.News</title>`;
 
-          html = html.replace('<title>Quote Log</title>', metaTags);
+          html = html.replace('<title>WhatTheySaid.News</title>', metaTags);
           return res.send(html);
         }
       } catch (err) {

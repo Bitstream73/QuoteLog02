@@ -4079,3 +4079,39 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   font-weight: 600;
   color: var(--text-secondary);
 }
+
+/* ===================================
+   Chart Containers (Article & Author pages)
+   =================================== */
+.chart-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  margin: 1.5rem 0;
+}
+
+.chart-panel {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.chart-panel h3 {
+  font-family: var(--font-ui);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin: 0 0 0.75rem 0;
+}
+
+.chart-container {
+  position: relative;
+  width: 100%;
+}
+
+@media (max-width: 768px) {
+  .chart-row {
+    grid-template-columns: 1fr;
+  }
+}
