@@ -237,7 +237,7 @@ function buildQuoteBlockHtml(q, topics, isImportant) {
 
   return `
     <div class="quote-block" data-quote-id="${q.id}" data-track-type="quote" data-track-id="${q.id}" data-created-at="${q.created_at || ''}" data-importance="${(importantsCount + shareCount + viewCount) || 0}" data-share-view="${(shareCount + viewCount) || 0}">
-      <div class="quote-block__text" onclick="navigateTo('/author/${personId}')">
+      <div class="quote-block__text" onclick="navigateTo('/quote/${q.id}')">
         <span class="quote-mark quote-mark--open">\u201C</span>${escapeHtml(truncatedText)}${isLong ? `<a href="#" class="show-more-toggle" onclick="toggleQuoteText(event, ${q.id})">show more</a>` : ''}<span class="quote-mark quote-mark--close">\u201D</span>
       </div>
 
@@ -315,7 +315,7 @@ function buildAdminQuoteBlockHtml(q, topics, isImportant) {
   return `
     <div class="admin-quote-block quote-block" data-quote-id="${q.id}" data-track-type="quote" data-track-id="${q.id}" data-created-at="${q.created_at || ''}" data-importance="${(importantsCount + shareViewScore) || 0}" data-share-view="${shareViewScore}">
 
-      <div class="quote-block__text" onclick="navigateTo('/author/${personId}')">
+      <div class="quote-block__text" onclick="navigateTo('/quote/${q.id}')">
         <span class="quote-mark quote-mark--open">\u201C</span>${escapeHtml(q.text || '')}<span class="quote-mark quote-mark--close">\u201D</span>
       </div>
 
@@ -860,7 +860,7 @@ function buildTopicCardHtml(topic, isImportant) {
       <span>${topic.quote_count || 0} quotes</span>
     </div>
     <div class="admin-edit-buttons">
-      <button onclick="adminEditTopic(${topic.id}, '${escapeHtml((topic.name || '').replace(/'/g, "\\'"))}')">Topic</button>
+      <button onclick="adminEditTopic(${topic.id}, '${escapeHtml((topic.name || '').replace(/'/g, "\\'"))}')">${escapeHtml('Topic')}</button>
     </div>` : '';
 
   // Admin: keyword chips
