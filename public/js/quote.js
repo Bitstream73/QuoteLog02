@@ -190,9 +190,10 @@ function buildSmartRelatedCard(item, cssClass) {
       <div class="smart-related-card ${cssClass}">
         <div class="quote-text" style="font-size:0.9rem">${escapeHtml(item.text)}</div>
         ${item.explanation ? `<div class="smart-related-explanation">${escapeHtml(item.explanation)}</div>` : ''}
-        <div style="display:flex;gap:0.75rem;align-items:center;margin-top:0.5rem">
+        <div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;margin-top:0.5rem">
           <span class="smart-related-author">${escapeHtml(item.authorName)}</span>
           ${dateStr ? `<span class="quote-date-inline">${dateStr}</span>` : ''}
+          ${item.sourceUrl ? `<span class="evidence-source-cite" onclick="event.preventDefault();event.stopPropagation();window.open('${escapeHtml(item.sourceUrl)}','_blank')">Source: ${escapeHtml(item.sourceName || 'Article')} &rarr;</span>` : ''}
         </div>
       </div>
     </a>
@@ -298,20 +299,29 @@ function buildClaimTypeBadge(type) {
 }
 
 /**
- * Build an evidence item (supporting/contradicting/context).
+ * Build an evidence item (supporting/contradicting/context) with source citation.
  */
 function buildEvidenceItem(ev) {
-  const sourceLabel = ev.source === 'database' ? 'From database' : 'General knowledge';
-  const sourceCls = ev.source === 'database' ? 'evidence-source-database' : 'evidence-source-knowledge';
   let html = '<div class="context-evidence-item">';
-  html += `<span class="evidence-source-label ${sourceCls}">${sourceLabel}</span>`;
+
+  // Cited quote with link
   if (ev.quoteId && ev.quoteText) {
     html += `<a href="/quote/${ev.quoteId}" onclick="navigate(event, '/quote/${ev.quoteId}')" class="evidence-quote-link">"${escapeHtml(ev.quoteText)}"</a>`;
     if (ev.authorName) {
-      html += `<span class="evidence-author">— ${escapeHtml(ev.authorName)}</span>`;
+      html += `<span class="evidence-author"> — ${escapeHtml(ev.authorName)}</span>`;
     }
   }
+
   html += `<div class="evidence-explanation">${escapeHtml(ev.explanation)}</div>`;
+
+  // Source citation with hyperlink
+  if (ev.sourceUrl) {
+    const label = ev.sourceName || 'Source';
+    html += `<a href="${escapeHtml(ev.sourceUrl)}" target="_blank" rel="noopener" class="evidence-source-cite">Source: ${escapeHtml(label)} &rarr;</a>`;
+  } else if (ev.sourceName) {
+    html += `<span class="evidence-source-cite">Source: ${escapeHtml(ev.sourceName)}</span>`;
+  }
+
   html += '</div>';
   return html;
 }

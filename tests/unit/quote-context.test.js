@@ -121,12 +121,45 @@ function setupTestDb() {
     )
   `);
 
+  testDb.exec(`
+    CREATE TABLE articles (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      url TEXT NOT NULL UNIQUE,
+      source_id INTEGER,
+      title TEXT,
+      published_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+
+  testDb.exec(`
+    CREATE TABLE sources (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      domain TEXT NOT NULL,
+      name TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+
+  testDb.exec(`
+    CREATE TABLE quote_articles (
+      quote_id INTEGER NOT NULL,
+      article_id INTEGER NOT NULL,
+      PRIMARY KEY (quote_id, article_id)
+    )
+  `);
+
   // Seed test data
   testDb.prepare('INSERT INTO persons (id, canonical_name, disambiguation) VALUES (?, ?, ?)').run(1, 'John Doe', 'US Senator');
   testDb.prepare('INSERT INTO persons (id, canonical_name) VALUES (?, ?)').run(2, 'Jane Smith');
   testDb.prepare("INSERT INTO quotes (id, person_id, text, context) VALUES (?, ?, ?, ?)").run(1, 1, 'The economy is improving and GDP growth will reach 4% by next year.', 'Press conference on fiscal policy');
   testDb.prepare("INSERT INTO quotes (id, person_id, text) VALUES (?, ?, ?)").run(2, 1, 'We need to invest more in infrastructure.');
   testDb.prepare("INSERT INTO quotes (id, person_id, text) VALUES (?, ?, ?)").run(3, 2, 'John Doe said the economy is improving but the data tells a different story.');
+
+  // Seed article/source data for quote 2
+  testDb.prepare('INSERT INTO sources (id, domain, name) VALUES (?, ?, ?)').run(1, 'example.com', 'Example News');
+  testDb.prepare('INSERT INTO articles (id, url, source_id, title) VALUES (?, ?, ?, ?)').run(1, 'https://example.com/article-1', 1, 'Infrastructure Investment Article');
+  testDb.prepare('INSERT INTO quote_articles (quote_id, article_id) VALUES (?, ?)').run(2, 1);
 }
 
 describe('Quote Context Service', () => {
@@ -152,13 +185,13 @@ describe('Quote Context Service', () => {
         overallTheme: 'Economic outlook and GDP growth predictions',
       }));
 
-      // Mock Gemini analysis response
+      // Mock Gemini analysis response (no general_knowledge items)
       mockGenerateText.mockResolvedValueOnce(JSON.stringify({
         claims: [
           {
             claim: 'The economy is improving',
             type: 'factual',
-            supporting: [{ quoteId: null, explanation: 'Recent data shows positive trends', source: 'general_knowledge' }],
+            supporting: [],
             contradicting: [],
             addingContext: [],
           },
@@ -166,12 +199,12 @@ describe('Quote Context Service', () => {
             claim: 'GDP will reach 4%',
             type: 'prediction',
             supporting: [],
-            contradicting: [{ quoteId: null, explanation: 'Most economists predict 2-3%', source: 'general_knowledge' }],
+            contradicting: [],
             addingContext: [],
           },
         ],
         summary: 'The quote makes an optimistic economic claim with a specific GDP prediction.',
-        confidenceNote: 'Analysis based on limited evidence.',
+        confidenceNote: 'Analysis based solely on quotes in our database.',
       }));
 
       const result = await analyzeQuoteContext(1);
@@ -182,6 +215,16 @@ describe('Quote Context Service', () => {
       expect(result.cachedAt).toBeTruthy();
       expect(result.expiresAt).toBeTruthy();
       expect(result.fromCache).toBe(false);
+
+      // Verify no evidence items have source: 'general_knowledge'
+      for (const claim of result.claims) {
+        for (const category of ['supporting', 'contradicting', 'addingContext']) {
+          for (const item of claim[category] || []) {
+            expect(item.quoteId).not.toBeNull();
+            expect(item.source).toBeUndefined(); // legacy field removed
+          }
+        }
+      }
 
       // Verify Gemini was called twice (claims + analysis)
       expect(mockGenerateText).toHaveBeenCalledTimes(2);
@@ -270,22 +313,57 @@ describe('Quote Context Service', () => {
         claims: [{
           claim: 'Economy improving',
           type: 'factual',
-          supporting: [{ quoteId: 2, explanation: 'Same author supports infrastructure investment', source: 'database' }],
+          supporting: [{ quoteId: 2, explanation: 'Same author supports infrastructure investment' }],
           contradicting: [],
           addingContext: [],
         }],
         summary: 'Economic claims with internal evidence.',
-        confidenceNote: 'Evidence from database.',
+        confidenceNote: 'Analysis based solely on quotes in our database.',
       }));
 
       const result = await analyzeQuoteContext(1);
 
-      // The supporting item should be hydrated with quote text
+      // The supporting item should be hydrated with quote text and source info
       const supporting = result.claims[0].supporting[0];
       expect(supporting.quoteId).toBe(2);
-      expect(supporting.source).toBe('database');
+      expect(supporting.source).toBeUndefined(); // legacy field removed
       expect(supporting.quoteText).toBeTruthy();
       expect(supporting.authorName).toBe('John Doe');
+      expect(supporting.sourceUrl).toBe('https://example.com/article-1');
+      expect(supporting.sourceTitle).toBe('Infrastructure Investment Article');
+      expect(supporting.sourceName).toBe('Example News');
+    });
+
+    it('should strip general_knowledge items even if Gemini returns them', async () => {
+      const { analyzeQuoteContext } = await import('../../src/services/quoteContext.js');
+
+      mockGenerateText.mockResolvedValueOnce(JSON.stringify({
+        claims: [{ claim: 'Economy test', searchQuery: 'economy', type: 'factual' }],
+        overallTheme: 'Economy',
+      }));
+
+      // Gemini disobeys the prompt and returns general_knowledge items
+      mockGenerateText.mockResolvedValueOnce(JSON.stringify({
+        claims: [{
+          claim: 'Economy test',
+          type: 'factual',
+          supporting: [
+            { quoteId: null, explanation: 'From training data', source: 'general_knowledge' },
+            { quoteId: 2, explanation: 'Database evidence' },
+          ],
+          contradicting: [{ quoteId: null, explanation: 'Unsourced claim', source: 'general_knowledge' }],
+          addingContext: [],
+        }],
+        summary: 'Test',
+        confidenceNote: 'Test',
+      }));
+
+      const result = await analyzeQuoteContext(1, { force: true });
+
+      // general_knowledge items (quoteId: null) should be stripped
+      expect(result.claims[0].supporting).toHaveLength(1);
+      expect(result.claims[0].supporting[0].quoteId).toBe(2);
+      expect(result.claims[0].contradicting).toHaveLength(0);
     });
   });
 
