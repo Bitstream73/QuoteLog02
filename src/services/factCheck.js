@@ -237,7 +237,7 @@ function renderReferencesHTML(enrichedData) {
 
   let mediaClipHTML = '';
   if (hasMediaClip && mediaClip.enrichment.media_embed?.type === 'youtube' && mediaClip.enrichment.media_embed?.url) {
-    const embedUrl = mediaClip.enrichment.media_embed.url;
+    const embedUrl = cleanUrl(mediaClip.enrichment.media_embed.url);
     const videoTitle = escapeHtml(mediaClip.enrichment.media_embed.title || 'Video clip');
     mediaClipHTML = `
     <div class="fc-ref-media-clip">
@@ -257,7 +257,7 @@ function renderReferencesHTML(enrichedData) {
       </div>
       ${mediaClip.enrichment.summary ? `<p class="fc-ref-summary">${escapeHtml(mediaClip.enrichment.summary)}</p>` : ''}
       ${mediaClip.enrichment.primary_url ? `
-        <a class="fc-ref-primary-link" href="${escapeHtml(mediaClip.enrichment.primary_url)}" target="_blank" rel="noopener">
+        <a class="fc-ref-primary-link" href="${escapeHtml(cleanUrl(mediaClip.enrichment.primary_url))}" target="_blank" rel="noopener">
           Watch on ${escapeHtml(mediaClip.enrichment.primary_source_name || 'YouTube')} →
         </a>
       ` : ''}
@@ -267,7 +267,7 @@ function renderReferencesHTML(enrichedData) {
     <div class="fc-ref-card fc-ref-card--media_clip">
       <div class="fc-ref-card-header">
         <span class="fc-ref-type-badge fc-ref-type-badge--media_clip">📺 Clip</span>
-        <a class="fc-ref-title" href="${escapeHtml(mediaClip.enrichment.primary_url)}" target="_blank" rel="noopener">
+        <a class="fc-ref-title" href="${escapeHtml(cleanUrl(mediaClip.enrichment.primary_url))}" target="_blank" rel="noopener">
           ${escapeHtml(mediaClip.enrichment.title || 'Watch the clip')}
         </a>
       </div>
@@ -299,7 +299,7 @@ function renderReferencesHTML(enrichedData) {
     let additionalLinksHTML = '';
     if (e.additional_links && e.additional_links.length > 0) {
       const links = e.additional_links.slice(0, 2).map(link =>
-        `<a class="fc-ref-additional-link" href="${escapeHtml(link.url)}" target="_blank" rel="noopener">${escapeHtml(link.label)}</a>`
+        `<a class="fc-ref-additional-link" href="${escapeHtml(cleanUrl(link.url))}" target="_blank" rel="noopener">${escapeHtml(link.label)}</a>`
       ).join('');
       additionalLinksHTML = `<div class="fc-ref-additional-links">${links}</div>`;
     }
@@ -309,7 +309,7 @@ function renderReferencesHTML(enrichedData) {
       inlineVideoHTML = `
         <div class="fc-ref-video-container fc-ref-video-container--inline">
           <iframe
-            src="${escapeHtml(e.media_embed.url)}"
+            src="${escapeHtml(cleanUrl(e.media_embed.url))}"
             title="${escapeHtml(e.media_embed.title || 'Video')}"
             frameborder="0"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
@@ -324,7 +324,7 @@ function renderReferencesHTML(enrichedData) {
       <div class="fc-ref-card-header">
         <span class="fc-ref-type-badge fc-ref-type-badge--${escapeHtml(ref.type)}">${icon} ${categoryTag}</span>
         ${e.primary_url
-          ? `<a class="fc-ref-title" href="${escapeHtml(e.primary_url)}" target="_blank" rel="noopener">${escapeHtml(e.title || ref.display_name)}</a>`
+          ? `<a class="fc-ref-title" href="${escapeHtml(cleanUrl(e.primary_url))}" target="_blank" rel="noopener">${escapeHtml(e.title || ref.display_name)}</a>`
           : `<span class="fc-ref-title">${escapeHtml(e.title || ref.display_name)}</span>`
         }
       </div>
@@ -426,6 +426,23 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#x27;');
+}
+
+/**
+ * Decode HTML entities that AI models sometimes embed in URLs
+ * (e.g. &amp; instead of &) before we HTML-escape for attributes.
+ * Without this, escapeHtml double-encodes &amp; → &amp;amp; which
+ * leaves a literal "&amp;" in the browser's resolved href.
+ */
+function cleanUrl(url) {
+  if (!url) return '';
+  return String(url)
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;/g, "'")
+    .replace(/&#39;/g, "'");
 }
 
 
