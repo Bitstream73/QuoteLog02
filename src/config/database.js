@@ -698,6 +698,21 @@ function initializeTables(db) {
   for (const [key, value] of Object.entries(seedSettings)) {
     insertSetting.run(key, value);
   }
+
+  // One-time cleanup: remove overly broad/vague topics
+  const topicsToRemove = [
+    'Family', 'Politics & Sports News', 'High-Profile Connections',
+    'Global Influence & Societal Futures', 'Energy',
+    'National Security', 'Public Safety & Societal Concerns',
+    'Public figures and current events', 'Economy',
+    'Leadership', 'Politics & Monarchy', 'Labor',
+    'Current Affairs & Personal Insights', 'Public Life & Performance',
+    'Military', 'Innovation',
+  ];
+  const deleteTopic = db.prepare('DELETE FROM topics WHERE name = ?');
+  for (const name of topicsToRemove) {
+    deleteTopic.run(name);
+  }
 }
 
 export function closeDb() {
