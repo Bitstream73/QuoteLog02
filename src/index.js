@@ -33,6 +33,7 @@ import topicsRouter from './routes/topics.js';
 import analyticsRouter from './routes/analytics.js';
 import historicalSourcesRouter from './routes/historicalSources.js';
 import contextRouter from './routes/context.js';
+import factCheckRouter from './routes/factCheck.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -118,6 +119,7 @@ export function createApp({ skipDbInit = false } = {}) {
   app.use('/api/analytics', analyticsRouter);
   app.use('/api/historical-sources', historicalSourcesRouter);
   app.use('/api/quotes', contextRouter);
+  app.use('/api/fact-check', factCheckRouter);
 
   // SPA fallback - serve index.html for all non-API routes
   // For /quote/:id, inject OG/Twitter meta tags for social sharing

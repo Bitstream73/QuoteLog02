@@ -1,0 +1,656 @@
+/* ============================================================
+ * fact-check-widget.css
+ *
+ * Styles for the fact-check widget on WhatTheySaid.News.
+ * Uses the site's CSS custom properties for seamless integration.
+ * Supports dark mode via .dark-mode body class.
+ * ============================================================ */
+
+/* --- Container --- */
+.fact-check-result {
+  margin: 1.25rem 0;
+  border-top: 1px solid var(--border);
+  padding-top: 1rem;
+}
+
+.fact-check-result h3 {
+  font-family: var(--font-headline);
+  font-size: 1.15rem;
+  color: var(--text-primary);
+  margin-bottom: 0.75rem;
+}
+
+/* --- Widget Base --- */
+.fc-widget {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem 1.25rem;
+  font-family: var(--font-body);
+  line-height: 1.6;
+}
+
+/* --- Header --- */
+.fc-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+
+/* --- Verdict Badge --- */
+.fc-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: var(--radius);
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #fff;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.fc-badge-sub {
+  font-family: var(--font-ui);
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* --- Explanation --- */
+.fc-explanation {
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+  margin: 0 0 0.75rem 0;
+  font-style: italic;
+}
+
+/* --- Category Label (for B and C) --- */
+.fc-label {
+  display: inline-block;
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* --- Data Points --- */
+.fc-data-points {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+}
+
+.fc-data-point {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.fc-data-point:last-child {
+  border-bottom: none;
+}
+
+.fc-data-label {
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  min-width: 120px;
+  flex-shrink: 0;
+}
+
+.fc-data-value {
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.fc-data-source {
+  font-family: var(--font-ui);
+  font-size: 0.7rem;
+  color: var(--accent);
+  text-decoration: none;
+  margin-left: auto;
+}
+
+.fc-data-source:hover {
+  text-decoration: underline;
+}
+
+/* --- Single Stat Display --- */
+.fc-single-stat {
+  text-align: center;
+  padding: 1rem 0;
+  margin: 0.5rem 0;
+}
+
+.fc-stat-value {
+  font-family: var(--font-headline);
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+.fc-stat-label {
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 0.25rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* --- Excerpt / Blockquote --- */
+.fc-excerpt {
+  border-left: 3px solid var(--accent);
+  margin: 0.75rem 0;
+  padding: 0.5rem 0 0.5rem 1rem;
+}
+
+.fc-excerpt p {
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  font-style: italic;
+  margin: 0 0 0.25rem 0;
+}
+
+.fc-excerpt cite {
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-style: normal;
+}
+
+.fc-excerpt cite a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.fc-excerpt cite a:hover {
+  text-decoration: underline;
+}
+
+/* --- Citation --- */
+.fc-citation {
+  margin-top: 0.75rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.fc-citation-text {
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.fc-citation-link {
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  color: var(--accent);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.fc-citation-link:hover {
+  text-decoration: underline;
+}
+
+/* --- Timeline / Bar Chart --- */
+.fc-timeline {
+  margin: 1rem 0;
+  padding: 0.5rem 0;
+}
+
+.fc-timeline-title {
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.fc-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 80px;
+}
+
+.fc-bar {
+  flex: 1;
+  background: var(--accent);
+  opacity: 0.6;
+  border-radius: 1px 1px 0 0;
+  position: relative;
+  min-width: 4px;
+  transition: opacity 0.2s;
+}
+
+.fc-bar:hover {
+  opacity: 1;
+}
+
+.fc-bar--highlight {
+  opacity: 1;
+  background: var(--accent);
+}
+
+.fc-bar-tooltip {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--text-primary);
+  color: var(--bg-primary);
+  font-family: var(--font-ui);
+  font-size: 0.65rem;
+  padding: 2px 6px;
+  border-radius: var(--radius);
+  white-space: nowrap;
+  z-index: 10;
+}
+
+.fc-bar:hover .fc-bar-tooltip {
+  display: block;
+}
+
+.fc-timeline-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.25rem;
+}
+
+.fc-timeline-labels span {
+  font-family: var(--font-ui);
+  font-size: 0.65rem;
+  color: var(--text-muted);
+}
+
+/* --- Comparison --- */
+.fc-comparison {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin: 0.75rem 0;
+}
+
+.fc-compare-box {
+  text-align: center;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.fc-compare-box--claimed {
+  border-color: var(--text-muted);
+}
+
+.fc-compare-box--actual {
+  border-color: var(--accent);
+}
+
+.fc-compare-heading {
+  font-family: var(--font-ui);
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.35rem;
+}
+
+.fc-compare-value {
+  font-family: var(--font-headline);
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.fc-compare-label {
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 0.25rem;
+}
+
+/* --- Loading State --- */
+.fc-loading {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem;
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: 0.85rem;
+}
+
+.fc-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: fc-spin 0.8s linear infinite;
+}
+
+@keyframes fc-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* --- Error State --- */
+.fc-error {
+  padding: 0.75rem 1rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: 0.85rem;
+}
+
+/* --- Responsive --- */
+@media (max-width: 600px) {
+  .fc-comparison {
+    grid-template-columns: 1fr;
+  }
+
+  .fc-data-point {
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  .fc-data-label {
+    min-width: unset;
+  }
+
+  .fc-data-source {
+    margin-left: 0;
+  }
+
+  .fc-stat-value {
+    font-size: 1.5rem;
+  }
+
+  .fc-ref-cards {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+/* ============================================================
+ * REFERENCES SECTION
+ * ============================================================ */
+
+/* --- References Container --- */
+.fc-references {
+  margin: 1.25rem 0;
+  border-top: 1px solid var(--border);
+  padding-top: 1rem;
+}
+
+.fc-references-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.fc-references-title {
+  font-family: var(--font-headline);
+  font-size: 1rem;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.fc-references-count {
+  font-family: var(--font-ui);
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* --- Reference Card Grid --- */
+.fc-ref-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 0.75rem;
+}
+
+/* --- Individual Reference Card --- */
+.fc-ref-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  transition: border-color 0.2s;
+}
+
+.fc-ref-card:hover {
+  border-color: var(--border-dark);
+}
+
+.fc-ref-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+/* --- Type Badges --- */
+.fc-ref-type-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: var(--radius);
+  font-family: var(--font-ui);
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid var(--border);
+}
+
+.fc-ref-type-badge--policy        { color: #b45309; border-color: #b45309; }
+.fc-ref-type-badge--organization  { color: #6d28d9; border-color: #6d28d9; }
+.fc-ref-type-badge--person        { color: #0369a1; border-color: #0369a1; }
+.fc-ref-type-badge--event         { color: #0f766e; border-color: #0f766e; }
+.fc-ref-type-badge--concept       { color: #a16207; border-color: #a16207; }
+.fc-ref-type-badge--location      { color: #15803d; border-color: #15803d; }
+.fc-ref-type-badge--statistic     { color: #1d4ed8; border-color: #1d4ed8; }
+.fc-ref-type-badge--media_clip    { color: #dc2626; border-color: #dc2626; }
+.fc-ref-type-badge--legal_document { color: #7c3aed; border-color: #7c3aed; }
+
+/* --- Reference Title / Link --- */
+a.fc-ref-title {
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-decoration: none;
+  line-height: 1.3;
+}
+
+a.fc-ref-title:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+span.fc-ref-title {
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.3;
+}
+
+/* --- Reference Summary --- */
+.fc-ref-summary {
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* --- Reference Card Footer --- */
+.fc-ref-card-footer {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.fc-ref-source {
+  font-family: var(--font-ui);
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.fc-ref-date {
+  font-family: var(--font-ui);
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+/* --- Additional Links --- */
+.fc-ref-additional-links {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding-top: 0.35rem;
+  border-top: 1px solid var(--border);
+}
+
+.fc-ref-additional-link {
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.fc-ref-additional-link:hover {
+  text-decoration: underline;
+}
+
+.fc-ref-primary-link {
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+  color: var(--accent);
+  text-decoration: none;
+  display: inline-block;
+  margin-top: 0.25rem;
+}
+
+.fc-ref-primary-link:hover {
+  text-decoration: underline;
+}
+
+/* --- Media Clip Section --- */
+.fc-ref-media-clip {
+  margin-bottom: 0.75rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+}
+
+.fc-ref-media-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+/* --- Video Embed Container (16:9 responsive) --- */
+.fc-ref-video-container {
+  position: relative;
+  width: 100%;
+  padding-bottom: 56.25%; /* 16:9 */
+  height: 0;
+  overflow: hidden;
+  border-radius: var(--radius);
+  margin-bottom: 0.5rem;
+}
+
+.fc-ref-video-container iframe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.fc-ref-video-container--inline {
+  max-width: 100%;
+  margin-top: 0.25rem;
+}
+
+
+/* ============================================================
+ * INLINE QUOTE ANNOTATIONS
+ *
+ * These styles apply to links injected directly into the
+ * quote text to highlight referenced phrases.
+ * ============================================================ */
+
+.fc-inline-ref {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1.5px dotted var(--accent);
+  padding-bottom: 1px;
+  transition: border-color 0.2s, color 0.2s;
+  cursor: pointer;
+}
+
+.fc-inline-ref:hover {
+  color: var(--accent);
+  border-bottom-style: solid;
+  border-bottom-color: var(--accent);
+}
+
+/* Type-specific annotation colors (subtle, don't override quote readability) */
+.fc-inline-ref--policy        { border-bottom-color: #b45309; }
+.fc-inline-ref--organization  { border-bottom-color: #6d28d9; }
+.fc-inline-ref--person        { border-bottom-color: #0369a1; }
+.fc-inline-ref--event         { border-bottom-color: #0f766e; }
+.fc-inline-ref--concept       { border-bottom-color: #a16207; }
+.fc-inline-ref--statistic     { border-bottom-color: #1d4ed8; }
+.fc-inline-ref--media_clip    { border-bottom-color: #dc2626; }
+.fc-inline-ref--legal_document { border-bottom-color: #7c3aed; }
+
+.fc-inline-ref--policy:hover        { color: #b45309; }
+.fc-inline-ref--organization:hover  { color: #6d28d9; }
+.fc-inline-ref--person:hover        { color: #0369a1; }
+.fc-inline-ref--event:hover         { color: #0f766e; }
+.fc-inline-ref--concept:hover       { color: #a16207; }
+.fc-inline-ref--statistic:hover     { color: #1d4ed8; }
+.fc-inline-ref--media_clip:hover    { color: #dc2626; }
+.fc-inline-ref--legal_document:hover { color: #7c3aed; }

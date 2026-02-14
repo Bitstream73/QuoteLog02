@@ -67,6 +67,46 @@ const gemini = {
       return [];
     }
   },
+  async generateGroundedJSON(prompt, options = {}) {
+    const start = Date.now();
+    const ai = getClient();
+    if (!ai) throw new Error('Gemini API key not configured');
+    const genConfig = {
+      responseMimeType: 'application/json',
+      tools: [{ googleSearch: {} }],
+    };
+    if (options.temperature !== undefined) genConfig.temperature = options.temperature;
+    const response = await ai.models.generateContent({
+      model: options.model || TEXT_MODEL,
+      contents: prompt,
+      config: genConfig,
+    });
+    const text = response.text;
+    const duration = Date.now() - start;
+    logger.info('ai', 'gemini_grounded_json', { model: options.model || TEXT_MODEL, promptLength: prompt.length, responseLength: text.length, duration });
+    const parsed = JSON.parse(text);
+    const grounding = response.candidates?.[0]?.groundingMetadata || null;
+    if (grounding) parsed._groundingMetadata = grounding;
+    return parsed;
+  },
+  async generateGroundedText(prompt, options = {}) {
+    const start = Date.now();
+    const ai = getClient();
+    if (!ai) throw new Error('Gemini API key not configured');
+    const genConfig = {
+      tools: [{ googleSearch: {} }],
+    };
+    if (options.temperature !== undefined) genConfig.temperature = options.temperature;
+    const response = await ai.models.generateContent({
+      model: options.model || TEXT_MODEL,
+      contents: prompt,
+      config: genConfig,
+    });
+    const text = response.text;
+    const duration = Date.now() - start;
+    logger.info('ai', 'gemini_grounded_text', { model: options.model || TEXT_MODEL, promptLength: prompt.length, responseLength: text.length, duration });
+    return text;
+  },
   async chat(messages) {
     const start = Date.now();
     const ai = getClient();

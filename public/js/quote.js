@@ -71,6 +71,7 @@ async function renderQuote(id) {
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
           <h2 style="margin:0;font-family:var(--font-headline);font-size:1.3rem">Context & Analysis</h2>
           <button class="context-btn" id="context-btn" onclick="loadQuoteContext(${q.id}, false)">Get More Context</button>
+          <button class="context-btn" id="fact-check-btn" onclick="runFactCheck(${q.id})">Fact Check</button>
         </div>
         <div id="context-analysis-content"></div>
       </div>
@@ -308,4 +309,152 @@ function buildEvidenceItem(ev) {
 
   html += '</div>';
   return html;
+}
+
+// ---------------------------------------------------------------------------
+// Fact Check
+// ---------------------------------------------------------------------------
+
+const FC_CACHE_PREFIX = 'fc_cache_';
+const FC_CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
+
+/**
+ * Run fact-check + reference enrichment for a quote.
+ * Triggered by the "Fact Check" button on quote detail pages.
+ */
+async function runFactCheck(quoteId) {
+  const btn = document.getElementById('fact-check-btn');
+  const container = document.getElementById('context-analysis-content');
+  if (!btn || !container) return;
+
+  // Check client-side cache
+  try {
+    const raw = sessionStorage.getItem(FC_CACHE_PREFIX + quoteId);
+    if (raw) {
+      const cached = JSON.parse(raw);
+      if (Date.now() - cached.timestamp < FC_CACHE_TTL_MS) {
+        renderFactCheckResult(container, cached.data);
+        annotateQuoteText(cached.data);
+        return;
+      }
+      sessionStorage.removeItem(FC_CACHE_PREFIX + quoteId);
+    }
+  } catch { /* ignore */ }
+
+  // Show loading
+  btn.disabled = true;
+  btn.textContent = 'Checking...';
+
+  // Build a fact-check container inside context-analysis-content
+  let fcContainer = document.getElementById('fact-check-container');
+  if (!fcContainer) {
+    fcContainer = document.createElement('div');
+    fcContainer.id = 'fact-check-container';
+    fcContainer.className = 'fact-check-result';
+    container.appendChild(fcContainer);
+  }
+  fcContainer.innerHTML = `
+    <h3>Fact Check</h3>
+    <div id="fact-check-result-content">
+      <div class="fc-loading">
+        <div class="fc-spinner"></div>
+        <span>Analyzing quote for verifiable claims...</span>
+      </div>
+    </div>
+  `;
+
+  // Gather quote data from the DOM
+  const quoteBlock = document.querySelector('.quote-block');
+  const quoteText = quoteBlock?.querySelector('.quote-block__text')?.textContent
+    ?.replace(/["\u201C\u201D]/g, '').trim() || '';
+  const authorName = quoteBlock?.querySelector('.quote-block__author-name')?.textContent?.trim() || '';
+  const authorDesc = quoteBlock?.querySelector('.quote-block__author-desc')?.textContent?.trim() || '';
+  const contextEl = quoteBlock?.querySelector('.quote-block__context');
+  const contextText = contextEl?.textContent?.trim() || '';
+  const sourceLink = quoteBlock?.querySelector('.quote-block__source-link');
+  const sourceName = sourceLink?.textContent?.trim() || '';
+  const tagEls = quoteBlock?.querySelectorAll('.quote-block__topic-tag') || [];
+  const tags = [...tagEls].map(t => t.textContent.trim());
+  const createdAt = quoteBlock?.dataset?.createdAt || '';
+  const sourceDate = createdAt ? createdAt.split(' ')[0] : new Date().toISOString().split('T')[0];
+
+  try {
+    const result = await API.post('/fact-check/check', {
+      quoteId,
+      quoteText,
+      authorName,
+      authorDescription: authorDesc,
+      context: contextText,
+      sourceName,
+      sourceDate,
+      tags,
+    });
+
+    // Cache result
+    try {
+      sessionStorage.setItem(FC_CACHE_PREFIX + quoteId, JSON.stringify({
+        data: result,
+        timestamp: Date.now(),
+      }));
+    } catch { /* sessionStorage full */ }
+
+    renderFactCheckResult(fcContainer, result);
+    annotateQuoteText(result);
+
+  } catch (err) {
+    const resultContent = fcContainer.querySelector('#fact-check-result-content') || fcContainer;
+    resultContent.innerHTML = `<div class="fc-error">Unable to perform fact-check at this time.</div>`;
+  }
+
+  btn.disabled = false;
+  btn.textContent = 'Fact Check';
+}
+
+function renderFactCheckResult(container, result) {
+  const resultContent = container.querySelector('#fact-check-result-content') || container;
+  resultContent.innerHTML = result.combinedHtml || result.html || '';
+}
+
+/**
+ * After rendering reference cards, annotate the quote text with inline links
+ * for referenced phrases.
+ */
+function annotateQuoteText(result) {
+  if (!result.references?.references) return;
+
+  const quoteTextEl = document.querySelector('.quote-block__text');
+  if (!quoteTextEl) return;
+
+  const foundRefs = result.references.references.filter(r => r.enrichment?.found && r.enrichment?.primary_url);
+  if (foundRefs.length === 0) return;
+
+  let html = quoteTextEl.innerHTML;
+
+  // Sort by text_span length descending to avoid partial replacement issues
+  const sorted = [...foundRefs].sort((a, b) => (b.text_span?.length || 0) - (a.text_span?.length || 0));
+
+  for (const ref of sorted) {
+    const span = ref.text_span;
+    if (!span || !html.includes(span)) continue;
+
+    const url = ref.enrichment.primary_url;
+    const title = ref.enrichment.title || ref.display_name || span;
+    const type = ref.type || 'concept';
+
+    const annotatedLink = `<a class="fc-inline-ref fc-inline-ref--${escapeHtmlAttr(type)}" href="${escapeHtmlAttr(url)}" target="_blank" rel="noopener" title="${escapeHtmlAttr(title)}" data-ref-type="${escapeHtmlAttr(type)}">${span}</a>`;
+
+    html = html.replace(span, annotatedLink);
+  }
+
+  quoteTextEl.innerHTML = html;
+}
+
+function escapeHtmlAttr(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
