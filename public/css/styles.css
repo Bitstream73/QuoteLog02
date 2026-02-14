@@ -3706,7 +3706,7 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
 
 .quote-block__text {
   font-family: var(--font-headline);
-  font-size: var(--text-lg, 1.563rem);
+  font-size: var(--text-xl, 1.953rem);
   line-height: 1.6;
   font-weight: 400;
   font-style: italic;
