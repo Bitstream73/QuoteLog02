@@ -12,6 +12,31 @@ const QUOTE_CHARS = /["\u201C\u201D]/;
 const ATTRIBUTION_VERBS = /\b(said|stated|told|claimed|argued|noted|added|explained|warned|insisted|remarked|commented|declared|announced|responded|replied|acknowledged|admitted|confirmed|denied|emphasized|stressed|suggested|urged|asked|demanded|revealed|disclosed|predicted|recalled|testified|wrote|tweeted|posted)\b/i;
 
 /**
+ * Detect whether a quote looks like a sentence fragment rather than
+ * a complete statement.  Fragments are hidden (is_visible = 0) even
+ * if their significance score is above the threshold.
+ */
+function isQuoteFragment(text) {
+  if (!text) return true;
+  const trimmed = text.trim();
+  if (!trimmed) return true;
+
+  // Starts or ends with ellipsis → truncated excerpt
+  if (/^\.{3}|^\u2026/.test(trimmed)) return true;
+  if (/\.{3}$|\u2026$/.test(trimmed)) return true;
+
+  // Starts with lowercase letter → mid-sentence fragment
+  // Only check when the very first non-whitespace character is a letter
+  // (quotes starting with numbers, punctuation, etc. are fine)
+  const firstChar = trimmed[0];
+  if (/[a-z]/.test(firstChar)) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * Pre-filter check - does article likely contain quotes?
  */
 function likelyHasQuotes(text) {
@@ -188,9 +213,10 @@ export async function extractQuotesFromArticle(articleText, article, db, io) {
       // Determine quote date
       const quoteDate = q.quote_date && q.quote_date !== 'unknown' ? q.quote_date : (article.published_at || null);
 
-      // Determine visibility based on significance score
+      // Determine visibility based on significance score and fragment detection
       const significance = parseInt(q.significance, 10) || 5;
-      const isVisible = significance >= minSignificance ? 1 : 0;
+      const fragment = isQuoteFragment(q.quote_text);
+      const isVisible = (!fragment && significance >= minSignificance) ? 1 : 0;
 
       // Insert and deduplicate quote (use article summary as context fallback)
       const quoteResult = await insertAndDeduplicateQuote(
@@ -222,6 +248,7 @@ export async function extractQuotesFromArticle(articleText, article, db, io) {
           keywords: q.keywords || [],
           significance,
           isVisible,
+          isFragment: fragment,
           articleUrl: article.url,
         });
       }
@@ -254,4 +281,5 @@ const quoteExtractor = {
   },
 };
 
+export { isQuoteFragment };
 export default quoteExtractor;

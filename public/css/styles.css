@@ -616,11 +616,12 @@ footer {
    =================================== */
 .quote-text {
   font-family: var(--font-body);
-  font-size: 1.05rem;
+  font-size: 0.79rem;
   font-style: italic;
   color: var(--text-primary);
   margin-bottom: 0.75rem;
   line-height: 1.8;
+  text-align: left;
 }
 
 .quote-text::before {
@@ -1186,10 +1187,11 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
 
 .quote-entry .quote-text {
   font-family: var(--font-body);
-  font-size: 1.05rem;
+  font-size: 0.79rem;
   line-height: 1.8;
   margin-bottom: 0.5rem;
   color: var(--text-primary);
+  text-align: left;
 }
 
 .quote-entry cite {
@@ -2216,7 +2218,7 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
    =================================== */
 .quote-detail-text {
   font-family: var(--font-body);
-  font-size: 1.4rem;
+  font-size: 1.05rem;
   font-style: italic;
   line-height: 1.8;
   margin-bottom: 1.5rem;
@@ -2225,6 +2227,7 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   border-left: 3px solid var(--accent);
   border-radius: 0;
   color: var(--text-primary);
+  text-align: left;
 }
 
 /* Quote detail page layout (headshot beside text) */
@@ -2370,7 +2373,7 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
   .log-table { font-size: 0.75rem; }
   .quote-meta { flex-direction: column; gap: 0.25rem; }
-  .quote-detail-text { font-size: 1.2rem; padding: 1rem 1.25rem; }
+  .quote-detail-text { font-size: 0.9rem; padding: 1rem 1.25rem; }
 
   .review-columns {
     grid-template-columns: 1fr;
@@ -2951,10 +2954,11 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
 .admin-quote-text {
   font-family: var(--font-body);
   font-style: italic;
-  font-size: 0.9rem;
+  font-size: 0.675rem;
   color: var(--text-primary);
   margin-bottom: 0.4rem;
   line-height: 1.5;
+  text-align: left;
 }
 
 .admin-quote-meta {
