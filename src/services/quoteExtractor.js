@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import gemini from './ai/gemini.js';
 import config from '../config/index.js';
 import { getDb, getSettingValue } from '../config/database.js';
 import logger from './logger.js';
@@ -47,22 +47,16 @@ function verifySpeakerInArticle(speaker, articleText) {
 /**
  * Extract quotes from article text using Gemini
  */
-async function extractQuotesWithGemini(articleText) {
+async function extractQuotesWithGemini(articleText, article) {
   if (!config.geminiApiKey) {
     logger.warn('extractor', 'no_gemini_key', {});
     return [];
   }
 
-  const genAI = new GoogleGenerativeAI(config.geminiApiKey);
-  const model = genAI.getGenerativeModel({
-    model: 'gemini-2.5-flash',
-    generationConfig: {
-      responseMimeType: 'application/json',
-      temperature: 0.1,
-    },
-  });
-
   const prompt = `You are a precise news quote extraction system. Extract ONLY direct, verbatim quotes from this news article.
+
+Article published: ${article.published_at || 'Unknown date'}
+Article title: ${article.title || 'Untitled'}
 
 For each quote, return:
 - quote_text: The exact quoted text as it appears in quotation marks. Use the verbatim words only.
@@ -72,14 +66,56 @@ For each quote, return:
 - speaker_category_context: Brief context for the category. For Politicians: party and office (e.g. "Republican, U.S. Senator from Texas"). For Athletes: team and sport (e.g. "Los Angeles Lakers, NBA"). For Business Leaders: company and title. For Entertainers: medium and notable works. For Pundits/Journalists: outlet. For others: relevant affiliation. Null if unknown.
 - quote_type: Always "direct".
 - context: One sentence describing what the quote is about and why it was said.
-- topics: Array of 1-3 broad subject categories this quote relates to. Use consistent, standard category names. Examples: "U.S. Politics", "Foreign Policy", "Criminal Justice", "Healthcare", "Economy", "Technology", "Entertainment", "Sports", "Climate & Environment", "Education", "Immigration", "Civil Rights", "National Security", "Business", "Science", "Media", "Religion", "Housing", "Labor", "Trade". Prefer existing standard names over inventing new ones.
-- keywords: Array of 2-5 specific named entities, events, or concepts relevant to this quote. Rules for keywords:
-  * Use full proper names: "Donald Trump" not "Trump", "Supreme Court" not "court"
-  * Include: specific people mentioned, organizations, named events (e.g. "Epstein Files", "January 6th"), legislation, places
-  * Multi-word entities are ONE keyword: "Epstein Files" is one keyword, not two
-  * Do NOT include generic verbs (said, expressed, explained), adjectives, or common words
-  * Do NOT include the speaker's own name as a keyword (they are already the speaker)
-  * Each keyword should be a proper noun or a recognized named concept
+- quote_date: The date when this quote was actually spoken/written, in ISO format (YYYY-MM-DD).
+  * For current news quotes: use the article's publication date provided above.
+  * For historical quotes (quoting someone from the past, reprinting old statements): use the original date if mentioned in the article, otherwise "unknown".
+  * For "yesterday"/"last week" references: compute the actual date relative to the article publication date.
+  * If the speaker is deceased or the quote clearly predates the article, do NOT use the article date.
+- topics: Array of 1-3 SPECIFIC subject categories. Use the most specific applicable name:
+
+  Politics: "U.S. Presidential Politics", "U.S. Congressional Politics", "UK Politics", "EU Politics", "State/Local Politics", "Voting Rights"
+  Government: "U.S. Foreign Policy", "Diplomacy", "Intelligence & Espionage", "Military & Defense", "Governance"
+  Law: "Supreme Court", "Criminal Justice", "Constitutional Law", "Civil Rights & Liberties", "Law Enforcement"
+  Economy: "U.S. Finance", "Global Economy", "Federal Reserve", "Trade & Tariffs", "Labor & Employment", "Cryptocurrency"
+  Business: "Big Tech", "Startups", "Corporate Governance", "Energy Industry"
+  Social: "Healthcare", "Education", "Immigration", "Housing", "Gun Control", "Reproductive Rights"
+  Science: "Climate & Environment", "Space Exploration", "Artificial Intelligence", "Public Health"
+  Culture: "Film & Television", "Music", "Olympic Sports", "NFL", "NBA", "MLB", "Soccer", "Social Media"
+  World: "Middle East Conflict", "Ukraine War", "China-Taiwan Relations", "African Affairs", "Latin American Affairs"
+  Media: "Journalism", "Misinformation", "Media Industry"
+  Philosophy: "Philosophy", "Ethics", "Religion"
+
+  IMPORTANT: Use specific names, NOT broad ones. "U.S. Finance" not "Business". "UK Politics" not "Politics". "Olympic Sports" not "Sports". "Supreme Court" not "Law".
+
+- keywords: Array of 2-5 specific named entities relevant to this quote. Follow these rules STRICTLY:
+
+  GOOD keywords (use as models):
+  "Donald Trump", "Supreme Court", "January 6th Committee", "Affordable Care Act",
+  "European Union", "Silicon Valley", "Paris Climate Agreement", "Federal Reserve",
+  "2026 Winter Olympics", "Senate Judiciary Committee"
+
+  BAD keywords (NEVER produce these):
+  "Trump" (incomplete — use "Donald Trump"), "critical" (adjective), "emphasizes" (verb),
+  "policy" (too vague), "Donald" (first name only), "innovation" (generic noun),
+  "business" (generic), "groups" (generic), "competition" (generic), "strength" (generic)
+
+  Rules:
+  1. ALWAYS use FULL proper names: "Donald Trump" not "Trump", "Federal Reserve" not "Fed"
+  2. Multi-word entities are ONE keyword: "January 6th Committee" is one keyword
+  3. Every keyword MUST be a proper noun, named event, specific organization, legislation, or geographic location
+  4. NEVER include: verbs, adjectives, generic nouns, common words, the speaker's own name
+  5. Single-word keywords are ONLY allowed for proper nouns (e.g., "NATO", "OPEC", "Brexit", "Hamas")
+  6. If no specific named entities exist in the quote, return an EMPTY array — never fill with generic words
+
+- significance: Integer 1-10 rating of how noteworthy this quote is:
+  9-10: Historic or landmark statement (declaring war, resignation, major policy)
+  7-8: Strong claim, bold prediction, headline-worthy, reveals new information
+  5-6: Substantive opinion, meaningful analysis, newsworthy reaction
+  3-4: Routine statement, standard commentary, generic encouragement
+  1-2: Vague platitude, meaningless fragment, purely descriptive, no substance
+
+  HIGH: makes a specific claim, sets a goal, predicts, reveals information, accuses, is funny/memorable, provides genuine insight
+  LOW: "We need to do better" (platitude), "It was a nice event" (descriptive), "The meeting begins at noon" (procedural), fragments without assertion
 
 Rules:
 - ONLY extract verbatim quotes that appear inside quotation marks.
@@ -100,12 +136,7 @@ ${articleText.substring(0, 15000)}`;
   let lastError;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
-
-      // Parse JSON response
-      const parsed = JSON.parse(text);
+      const parsed = await gemini.generateJSON(prompt);
       return parsed.quotes || [];
     } catch (err) {
       lastError = err;
@@ -133,17 +164,10 @@ async function generateArticleSummary(articleText) {
   if (!config.geminiApiKey) return null;
 
   try {
-    const genAI = new GoogleGenerativeAI(config.geminiApiKey);
-    const model = genAI.getGenerativeModel({
-      model: 'gemini-2.5-flash',
-      generationConfig: { temperature: 0.1 },
-    });
-
-    const result = await model.generateContent(
+    const text = await gemini.generateText(
       `Summarize this news article in 2-3 sentences. Focus on the main topic and key events.\n\nArticle:\n${articleText.substring(0, 5000)}`
     );
-    const response = await result.response;
-    return response.text().trim() || null;
+    return text.trim() || null;
   } catch (err) {
     logger.warn('extractor', 'summary_generation_failed', { error: err.message });
     return null;
@@ -161,7 +185,7 @@ export async function extractQuotesFromArticle(articleText, article, db, io) {
   }
 
   // Step 2: Extract quotes with Gemini
-  const rawQuotes = await extractQuotesWithGemini(articleText);
+  const rawQuotes = await extractQuotesWithGemini(articleText, article);
 
   if (rawQuotes.length === 0) {
     return [];
@@ -169,6 +193,7 @@ export async function extractQuotesFromArticle(articleText, article, db, io) {
 
   // Step 3: Verify and filter quotes (direct only)
   const minWords = parseInt(getSettingValue('min_quote_words', '5'), 10);
+  const minSignificance = parseInt(getSettingValue('min_significance_score', '5'), 10);
   const verifiedQuotes = rawQuotes.filter(q => {
     // Reject non-direct quotes
     if (q.quote_type !== 'direct') {
@@ -231,8 +256,15 @@ export async function extractQuotesFromArticle(articleText, article, db, io) {
         domain: article.domain || null,
       };
 
+      // Determine quote date
+      const quoteDate = q.quote_date && q.quote_date !== 'unknown' ? q.quote_date : (article.published_at || null);
+
+      // Determine visibility based on significance score
+      const significance = parseInt(q.significance, 10) || 5;
+      const isVisible = significance >= minSignificance ? 1 : 0;
+
       // Insert and deduplicate quote (use article summary as context fallback)
-      const quoteData = await insertAndDeduplicateQuote(
+      const quoteResult = await insertAndDeduplicateQuote(
         {
           text: q.quote_text,
           quoteType: q.quote_type,
@@ -241,14 +273,28 @@ export async function extractQuotesFromArticle(articleText, article, db, io) {
           rssMetadata: JSON.stringify(rssMetadata),
           topics: q.topics || [],
           keywords: q.keywords || [],
+          quoteDate,
+          isVisible,
         },
         personId,
         article,
         db
       );
 
-      if (quoteData) {
-        insertedQuotes.push(quoteData);
+      if (quoteResult) {
+        insertedQuotes.push(quoteResult);
+        logger.info('extractor', 'quote_extracted', {
+          quoteId: quoteResult.id,
+          speaker: q.speaker,
+          category: q.speaker_category || null,
+          quote: q.quote_text.substring(0, 200),
+          context: (q.context || articleSummary || '').substring(0, 200),
+          topics: q.topics || [],
+          keywords: q.keywords || [],
+          significance,
+          isVisible,
+          articleUrl: article.url,
+        });
       }
     } catch (err) {
       logger.error('extractor', 'quote_insert_failed', {
@@ -269,7 +315,7 @@ export async function extractQuotesFromArticle(articleText, article, db, io) {
 // Legacy export for compatibility
 const quoteExtractor = {
   async extractFromArticle(articleText, sourceName, sourceUrl) {
-    const rawQuotes = await extractQuotesWithGemini(articleText);
+    const rawQuotes = await extractQuotesWithGemini(articleText, { published_at: null, title: null });
     return rawQuotes.map(q => ({
       text: q.quote_text,
       author: q.speaker,

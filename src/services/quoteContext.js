@@ -3,7 +3,7 @@ import gemini from './ai/gemini.js';
 import { queryQuotes, searchQuotes } from './vectorDb.js';
 import logger from './logger.js';
 
-const MODEL_VERSION = 'gemini-2.5-flash-v1';
+const MODEL_VERSION = 'gemini-3-flash-preview';
 
 /**
  * Analyze a quote's claims with AI, gathering evidence from internal data + Gemini knowledge.

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import gemini from '../services/ai/gemini.js';
 import { requireAdmin } from '../middleware/auth.js';
 import { createBackup, listBackups, exportDatabaseJson, importDatabaseJson } from '../services/backup.js';
 import { backfillHeadshots } from '../services/personPhoto.js';
@@ -109,15 +109,6 @@ router.post('/backfill-keywords', async (req, res) => {
       return res.status(400).json({ error: 'Gemini API key not configured' });
     }
 
-    const genAI = new GoogleGenerativeAI(config.geminiApiKey);
-    const model = genAI.getGenerativeModel({
-      model: 'gemini-2.5-flash',
-      generationConfig: {
-        responseMimeType: 'application/json',
-        temperature: 0.1,
-      },
-    });
-
     let processed = 0;
     let errors = 0;
 
@@ -130,14 +121,33 @@ Speaker: ${quote.canonical_name}
 ${quote.context ? `Context: ${quote.context}` : ''}
 
 Return a JSON object with:
-- topics: Array of 1-3 broad subject categories. Use consistent names like "U.S. Politics", "Foreign Policy", "Criminal Justice", "Healthcare", "Economy", "Technology", "Entertainment", "Sports", "Climate & Environment", "Education", "Immigration", "Civil Rights", "National Security", "Business", "Science", "Media", "Religion", "Housing", "Labor", "Trade".
-- keywords: Array of 2-5 specific named entities, events, or concepts. Use full proper names ("Donald Trump" not "Trump"). Do NOT include generic verbs, adjectives, or the speaker's own name. Each keyword should be a proper noun or recognized named concept.
+- topics: Array of 1-3 SPECIFIC subject categories. Use the most specific applicable name from this taxonomy:
+
+  Politics: "U.S. Presidential Politics", "U.S. Congressional Politics", "UK Politics", "EU Politics", "State/Local Politics", "Voting Rights"
+  Government: "U.S. Foreign Policy", "Diplomacy", "Intelligence & Espionage", "Military & Defense", "Governance"
+  Law: "Supreme Court", "Criminal Justice", "Constitutional Law", "Civil Rights & Liberties", "Law Enforcement"
+  Economy: "U.S. Finance", "Global Economy", "Federal Reserve", "Trade & Tariffs", "Labor & Employment", "Cryptocurrency"
+  Business: "Big Tech", "Startups", "Corporate Governance", "Energy Industry"
+  Social: "Healthcare", "Education", "Immigration", "Housing", "Gun Control", "Reproductive Rights"
+  Science: "Climate & Environment", "Space Exploration", "Artificial Intelligence", "Public Health"
+  Culture: "Film & Television", "Music", "Olympic Sports", "NFL", "NBA", "MLB", "Soccer", "Social Media"
+  World: "Middle East Conflict", "Ukraine War", "China-Taiwan Relations", "African Affairs", "Latin American Affairs"
+  Media: "Journalism", "Misinformation", "Media Industry"
+  Philosophy: "Philosophy", "Ethics", "Religion"
+
+  IMPORTANT: Use specific names, NOT broad ones. "U.S. Finance" not "Business". "UK Politics" not "Politics".
+
+- keywords: Array of 2-5 specific named entities. Follow these rules STRICTLY:
+  1. ALWAYS use FULL proper names: "Donald Trump" not "Trump", "Federal Reserve" not "Fed"
+  2. Multi-word entities are ONE keyword: "January 6th Committee" is one keyword
+  3. Every keyword MUST be a proper noun, named event, specific organization, legislation, or geographic location
+  4. NEVER include: verbs, adjectives, generic nouns, common words, the speaker's own name
+  5. Single-word keywords are ONLY allowed for proper nouns (e.g., "NATO", "OPEC", "Brexit", "Hamas")
+  6. If no specific named entities exist, return an EMPTY array
 
 Return: { "topics": [...], "keywords": [...] }`;
 
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        const parsed = JSON.parse(response.text());
+        const parsed = await gemini.generateJSON(prompt);
 
         storeTopicsAndKeywords(quote.id, parsed.topics || [], parsed.keywords || [], db);
         processed++;

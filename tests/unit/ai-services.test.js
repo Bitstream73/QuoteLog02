@@ -26,21 +26,17 @@ vi.mock('../../src/services/logger.js', () => ({
 }));
 
 // Mock Gemini SDK
-vi.mock('@google/generative-ai', () => ({
-  GoogleGenerativeAI: vi.fn().mockImplementation(() => ({
-    getGenerativeModel: vi.fn().mockReturnValue({
-      generateContent: vi.fn().mockResolvedValue({
-        response: { text: () => 'Gemini response' }
-      }),
-      embedContent: vi.fn().mockResolvedValue({
-        embedding: { values: new Array(768).fill(0.1) }
-      }),
-      startChat: vi.fn().mockReturnValue({
-        sendMessage: vi.fn().mockResolvedValue({
-          response: { text: () => 'Chat response' }
-        })
+vi.mock('@google/genai', () => ({
+  GoogleGenAI: vi.fn().mockImplementation(() => ({
+    models: {
+      generateContent: vi.fn().mockResolvedValue({ text: 'Gemini response' }),
+      embedContent: vi.fn().mockResolvedValue({ embeddings: [{ values: new Array(768).fill(0.1) }] }),
+    },
+    chats: {
+      create: vi.fn().mockReturnValue({
+        sendMessage: vi.fn().mockResolvedValue({ text: 'Chat response' })
       })
-    })
+    }
   }))
 }));
 
@@ -71,21 +67,17 @@ describe('AI Services', () => {
         }
       }));
 
-      vi.doMock('@google/generative-ai', () => ({
-        GoogleGenerativeAI: vi.fn().mockImplementation(() => ({
-          getGenerativeModel: vi.fn().mockReturnValue({
-            generateContent: vi.fn().mockResolvedValue({
-              response: { text: () => 'Gemini response' }
-            }),
-            embedContent: vi.fn().mockResolvedValue({
-              embedding: { values: new Array(768).fill(0.1) }
-            }),
-            startChat: vi.fn().mockReturnValue({
-              sendMessage: vi.fn().mockResolvedValue({
-                response: { text: () => 'Chat response' }
-              })
+      vi.doMock('@google/genai', () => ({
+        GoogleGenAI: vi.fn().mockImplementation(() => ({
+          models: {
+            generateContent: vi.fn().mockResolvedValue({ text: 'Gemini response' }),
+            embedContent: vi.fn().mockResolvedValue({ embeddings: [{ values: new Array(768).fill(0.1) }] }),
+          },
+          chats: {
+            create: vi.fn().mockReturnValue({
+              sendMessage: vi.fn().mockResolvedValue({ text: 'Chat response' })
             })
-          })
+          }
         }))
       }));
 

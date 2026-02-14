@@ -1,6 +1,6 @@
 import { doubleMetaphone } from 'double-metaphone';
 import jaroWinkler from 'jaro-winkler';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import gemini from './ai/gemini.js';
 import config from '../config/index.js';
 import { getDb, getSettingValue } from '../config/database.js';
 import logger from './logger.js';
@@ -145,15 +145,6 @@ async function llmDisambiguate(newName, newContext, candidates, articleSource) {
     return { best_match: null, confidence: 0, is_new_person: true };
   }
 
-  const genAI = new GoogleGenerativeAI(config.geminiApiKey);
-  const model = genAI.getGenerativeModel({
-    model: 'gemini-2.5-flash',
-    generationConfig: {
-      responseMimeType: 'application/json',
-      temperature: 0.1,
-    },
-  });
-
   const prompt = `You are a name disambiguation system for news articles.
 
 A new name has been extracted from a news article. Determine if it refers to an existing person in our database.
@@ -185,10 +176,7 @@ If no candidate is a good match, set best_match to null and is_new_person to tru
 If ambiguous between candidates, set confidence below 0.7 and explain why.`;
 
   try {
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const text = response.text();
-    return JSON.parse(text);
+    return await gemini.generateJSON(prompt, { temperature: 0.3 });
   } catch (err) {
     logger.error('disambiguator', 'llm_failed', { error: err.message });
     return { best_match: null, confidence: 0, is_new_person: true };

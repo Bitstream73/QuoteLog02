@@ -1,8 +1,7 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import gemini from './ai/gemini.js';
 import config from '../config/index.js';
 import { getDb } from '../config/database.js';
 import { embedQuote, queryQuotes } from './vectorDb.js';
-import { indexQuoteKeywords } from './keywordExtractor.js';
 import logger from './logger.js';
 
 /**
@@ -118,15 +117,6 @@ async function llmVerifyDuplicate(quoteA, quoteB, speaker) {
     return { relationship: 'UNRELATED', confidence: 0.5 };
   }
 
-  const genAI = new GoogleGenerativeAI(config.geminiApiKey);
-  const model = genAI.getGenerativeModel({
-    model: 'gemini-2.5-flash',
-    generationConfig: {
-      responseMimeType: 'application/json',
-      temperature: 0.1,
-    },
-  });
-
   const prompt = `You are a quote deduplication system. Analyze these two quotes from the same speaker.
 
 Quote A: "${quoteA}"
@@ -149,10 +139,7 @@ Return JSON:
 }`;
 
   try {
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const text = response.text();
-    return JSON.parse(text);
+    return await gemini.generateJSON(prompt, { temperature: 0.3 });
   } catch (err) {
     logger.error('deduplicator', 'llm_verify_failed', { error: err.message });
     return { relationship: 'UNRELATED', confidence: 0.5 };
@@ -261,14 +248,14 @@ function mergeQuotes(canonicalId, variantIds, db) {
  * Main deduplication and insert function
  */
 export async function insertAndDeduplicateQuote(quoteData, personId, article, db) {
-  const { text, quoteType, context, sourceUrl, rssMetadata, topics, keywords } = quoteData;
+  const { text, quoteType, context, sourceUrl, rssMetadata, topics, keywords, quoteDate, isVisible } = quoteData;
 
   // Find duplicate candidates
   const candidates = await findDuplicateCandidates(text, personId, db);
 
   if (candidates.length === 0) {
     // No duplicates - insert new quote
-    return insertNewQuote(text, quoteType, context, sourceUrl, personId, article.id, db, rssMetadata, topics, keywords);
+    return insertNewQuote(text, quoteType, context, sourceUrl, personId, article.id, db, rssMetadata, topics, keywords, quoteDate, isVisible);
   }
 
   // Check each candidate
@@ -355,7 +342,7 @@ export async function insertAndDeduplicateQuote(quoteData, personId, article, db
   }
 
   // No strong duplicate found - insert as new
-  return insertNewQuote(text, quoteType, context, sourceUrl, personId, article.id, db, rssMetadata, topics, keywords);
+  return insertNewQuote(text, quoteType, context, sourceUrl, personId, article.id, db, rssMetadata, topics, keywords, quoteDate, isVisible);
 }
 
 /**
@@ -434,13 +421,13 @@ function inferKeywordType(keyword) {
 /**
  * Insert a new quote
  */
-function insertNewQuote(text, quoteType, context, sourceUrl, personId, articleId, db, rssMetadata, topics, keywords) {
+function insertNewQuote(text, quoteType, context, sourceUrl, personId, articleId, db, rssMetadata, topics, keywords, quoteDate, isVisible) {
   const sourceUrls = JSON.stringify([sourceUrl]);
 
   const result = db.prepare(`INSERT INTO quotes
-    (person_id, text, quote_type, context, source_urls, rss_metadata)
-    VALUES (?, ?, ?, ?, ?, ?)`)
-    .run(personId, text, quoteType || 'direct', context, sourceUrls, rssMetadata || null);
+    (person_id, text, quote_type, context, source_urls, rss_metadata, quote_datetime, is_visible)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(personId, text, quoteType || 'direct', context, sourceUrls, rssMetadata || null, quoteDate || null, isVisible !== undefined ? isVisible : 1);
 
   const quoteId = result.lastInsertRowid;
 
@@ -461,13 +448,6 @@ function insertNewQuote(text, quoteType, context, sourceUrl, personId, articleId
   const person = db.prepare('SELECT canonical_name FROM persons WHERE id = ?').get(personId);
 
   logger.debug('deduplicator', 'new_quote_inserted', { quoteId, personId });
-
-  // Extract and store keywords for analytics
-  try {
-    indexQuoteKeywords(quoteId, context, text);
-  } catch (err) {
-    logger.debug('deduplicator', 'keyword_extraction_failed', { quoteId, error: err.message });
-  }
 
   // Try to index in Pinecone (async, don't await) — enriched with context + person name
   if (config.pineconeApiKey && config.pineconeIndexHost) {

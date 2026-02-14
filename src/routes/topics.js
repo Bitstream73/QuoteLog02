@@ -12,13 +12,18 @@ router.get('/', (req, res) => {
 
     const topics = db.prepare(`
       SELECT t.id, t.name, t.slug, t.description, t.importants_count, t.trending_score,
-        (SELECT COUNT(*) FROM quote_topics WHERE topic_id = t.id) as quote_count
+        (SELECT COUNT(*) FROM quote_topics qt2 JOIN quotes q ON q.id = qt2.quote_id AND q.is_visible = 1 WHERE qt2.topic_id = t.id) as quote_count
       FROM topics t
+      GROUP BY t.id
+      HAVING quote_count > 0
       ORDER BY t.trending_score DESC
       LIMIT ? OFFSET ?
     `).all(limit, offset);
 
-    const total = db.prepare('SELECT COUNT(*) as count FROM topics').get().count;
+    const total = db.prepare(`
+      SELECT COUNT(*) as count FROM topics t
+      WHERE (SELECT COUNT(*) FROM quote_topics qt2 JOIN quotes q ON q.id = qt2.quote_id AND q.is_visible = 1 WHERE qt2.topic_id = t.id) > 0
+    `).get().count;
 
     res.json({ topics, total, limit, offset });
   } catch (err) {
@@ -68,7 +73,7 @@ router.get('/:slug', (req, res) => {
     `).all(topic.id, limit, offset);
 
     const quoteCount = db.prepare(`
-      SELECT COUNT(*) as count FROM quote_topics WHERE topic_id = ?
+      SELECT COUNT(*) as count FROM quote_topics qt JOIN quotes q ON q.id = qt.quote_id AND q.is_visible = 1 WHERE qt.topic_id = ?
     `).get(topic.id).count;
 
     res.json({
