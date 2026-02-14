@@ -168,8 +168,8 @@ describe('Frontend JS files', () => {
   describe('home.js 4-tab system tabs', () => {
     const homeJs = fs.readFileSync(path.join(process.cwd(), 'public/js/home.js'), 'utf-8');
 
-    it('should default active tab to trending-topics', () => {
-      expect(homeJs).toContain("let _activeTab = 'trending-topics'");
+    it('should default active tab to all', () => {
+      expect(homeJs).toContain("let _activeTab = 'all'");
     });
 
     it('should include all 4 tab keys', () => {

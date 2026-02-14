@@ -438,4 +438,306 @@ describe('Schema Migrations — Phase 1 (Site Topic Focus)', () => {
       expect(indexes).toContain('idx_quotes_datetime');
     });
   });
+
+  // === Phase 2: topics.enabled and keywords.enabled columns ===
+
+  describe('topics.enabled column', () => {
+    beforeAll(() => {
+      const cols = db.prepare('PRAGMA table_info(topics)').all().map(c => c.name);
+      if (!cols.includes('enabled')) {
+        db.exec(`ALTER TABLE topics ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1`);
+      }
+    });
+
+    it('has enabled column', () => {
+      const cols = db.prepare('PRAGMA table_info(topics)').all();
+      const col = cols.find(c => c.name === 'enabled');
+      expect(col).toBeDefined();
+      expect(col.type).toBe('INTEGER');
+    });
+
+    it('defaults to 1', () => {
+      db.prepare("INSERT INTO topics (name, slug) VALUES (?, ?)").run('Enabled Test', 'enabled-test');
+      const row = db.prepare('SELECT enabled FROM topics WHERE slug = ?').get('enabled-test');
+      expect(row.enabled).toBe(1);
+    });
+
+    it('can be set to 0 to disable', () => {
+      db.prepare('UPDATE topics SET enabled = 0 WHERE slug = ?').run('enabled-test');
+      const row = db.prepare('SELECT enabled FROM topics WHERE slug = ?').get('enabled-test');
+      expect(row.enabled).toBe(0);
+    });
+
+    it('can filter by enabled status', () => {
+      const enabled = db.prepare('SELECT COUNT(*) as c FROM topics WHERE enabled = 1').get();
+      const disabled = db.prepare('SELECT COUNT(*) as c FROM topics WHERE enabled = 0').get();
+      expect(enabled.c).toBeGreaterThan(0);
+      expect(disabled.c).toBeGreaterThan(0);
+    });
+  });
+
+  describe('keywords.enabled column', () => {
+    beforeAll(() => {
+      const cols = db.prepare('PRAGMA table_info(keywords)').all().map(c => c.name);
+      if (!cols.includes('enabled')) {
+        db.exec(`ALTER TABLE keywords ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1`);
+      }
+    });
+
+    it('has enabled column', () => {
+      const cols = db.prepare('PRAGMA table_info(keywords)').all();
+      const col = cols.find(c => c.name === 'enabled');
+      expect(col).toBeDefined();
+      expect(col.type).toBe('INTEGER');
+    });
+
+    it('defaults to 1', () => {
+      const row = db.prepare('SELECT enabled FROM keywords WHERE name = ?').get('inflation');
+      expect(row.enabled).toBe(1);
+    });
+
+    it('can be toggled', () => {
+      db.prepare('UPDATE keywords SET enabled = 0 WHERE name = ?').run('inflation');
+      const row = db.prepare('SELECT enabled FROM keywords WHERE name = ?').get('inflation');
+      expect(row.enabled).toBe(0);
+      // Restore
+      db.prepare('UPDATE keywords SET enabled = 1 WHERE name = ?').run('inflation');
+    });
+  });
+
+  // === Phase 2: gemini_prompts table ===
+
+  describe('gemini_prompts table', () => {
+    beforeAll(() => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS gemini_prompts (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          prompt_key TEXT UNIQUE NOT NULL,
+          name TEXT NOT NULL,
+          description TEXT,
+          template TEXT NOT NULL,
+          category TEXT,
+          is_active INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+      `);
+    });
+
+    it('table exists with correct columns', () => {
+      const cols = db.prepare('PRAGMA table_info(gemini_prompts)').all().map(c => c.name);
+      expect(cols).toContain('id');
+      expect(cols).toContain('prompt_key');
+      expect(cols).toContain('name');
+      expect(cols).toContain('description');
+      expect(cols).toContain('template');
+      expect(cols).toContain('category');
+      expect(cols).toContain('is_active');
+      expect(cols).toContain('created_at');
+      expect(cols).toContain('updated_at');
+    });
+
+    it('prompt_key is UNIQUE', () => {
+      db.prepare("INSERT INTO gemini_prompts (prompt_key, name, template) VALUES (?, ?, ?)").run('test_key', 'Test', 'template');
+      expect(() => {
+        db.prepare("INSERT INTO gemini_prompts (prompt_key, name, template) VALUES (?, ?, ?)").run('test_key', 'Dup', 'dup');
+      }).toThrow();
+    });
+
+    it('is_active defaults to 1', () => {
+      db.prepare("INSERT INTO gemini_prompts (prompt_key, name, template) VALUES (?, ?, ?)").run('active_default', 'Active', 'tmpl');
+      const row = db.prepare('SELECT is_active FROM gemini_prompts WHERE prompt_key = ?').get('active_default');
+      expect(row.is_active).toBe(1);
+    });
+
+    it('timestamps are auto-set', () => {
+      const row = db.prepare('SELECT created_at, updated_at FROM gemini_prompts WHERE prompt_key = ?').get('test_key');
+      expect(row.created_at).toBeDefined();
+      expect(row.updated_at).toBeDefined();
+    });
+  });
+
+  // === Phase 2: topic_keyword_review table ===
+
+  describe('topic_keyword_review table', () => {
+    beforeAll(() => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS topic_keyword_review (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          entity_type TEXT NOT NULL CHECK(entity_type IN ('topic', 'keyword')),
+          entity_id INTEGER NOT NULL,
+          original_name TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'rejected', 'edited')),
+          source TEXT NOT NULL DEFAULT 'ai' CHECK(source IN ('ai', 'migration')),
+          resolved_at TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+      `);
+    });
+
+    it('table exists with correct columns', () => {
+      const cols = db.prepare('PRAGMA table_info(topic_keyword_review)').all().map(c => c.name);
+      expect(cols).toContain('id');
+      expect(cols).toContain('entity_type');
+      expect(cols).toContain('entity_id');
+      expect(cols).toContain('original_name');
+      expect(cols).toContain('status');
+      expect(cols).toContain('source');
+      expect(cols).toContain('resolved_at');
+      expect(cols).toContain('created_at');
+    });
+
+    it('CHECK constraint on entity_type allows topic and keyword', () => {
+      db.prepare("INSERT INTO topic_keyword_review (entity_type, entity_id, original_name) VALUES ('topic', 1, 'Test Topic')").run();
+      db.prepare("INSERT INTO topic_keyword_review (entity_type, entity_id, original_name) VALUES ('keyword', 1, 'Test KW')").run();
+      expect(() => {
+        db.prepare("INSERT INTO topic_keyword_review (entity_type, entity_id, original_name) VALUES ('invalid', 1, 'Bad')").run();
+      }).toThrow();
+    });
+
+    it('CHECK constraint on status allows valid values', () => {
+      expect(() => {
+        db.prepare("INSERT INTO topic_keyword_review (entity_type, entity_id, original_name, status) VALUES ('topic', 99, 'Bad Status', 'unknown')").run();
+      }).toThrow();
+    });
+
+    it('CHECK constraint on source allows valid values', () => {
+      expect(() => {
+        db.prepare("INSERT INTO topic_keyword_review (entity_type, entity_id, original_name, source) VALUES ('topic', 99, 'Bad Source', 'invalid')").run();
+      }).toThrow();
+    });
+
+    it('defaults: status=pending, source=ai', () => {
+      const row = db.prepare('SELECT status, source FROM topic_keyword_review WHERE original_name = ?').get('Test Topic');
+      expect(row.status).toBe('pending');
+      expect(row.source).toBe('ai');
+    });
+  });
+
+  // === Phase 2: noteworthy_items table ===
+
+  describe('noteworthy_items table', () => {
+    beforeAll(() => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS noteworthy_items (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          entity_type TEXT NOT NULL CHECK(entity_type IN ('quote', 'article', 'topic')),
+          entity_id INTEGER NOT NULL,
+          display_order INTEGER NOT NULL DEFAULT 0,
+          active INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          UNIQUE(entity_type, entity_id)
+        )
+      `);
+    });
+
+    it('table exists with correct columns', () => {
+      const cols = db.prepare('PRAGMA table_info(noteworthy_items)').all().map(c => c.name);
+      expect(cols).toContain('id');
+      expect(cols).toContain('entity_type');
+      expect(cols).toContain('entity_id');
+      expect(cols).toContain('display_order');
+      expect(cols).toContain('active');
+      expect(cols).toContain('created_at');
+    });
+
+    it('UNIQUE constraint on (entity_type, entity_id)', () => {
+      db.prepare("INSERT INTO noteworthy_items (entity_type, entity_id, display_order) VALUES ('quote', 1, 1)").run();
+      expect(() => {
+        db.prepare("INSERT INTO noteworthy_items (entity_type, entity_id, display_order) VALUES ('quote', 1, 2)").run();
+      }).toThrow();
+    });
+
+    it('CHECK constraint on entity_type', () => {
+      expect(() => {
+        db.prepare("INSERT INTO noteworthy_items (entity_type, entity_id) VALUES ('invalid', 1)").run();
+      }).toThrow();
+    });
+
+    it('defaults: display_order=0, active=1', () => {
+      db.prepare("INSERT INTO noteworthy_items (entity_type, entity_id) VALUES ('article', 1)").run();
+      const row = db.prepare("SELECT display_order, active FROM noteworthy_items WHERE entity_type = 'article' AND entity_id = 1").get();
+      expect(row.display_order).toBe(0);
+      expect(row.active).toBe(1);
+    });
+  });
+
+  // === Phase 2: backprop_log table ===
+
+  describe('backprop_log table', () => {
+    beforeAll(() => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS backprop_log (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          target_date TEXT NOT NULL UNIQUE,
+          status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'processing', 'completed', 'failed')),
+          articles_found INTEGER NOT NULL DEFAULT 0,
+          quotes_extracted INTEGER NOT NULL DEFAULT 0,
+          error TEXT,
+          started_at TEXT,
+          completed_at TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+      `);
+    });
+
+    it('table exists with correct columns', () => {
+      const cols = db.prepare('PRAGMA table_info(backprop_log)').all().map(c => c.name);
+      expect(cols).toContain('id');
+      expect(cols).toContain('target_date');
+      expect(cols).toContain('status');
+      expect(cols).toContain('articles_found');
+      expect(cols).toContain('quotes_extracted');
+      expect(cols).toContain('error');
+      expect(cols).toContain('started_at');
+      expect(cols).toContain('completed_at');
+    });
+
+    it('target_date is UNIQUE', () => {
+      db.prepare("INSERT INTO backprop_log (target_date) VALUES (?)").run('2025-06-01');
+      expect(() => {
+        db.prepare("INSERT INTO backprop_log (target_date) VALUES (?)").run('2025-06-01');
+      }).toThrow();
+    });
+
+    it('CHECK constraint on status', () => {
+      expect(() => {
+        db.prepare("INSERT INTO backprop_log (target_date, status) VALUES (?, 'badstatus')").run('2025-06-02');
+      }).toThrow();
+    });
+
+    it('defaults: status=pending, articles_found=0, quotes_extracted=0', () => {
+      db.prepare("INSERT INTO backprop_log (target_date) VALUES (?)").run('2025-06-03');
+      const row = db.prepare('SELECT status, articles_found, quotes_extracted FROM backprop_log WHERE target_date = ?').get('2025-06-03');
+      expect(row.status).toBe('pending');
+      expect(row.articles_found).toBe(0);
+      expect(row.quotes_extracted).toBe(0);
+    });
+  });
+
+  // === Phase 2: idx_qa_article index ===
+
+  describe('quote_articles index', () => {
+    beforeAll(() => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS quote_articles (
+          quote_id INTEGER NOT NULL,
+          article_id INTEGER NOT NULL,
+          PRIMARY KEY (quote_id, article_id)
+        )
+      `);
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_qa_article ON quote_articles(article_id)`);
+    });
+
+    it('idx_qa_article index exists', () => {
+      const indexes = db.prepare("SELECT name FROM sqlite_master WHERE type='index'").all().map(i => i.name);
+      expect(indexes).toContain('idx_qa_article');
+    });
+
+    it('index is on article_id column', () => {
+      const info = db.prepare('PRAGMA index_info(idx_qa_article)').all();
+      expect(info.length).toBe(1);
+      expect(info[0].name).toBe('article_id');
+    });
+  });
 });

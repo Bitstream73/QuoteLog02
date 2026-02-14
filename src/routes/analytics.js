@@ -39,6 +39,7 @@ router.get('/trending-topics', (req, res) => {
         t.importants_count, t.trending_score,
         (SELECT COUNT(*) FROM quote_topics qt2 JOIN quotes q ON q.id = qt2.quote_id AND q.is_visible = 1 WHERE qt2.topic_id = t.id) as quote_count
       FROM topics t
+      WHERE t.enabled = 1
       GROUP BY t.id
       HAVING quote_count > 0
       ORDER BY t.trending_score DESC
@@ -106,7 +107,7 @@ router.get('/trending-keywords', (req, res) => {
     FROM keywords k
     JOIN quote_keywords qk ON qk.keyword_id = k.id
     JOIN quotes q ON q.id = qk.quote_id AND q.is_visible = 1
-    WHERE q.created_at >= datetime('now', ?)
+    WHERE k.enabled = 1 AND q.created_at >= datetime('now', ?)
   `;
   const params = [`-${days} days`];
 
@@ -138,7 +139,7 @@ router.get('/overview', (req, res) => {
     FROM topics t
     JOIN quote_topics qt ON qt.topic_id = t.id
     JOIN quotes q ON q.id = qt.quote_id AND q.is_visible = 1
-    WHERE q.created_at >= datetime('now', ?)
+    WHERE t.enabled = 1 AND q.created_at >= datetime('now', ?)
     GROUP BY t.id
     ORDER BY quote_count DESC
     LIMIT 15
@@ -149,7 +150,7 @@ router.get('/overview', (req, res) => {
     FROM keywords k
     JOIN quote_keywords qk ON qk.keyword_id = k.id
     JOIN quotes q ON q.id = qk.quote_id AND q.is_visible = 1
-    WHERE q.created_at >= datetime('now', ?)
+    WHERE k.enabled = 1 AND q.created_at >= datetime('now', ?)
     GROUP BY k.id
     ORDER BY quote_count DESC
     LIMIT 20
@@ -387,19 +388,28 @@ router.get('/all-sources', (req, res) => {
       SELECT a.id, a.url, a.title, a.published_at, a.importants_count, a.share_count,
         a.view_count, a.trending_score,
         s.domain as source_domain, s.name as source_name,
-        (SELECT COUNT(*) FROM quote_articles qa2 JOIN quotes q ON q.id = qa2.quote_id AND q.is_visible = 1 WHERE qa2.article_id = a.id) as quote_count
+        aqc.visible_quote_count as quote_count
       FROM articles a
       LEFT JOIN sources s ON s.id = a.source_id
+      JOIN (
+        SELECT qa.article_id, COUNT(*) as visible_quote_count
+        FROM quote_articles qa
+        JOIN quotes q ON q.id = qa.quote_id AND q.is_visible = 1
+        GROUP BY qa.article_id
+      ) aqc ON aqc.article_id = a.id
       WHERE a.status = 'completed'
-        AND (SELECT COUNT(*) FROM quote_articles qa3 JOIN quotes q ON q.id = qa3.quote_id AND q.is_visible = 1 WHERE qa3.article_id = a.id) > 0
       ORDER BY ${sort}
       LIMIT ? OFFSET ?
     `).all(limit, offset);
 
     const total = db.prepare(`
       SELECT COUNT(*) as count FROM articles a
+      JOIN (
+        SELECT DISTINCT qa.article_id
+        FROM quote_articles qa
+        JOIN quotes q ON q.id = qa.quote_id AND q.is_visible = 1
+      ) aqc ON aqc.article_id = a.id
       WHERE a.status = 'completed'
-        AND (SELECT COUNT(*) FROM quote_articles qa3 JOIN quotes q ON q.id = qa3.quote_id AND q.is_visible = 1 WHERE qa3.article_id = a.id) > 0
     `).get().count;
 
     // For each article, get top 3 quotes

@@ -11,7 +11,8 @@
  */
 function renderImportantButton(entityType, entityId, importantsCount, isImportant, adminView) {
   const showAdmin = adminView !== undefined ? adminView : (typeof isAdmin !== 'undefined' && isAdmin);
-  const activeClass = isImportant ? 'important-btn--active' : '';
+  const activeClass = isImportant ? 'important-btn--active important-btn--confirmed' : '';
+  const label = isImportant ? 'IMPORTANT!' : 'Important?';
   const countDisplay = showAdmin ? ` <span class="important-count">${importantsCount || 0}</span>` : '';
   const superBtn = showAdmin
     ? ` <button class="super-important-btn" onclick="handleSuperImportant(event, '${entityType}', ${entityId})">SuperImportant</button>`
@@ -20,8 +21,8 @@ function renderImportantButton(entityType, entityId, importantsCount, isImportan
     <button class="important-btn ${activeClass}"
             data-entity-type="${entityType}" data-entity-id="${entityId}"
             onclick="handleImportantToggle(event, '${entityType}', ${entityId})">
-      Important?${countDisplay}
-    </button>${superBtn}
+      <span class="important-label">${label}</span>${countDisplay}
+    </button><span class="important-tooltip" title="Mark this as important to boost its visibility and help surface the most noteworthy quotes">?</span>${superBtn}
   `;
 }
 
@@ -34,19 +35,26 @@ async function handleImportantToggle(event, entityType, entityId) {
   const btn = event.currentTarget;
   // Optimistic toggle
   btn.classList.toggle('important-btn--active');
+  btn.classList.toggle('important-btn--confirmed');
+  const labelEl = btn.querySelector('.important-label');
+  if (labelEl) labelEl.textContent = btn.classList.contains('important-btn--active') ? 'IMPORTANT!' : 'Important?';
   try {
     const res = await API.post('/importants/toggle', { entity_type: entityType, entity_id: entityId });
     const countEl = btn.querySelector('.important-count');
     if (countEl) countEl.textContent = res.importants_count;
     if (res.is_important) {
-      btn.classList.add('important-btn--active');
+      btn.classList.add('important-btn--active', 'important-btn--confirmed');
+      if (labelEl) labelEl.textContent = 'IMPORTANT!';
     } else {
-      btn.classList.remove('important-btn--active');
+      btn.classList.remove('important-btn--active', 'important-btn--confirmed');
+      if (labelEl) labelEl.textContent = 'Important?';
     }
     // Update data-importance on parent quote-block for client-side sorting
     updateQuoteBlockImportance(btn, res.importants_count);
   } catch (err) {
     btn.classList.toggle('important-btn--active'); // revert
+    btn.classList.toggle('important-btn--confirmed');
+    if (labelEl) labelEl.textContent = btn.classList.contains('important-btn--active') ? 'IMPORTANT!' : 'Important?';
     showToast('Failed to update', 'error');
   }
 }

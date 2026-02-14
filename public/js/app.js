@@ -194,9 +194,13 @@ function route() {
 async function updateReviewBadgeAsync() {
   if (!isAdmin) return;
   try {
-    const stats = await API.get('/review/stats');
+    const [stats, tkrStats] = await Promise.all([
+      API.get('/review/stats'),
+      API.get('/review/topics-keywords/stats').catch(() => ({ pending: 0 })),
+    ]);
+    const totalPending = (stats.pending || 0) + (tkrStats.pending || 0);
     if (typeof updateReviewBadge === 'function') {
-      updateReviewBadge(stats.pending);
+      updateReviewBadge(totalPending);
     }
   } catch {
     // Ignore errors
@@ -272,6 +276,30 @@ function showToast(message, type = 'info', duration = 3000) {
   }, duration);
 }
 
+// Confirmation toast for destructive actions
+function showConfirmToast(message, onConfirm) {
+  const container = document.getElementById('toast-container');
+  if (!container) return;
+
+  const toast = document.createElement('div');
+  toast.className = 'toast toast-warning toast-confirm';
+  toast.innerHTML = `<span>${escapeHtml(message)}</span>
+    <div class="toast-confirm-actions">
+      <button class="btn btn-danger btn-sm toast-confirm-yes">Confirm</button>
+      <button class="btn btn-secondary btn-sm toast-confirm-no">Cancel</button>
+    </div>`;
+  container.appendChild(toast);
+
+  toast.querySelector('.toast-confirm-yes').onclick = () => {
+    toast.remove();
+    onConfirm();
+  };
+  toast.querySelector('.toast-confirm-no').onclick = () => {
+    toast.style.animation = 'toast-out 0.3s ease-in forwards';
+    toast.addEventListener('animationend', () => toast.remove());
+  };
+}
+
 // Modal functions
 function closeModal() {
   document.getElementById('modal-overlay').classList.add('hidden');
@@ -293,12 +321,6 @@ function updateHeaderHeight() {
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
   applyTheme();
-  const dateRibbon = document.getElementById('date-ribbon-text');
-  if (dateRibbon) {
-    dateRibbon.textContent = new Date().toLocaleDateString('en-US', {
-      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
-    });
-  }
   await checkAuth();
   updateNav();
   initSocket();
@@ -309,10 +331,24 @@ document.addEventListener('DOMContentLoaded', async () => {
 // Update header height on window resize
 window.addEventListener('resize', updateHeaderHeight);
 
-// Show/hide scroll-to-top button based on scroll position
+// Show/hide scroll-to-top button + auto-hide header on scroll (small screens)
+let _lastScrollY = 0;
 window.addEventListener('scroll', () => {
   const btn = document.getElementById('scroll-top-btn');
   if (btn) btn.style.display = window.scrollY > 400 ? 'flex' : 'none';
+
+  // Auto-hide header on scroll down (small screens only)
+  const header = document.querySelector('header');
+  if (header && window.innerWidth <= 768) {
+    if (window.scrollY > 60 && window.scrollY > _lastScrollY) {
+      header.classList.add('header--hidden');
+    } else {
+      header.classList.remove('header--hidden');
+    }
+  } else if (header) {
+    header.classList.remove('header--hidden');
+  }
+  _lastScrollY = window.scrollY;
 }, { passive: true });
 
 // Live-update relative timestamps every 60 seconds
@@ -332,12 +368,6 @@ setInterval(() => {
 if (document.readyState !== 'loading') {
   (async () => {
     applyTheme();
-    const dateRibbon = document.getElementById('date-ribbon-text');
-    if (dateRibbon) {
-      dateRibbon.textContent = new Date().toLocaleDateString('en-US', {
-        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
-      });
-    }
     await checkAuth();
     updateNav();
     initSocket();
