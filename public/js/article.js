@@ -51,12 +51,15 @@ async function renderArticle(id) {
         }
       }
 
+      // Two-column grid for quotes at 768px+
+      html += '<div class="article-quotes-grid">';
       for (const group of groups) {
         const initial = (group.name || '?').charAt(0).toUpperCase();
         const avatarHtml = group.photo
           ? `<img src="${escapeHtml(group.photo)}" alt="${escapeHtml(group.name)}" class="speaker-group__avatar" onerror="this.outerHTML='<div class=\\'speaker-group__avatar-placeholder\\'>${initial}</div>'" loading="lazy">`
           : `<div class="speaker-group__avatar-placeholder">${initial}</div>`;
 
+        // Speaker header spans full width in grid
         html += `<div class="speaker-group">
           <div class="speaker-group__header" onclick="navigateTo('/author/${group.personId}')">
             ${avatarHtml}
@@ -86,6 +89,7 @@ async function renderArticle(id) {
         }
         html += '</div>';
       }
+      html += '</div>';
 
       // Chart section at bottom (only if 2+ quotes)
       if (data.quotes.length >= 2) {

@@ -7,7 +7,7 @@ const _quoteTexts = {};
 const _quoteMeta = {};
 
 // Current active tab
-let _activeTab = 'trending-topics';
+let _activeTab = 'all';
 
 // Pending new quotes count (for non-jarring updates)
 let _pendingNewQuotes = 0;
@@ -749,10 +749,10 @@ function navigateTo(path) {
  */
 function buildTabBarHtml(activeTab) {
   const tabs = [
+    { key: 'all', label: 'All' },
     { key: 'trending-topics', label: 'Trending Topics' },
     { key: 'trending-sources', label: 'Trending Sources' },
     { key: 'trending-quotes', label: 'Trending Quotes' },
-    { key: 'all', label: 'All' },
   ];
 
   return `
@@ -1048,7 +1048,7 @@ async function renderTrendingQuotesTab(container) {
       Sort by: <button class="sort-btn active" data-sort="date" onclick="sortRecentQuotes('date')">Date</button>
       <button class="sort-btn" data-sort="importance" onclick="sortRecentQuotes('importance')">Importance</button>
     </div>`;
-    html += `<div id="recent-quotes-list">`;
+    html += `<div id="recent-quotes-list" class="quotes-grid">`;
     for (const q of recentQuotes) {
       html += buildQuoteBlockHtml(q, q.topics || [], _importantStatuses[`quote:${q.id}`] || false);
     }
@@ -1120,6 +1120,7 @@ async function renderAllTab(container, page, sortBy) {
   } else {
     await fetchImportantStatuses(articles.map(a => `article:${a.id}`));
 
+    html += '<div class="quotes-grid">';
     let lastDateLabel = '';
     for (const article of articles) {
       // Date header grouping
@@ -1131,6 +1132,7 @@ async function renderAllTab(container, page, sortBy) {
       const isImp = _importantStatuses[`article:${article.id}`] || false;
       html += buildSourceCardHtml(article, isImp);
     }
+    html += '</div>';
 
     // Pagination
     if (data.total > 20) {
@@ -1249,6 +1251,67 @@ function toggleQuoteText(event, quoteId) {
   }
 }
 
+// ======= Noteworthy Section =======
+
+/**
+ * Build the noteworthy section HTML (horizontal scroll on mobile, grid on desktop).
+ */
+function buildNoteworthySectionHtml(items) {
+  let cardsHtml = '';
+
+  for (const item of items) {
+    if (item.entity_type === 'quote') {
+      // Quote card — use buildQuoteBlockHtml if available
+      if (typeof buildQuoteBlockHtml === 'function') {
+        const quoteData = {
+          id: item.entity_id,
+          text: item.entity_label || '',
+          context: '',
+          person_name: item.person_name || '',
+          person_id: '',
+          photo_url: item.photo_url || '',
+          importants_count: 0,
+          quote_datetime: '',
+          article_id: '',
+          article_title: '',
+          source_domain: '',
+          source_name: '',
+        };
+        cardsHtml += `<div class="noteworthy-card">${buildQuoteBlockHtml(quoteData, [], false, { variant: 'compact', showAvatar: true, showSummary: false })}</div>`;
+      } else {
+        cardsHtml += `<div class="noteworthy-card noteworthy-card--quote" onclick="navigateTo('/quote/${item.entity_id}')">
+          <p class="noteworthy-card__text">${escapeHtml((item.entity_label || '').substring(0, 120))}${(item.entity_label || '').length > 120 ? '...' : ''}</p>
+          ${item.person_name ? `<span class="noteworthy-card__author">${escapeHtml(item.person_name)}</span>` : ''}
+        </div>`;
+      }
+    } else if (item.entity_type === 'article') {
+      cardsHtml += `<div class="noteworthy-card noteworthy-card--article" onclick="navigateTo('/article/${item.entity_id}')">
+        <span class="noteworthy-card__type">Source</span>
+        <p class="noteworthy-card__title">${escapeHtml(item.entity_label || 'Untitled')}</p>
+      </div>`;
+    } else if (item.entity_type === 'topic') {
+      cardsHtml += `<div class="noteworthy-card noteworthy-card--topic" onclick="navigateTo('/topic/${item.entity_id}')">
+        <span class="noteworthy-card__type">Topic</span>
+        <p class="noteworthy-card__title">${escapeHtml(item.entity_label || 'Unknown Topic')}</p>
+      </div>`;
+    } else if (item.entity_type === 'person') {
+      cardsHtml += `<div class="noteworthy-card noteworthy-card--person" onclick="navigateTo('/author/${item.entity_id}')">
+        <span class="noteworthy-card__type">Author</span>
+        <p class="noteworthy-card__title">${escapeHtml(item.entity_label || 'Unknown Author')}</p>
+      </div>`;
+    }
+  }
+
+  return `
+    <div class="noteworthy-section">
+      <h2 class="noteworthy-section__heading">Noteworthy</h2>
+      <div class="noteworthy-section__scroll">
+        ${cardsHtml}
+      </div>
+    </div>
+  `;
+}
+
 // ======= Main Render Function =======
 
 /**
@@ -1267,8 +1330,17 @@ async function renderHome() {
     return;
   }
 
-  // Render tab bar
-  content.innerHTML = buildTabBarHtml(_activeTab);
+  // Fetch noteworthy items before rendering tabs
+  let noteworthyHtml = '';
+  try {
+    const nwData = await API.get('/search/noteworthy?limit=10');
+    if (nwData.items && nwData.items.length > 0) {
+      noteworthyHtml = buildNoteworthySectionHtml(nwData.items);
+    }
+  } catch { /* noteworthy section is optional */ }
+
+  // Render noteworthy + tab bar
+  content.innerHTML = noteworthyHtml + buildTabBarHtml(_activeTab);
 
   // Render active tab content
   await renderTabContent(_activeTab);
@@ -1285,6 +1357,8 @@ async function renderHome() {
 /**
  * Render search results (preserves existing search functionality)
  */
+let _searchActiveTab = 'quotes';
+
 async function renderSearchResults(content, searchQuery) {
   content.innerHTML = buildSkeletonHtml(6);
 
@@ -1292,21 +1366,90 @@ async function renderSearchResults(content, searchQuery) {
   if (searchInput) searchInput.value = searchQuery;
 
   try {
-    const searchParams = new URLSearchParams({ q: searchQuery, page: '1', limit: '50' });
-    const quotesData = await API.get('/quotes/search?' + searchParams.toString());
+    const data = await API.get('/search/unified?q=' + encodeURIComponent(searchQuery) + '&limit=20');
+
+    const quotesCount = (data.quotes || []).length;
+    const personsCount = (data.persons || []).length;
+    const topicsCount = (data.topics || []).length;
+    const articlesCount = (data.articles || []).length;
+    const totalCount = quotesCount + personsCount + topicsCount + articlesCount;
 
     let html = `<div class="search-results-header">
-      <h2>Search results for "${escapeHtml(searchQuery)}"${quotesData.searchMethod === 'semantic' ? ' (semantic)' : ''}</h2>
+      <h2>Search results for "${escapeHtml(searchQuery)}"</h2>
       <button class="btn btn-secondary btn-sm" onclick="clearSearch()">Clear Search</button>
     </div>`;
 
-    if (quotesData.quotes.length === 0) {
+    if (totalCount === 0) {
       html += `<div class="empty-state"><h3>No results found</h3></div>`;
     } else {
-      html += `<p class="quote-count">${quotesData.total} quotes found</p>`;
-      for (const q of quotesData.quotes) {
-        html += buildQuoteBlockHtml(q, q.topics || [], false);
+      // Tab bar
+      html += `<div class="search-results-tabs">
+        <button class="search-tab ${_searchActiveTab === 'quotes' ? 'active' : ''}" onclick="switchSearchTab('quotes')">Quotes <span class="tab-count">${quotesCount}</span></button>
+        <button class="search-tab ${_searchActiveTab === 'persons' ? 'active' : ''}" onclick="switchSearchTab('persons')">Authors <span class="tab-count">${personsCount}</span></button>
+        <button class="search-tab ${_searchActiveTab === 'topics' ? 'active' : ''}" onclick="switchSearchTab('topics')">Topics <span class="tab-count">${topicsCount}</span></button>
+        <button class="search-tab ${_searchActiveTab === 'articles' ? 'active' : ''}" onclick="switchSearchTab('articles')">Sources <span class="tab-count">${articlesCount}</span></button>
+      </div>`;
+
+      // Quotes tab content
+      html += `<div class="search-tab-content" id="search-tab-quotes" style="display:${_searchActiveTab === 'quotes' ? '' : 'none'}">`;
+      if (quotesCount === 0) {
+        html += `<p class="empty-message">No quotes match your search.</p>`;
+      } else {
+        for (const q of data.quotes) {
+          html += buildQuoteBlockHtml(q, q.topics || [], false);
+        }
       }
+      html += `</div>`;
+
+      // Authors tab content
+      html += `<div class="search-tab-content" id="search-tab-persons" style="display:${_searchActiveTab === 'persons' ? '' : 'none'}">`;
+      if (personsCount === 0) {
+        html += `<p class="empty-message">No authors match your search.</p>`;
+      } else {
+        for (const p of data.persons) {
+          const initial = (p.canonical_name || '?').charAt(0).toUpperCase();
+          const photoHtml = p.photo_url
+            ? `<img src="${escapeHtml(p.photo_url)}" alt="${escapeHtml(p.canonical_name)}" class="search-author__photo" onerror="this.outerHTML='<div class=\\'quote-headshot-placeholder\\'>${initial}</div>'" loading="lazy">`
+            : `<div class="quote-headshot-placeholder">${initial}</div>`;
+          html += `<div class="search-author-row" onclick="navigateTo('/author/${p.id}')">
+            ${photoHtml}
+            <div class="search-author__info">
+              <span class="search-author__name">${escapeHtml(p.canonical_name)}</span>
+              ${p.category_context ? `<span class="search-author__desc">${escapeHtml(p.category_context)}</span>` : ''}
+              <span class="search-author__stats">${p.quote_count || 0} quotes</span>
+            </div>
+          </div>`;
+        }
+      }
+      html += `</div>`;
+
+      // Topics tab content
+      html += `<div class="search-tab-content" id="search-tab-topics" style="display:${_searchActiveTab === 'topics' ? '' : 'none'}">`;
+      if (topicsCount === 0) {
+        html += `<p class="empty-message">No topics match your search.</p>`;
+      } else {
+        for (const t of data.topics) {
+          html += `<div class="search-topic-row" onclick="navigateTo('/topic/${escapeHtml(t.slug)}')">
+            <span class="search-topic__name">${escapeHtml(t.name)}</span>
+            ${t.description ? `<span class="search-topic__desc">${escapeHtml(t.description)}</span>` : ''}
+          </div>`;
+        }
+      }
+      html += `</div>`;
+
+      // Sources tab content
+      html += `<div class="search-tab-content" id="search-tab-articles" style="display:${_searchActiveTab === 'articles' ? '' : 'none'}">`;
+      if (articlesCount === 0) {
+        html += `<p class="empty-message">No sources match your search.</p>`;
+      } else {
+        for (const a of data.articles) {
+          html += `<div class="search-article-row" onclick="navigateTo('/article/${a.id}')">
+            <span class="search-article__title">${escapeHtml(a.title || 'Untitled')}</span>
+            <span class="search-article__meta">${escapeHtml(a.source_name || a.source_domain || '')} ${a.published_at ? formatRelativeTime(a.published_at) : ''}</span>
+          </div>`;
+        }
+      }
+      html += `</div>`;
     }
 
     content.innerHTML = html;
@@ -1314,6 +1457,16 @@ async function renderSearchResults(content, searchQuery) {
   } catch (err) {
     content.innerHTML = `<div class="empty-state"><h3>Error searching</h3><p>${escapeHtml(err.message)}</p></div>`;
   }
+}
+
+function switchSearchTab(tabKey) {
+  _searchActiveTab = tabKey;
+  document.querySelectorAll('.search-tab').forEach(btn => {
+    btn.classList.toggle('active', btn.textContent.toLowerCase().startsWith(tabKey === 'persons' ? 'author' : tabKey));
+  });
+  document.querySelectorAll('.search-tab-content').forEach(el => {
+    el.style.display = el.id === `search-tab-${tabKey}` ? '' : 'none';
+  });
 }
 
 function clearSearch() {

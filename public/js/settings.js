@@ -5,12 +5,18 @@ async function renderSettings() {
   content.innerHTML = '<div class="loading">Loading settings...</div>';
 
   try {
-    const [settings, sourcesData] = await Promise.all([
+    const [settings, sourcesData, topicsData, keywordsData, promptsData] = await Promise.all([
       API.get('/settings'),
       API.get('/sources'),
+      API.get('/admin/topics'),
+      API.get('/admin/keywords'),
+      API.get('/settings/prompts').catch(() => ({ prompts: [] })),
     ]);
 
     const sources = sourcesData.sources || [];
+    const topics = topicsData.topics || [];
+    const keywords = keywordsData.keywords || [];
+    const prompts = promptsData.prompts || [];
 
     let html = `
       <p style="margin-bottom:1rem">
@@ -102,6 +108,15 @@ async function renderSettings() {
             <option value="light" ${(localStorage.getItem('ql-theme') || settings.theme || 'light') === 'light' ? 'selected' : ''}>Light</option>
             <option value="dark" ${(localStorage.getItem('ql-theme') || settings.theme || 'light') === 'dark' ? 'selected' : ''}>Dark</option>
           </select>
+        </div>
+      </div>
+
+      <!-- Prompts Section -->
+      <div class="settings-section" id="settings-section-prompts">
+        <h2>AI Prompts</h2>
+        <p class="section-description">Manage Gemini prompt templates used for quote extraction and fact-checking. Edit the template text to customize AI behavior.</p>
+        <div id="settings-prompts-list">
+          ${prompts.length === 0 ? '<p class="empty-message">No prompts configured.</p>' : prompts.map(p => renderSettingsPromptCard(p)).join('')}
         </div>
       </div>
 
@@ -204,6 +219,34 @@ async function renderSettings() {
         </div>
       </div>
 
+      <!-- Topics & Keywords Section -->
+      <div class="settings-section" id="settings-section-topics-keywords">
+        <h2>Topics &amp; Keywords</h2>
+        <p class="section-description">Manage topics and keywords used for quote categorization. Disabled items are excluded from extraction and display.</p>
+
+        <!-- Topics Subsection -->
+        <div class="settings-subsection">
+          <div class="subsection-header">
+            <h3 class="subsection-title">Topics (${topics.length})</h3>
+            <button class="btn btn-primary btn-sm" onclick="settingsCreateTopic()">New Topic</button>
+          </div>
+          <div id="settings-topics-list" class="topics-keywords-list">
+            ${topics.length === 0 ? '<p class="empty-message">No topics configured yet.</p>' : topics.map(t => renderSettingsTopicRow(t)).join('')}
+          </div>
+        </div>
+
+        <!-- Keywords Subsection -->
+        <div class="settings-subsection">
+          <div class="subsection-header">
+            <h3 class="subsection-title">Keywords (${keywords.length})</h3>
+            <button class="btn btn-primary btn-sm" onclick="settingsCreateKeyword()">New Keyword</button>
+          </div>
+          <div id="settings-keywords-list" class="topics-keywords-list">
+            ${keywords.length === 0 ? '<p class="empty-message">No keywords configured yet.</p>' : keywords.map(k => renderSettingsKeywordRow(k)).join('')}
+          </div>
+        </div>
+      </div>
+
       <!-- Logs Section -->
       <div id="logs-section" class="settings-section">
         <div class="section-header">
@@ -224,6 +267,9 @@ async function renderSettings() {
 
     // Load historical sources
     loadHistoricalSources();
+
+    // Load keyword chips for each topic row
+    loadSettingsTopicKeywordChips(topics);
 
     // Load logs section
     await loadLogsStats();
@@ -587,6 +633,282 @@ async function testHistoricalSource(key) {
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = 'Test'; }
   }
+}
+
+// ======= Topics & Keywords CRUD for Settings =======
+
+function renderSettingsTopicRow(topic) {
+  const enabledClass = topic.enabled ? '' : ' disabled-row';
+  return `
+    <div class="tk-row${enabledClass}" data-topic-id="${topic.id}">
+      <div class="tk-row__info">
+        <span class="tk-row__name">${escapeHtml(topic.name)}</span>
+        ${topic.description ? `<span class="tk-row__desc">${escapeHtml(topic.description)}</span>` : ''}
+        <span class="tk-row__stats">${topic.quote_count || 0} quotes, ${topic.keyword_count || 0} keywords</span>
+        <div class="tk-row__keywords" id="settings-topic-keywords-${topic.id}"></div>
+      </div>
+      <div class="tk-row__actions">
+        <label class="toggle" title="${topic.enabled ? 'Enabled' : 'Disabled'}">
+          <input type="checkbox" ${topic.enabled ? 'checked' : ''} onchange="settingsToggleTopicEnabled(${topic.id}, this.checked)">
+          <span class="toggle-slider"></span>
+        </label>
+        <button class="btn btn-secondary btn-sm" onclick="settingsEditTopic(${topic.id})">Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="settingsDeleteTopic(${topic.id}, '${escapeHtml((topic.name || '').replace(/'/g, "\\'"))}')">Delete</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderSettingsKeywordRow(keyword) {
+  const enabledClass = keyword.enabled ? '' : ' disabled-row';
+  const typeLabel = keyword.keyword_type || 'concept';
+  return `
+    <div class="tk-row${enabledClass}" data-keyword-id="${keyword.id}">
+      <div class="tk-row__info">
+        <span class="tk-row__name">${escapeHtml(keyword.name)}</span>
+        <span class="tk-row__type">${escapeHtml(typeLabel)}</span>
+        <span class="tk-row__stats">${keyword.quote_count || 0} quotes</span>
+      </div>
+      <div class="tk-row__actions">
+        <label class="toggle" title="${keyword.enabled ? 'Enabled' : 'Disabled'}">
+          <input type="checkbox" ${keyword.enabled ? 'checked' : ''} onchange="settingsToggleKeywordEnabled(${keyword.id}, this.checked)">
+          <span class="toggle-slider"></span>
+        </label>
+        <button class="btn btn-secondary btn-sm" onclick="settingsEditKeyword(${keyword.id})">Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="settingsDeleteKeyword(${keyword.id}, '${escapeHtml((keyword.name || '').replace(/'/g, "\\'"))}')">Delete</button>
+      </div>
+    </div>
+  `;
+}
+
+function loadSettingsTopicKeywordChips(topics) {
+  // Keyword chips are loaded on-demand when the topic section renders.
+  // The keyword_count is already shown in the stats span.
+  // Individual keyword names are visible on the Review Topics & Keywords page.
+}
+
+async function settingsToggleTopicEnabled(topicId, enabled) {
+  try {
+    await API.put(`/admin/topics/${topicId}`, { enabled });
+    const row = document.querySelector(`.tk-row[data-topic-id="${topicId}"]`);
+    if (row) row.classList.toggle('disabled-row', !enabled);
+    showToast(enabled ? 'Topic enabled' : 'Topic disabled', 'success');
+  } catch (err) {
+    showToast('Error: ' + err.message, 'error');
+    // Revert checkbox
+    const row = document.querySelector(`.tk-row[data-topic-id="${topicId}"]`);
+    if (row) {
+      const cb = row.querySelector('.toggle input');
+      if (cb) cb.checked = !enabled;
+    }
+  }
+}
+
+async function settingsToggleKeywordEnabled(keywordId, enabled) {
+  try {
+    await API.patch(`/admin/keywords/${keywordId}`, { enabled });
+    const row = document.querySelector(`.tk-row[data-keyword-id="${keywordId}"]`);
+    if (row) row.classList.toggle('disabled-row', !enabled);
+    showToast(enabled ? 'Keyword enabled' : 'Keyword disabled', 'success');
+  } catch (err) {
+    showToast('Error: ' + err.message, 'error');
+    const row = document.querySelector(`.tk-row[data-keyword-id="${keywordId}"]`);
+    if (row) {
+      const cb = row.querySelector('.toggle input');
+      if (cb) cb.checked = !enabled;
+    }
+  }
+}
+
+async function settingsEditTopic(topicId) {
+  const row = document.querySelector(`.tk-row[data-topic-id="${topicId}"]`);
+  const currentName = row ? row.querySelector('.tk-row__name').textContent : '';
+  const newName = prompt('Edit topic name:', currentName);
+  if (newName === null || newName.trim() === '' || newName.trim() === currentName) return;
+  try {
+    const result = await API.put(`/admin/topics/${topicId}`, { name: newName.trim() });
+    if (row) {
+      const nameEl = row.querySelector('.tk-row__name');
+      if (nameEl) nameEl.textContent = result.topic.name;
+    }
+    showToast('Topic updated', 'success');
+  } catch (err) {
+    showToast('Error: ' + err.message, 'error');
+  }
+}
+
+async function settingsEditKeyword(keywordId) {
+  const row = document.querySelector(`.tk-row[data-keyword-id="${keywordId}"]`);
+  const currentName = row ? row.querySelector('.tk-row__name').textContent : '';
+  const newName = prompt('Edit keyword name:', currentName);
+  if (newName === null || newName.trim() === '' || newName.trim() === currentName) return;
+  try {
+    const result = await API.patch(`/admin/keywords/${keywordId}`, { name: newName.trim() });
+    if (row) {
+      const nameEl = row.querySelector('.tk-row__name');
+      if (nameEl) nameEl.textContent = result.keyword.name;
+    }
+    showToast('Keyword updated', 'success');
+  } catch (err) {
+    showToast('Error: ' + err.message, 'error');
+  }
+}
+
+async function settingsDeleteTopic(topicId, topicName) {
+  showConfirmToast(`Delete topic "${topicName}"? This removes all quote-topic links.`, async () => {
+    try {
+      await API.delete(`/admin/topics/${topicId}`);
+      const row = document.querySelector(`.tk-row[data-topic-id="${topicId}"]`);
+      if (row) row.remove();
+      updateSettingsTopicCount();
+      showToast('Topic deleted', 'success');
+    } catch (err) {
+      showToast('Error: ' + err.message, 'error');
+    }
+  });
+}
+
+async function settingsDeleteKeyword(keywordId, keywordName) {
+  showConfirmToast(`Delete keyword "${keywordName}"? This removes all links.`, async () => {
+    try {
+      await API.delete(`/admin/keywords/${keywordId}`);
+      const row = document.querySelector(`.tk-row[data-keyword-id="${keywordId}"]`);
+      if (row) row.remove();
+      updateSettingsKeywordCount();
+      showToast('Keyword deleted', 'success');
+    } catch (err) {
+      showToast('Error: ' + err.message, 'error');
+    }
+  });
+}
+
+async function settingsCreateTopic() {
+  const name = prompt('New topic name:');
+  if (!name || !name.trim()) return;
+  try {
+    const result = await API.post('/admin/topics', { name: name.trim() });
+    const list = document.getElementById('settings-topics-list');
+    const emptyMsg = list.querySelector('.empty-message');
+    if (emptyMsg) emptyMsg.remove();
+    const topic = result.topic;
+    topic.keyword_count = 0;
+    topic.quote_count = 0;
+    topic.enabled = 1;
+    list.insertAdjacentHTML('beforeend', renderSettingsTopicRow(topic));
+    updateSettingsTopicCount();
+    showToast('Topic created', 'success');
+  } catch (err) {
+    showToast('Error: ' + err.message, 'error');
+  }
+}
+
+async function settingsCreateKeyword() {
+  const name = prompt('New keyword name:');
+  if (!name || !name.trim()) return;
+  try {
+    const result = await API.post('/admin/keywords', { name: name.trim(), keyword_type: 'concept' });
+    const list = document.getElementById('settings-keywords-list');
+    const emptyMsg = list.querySelector('.empty-message');
+    if (emptyMsg) emptyMsg.remove();
+    const keyword = result.keyword;
+    keyword.quote_count = 0;
+    keyword.enabled = 1;
+    list.insertAdjacentHTML('beforeend', renderSettingsKeywordRow(keyword));
+    updateSettingsKeywordCount();
+    showToast('Keyword created', 'success');
+  } catch (err) {
+    showToast('Error: ' + err.message, 'error');
+  }
+}
+
+function updateSettingsTopicCount() {
+  const list = document.getElementById('settings-topics-list');
+  const header = list ? list.closest('.settings-subsection')?.querySelector('.subsection-title') : null;
+  if (header && list) {
+    const count = list.querySelectorAll('.tk-row').length;
+    header.textContent = `Topics (${count})`;
+  }
+}
+
+function updateSettingsKeywordCount() {
+  const list = document.getElementById('settings-keywords-list');
+  const header = list ? list.closest('.settings-subsection')?.querySelector('.subsection-title') : null;
+  if (header && list) {
+    const count = list.querySelectorAll('.tk-row').length;
+    header.textContent = `Keywords (${count})`;
+  }
+}
+
+// ======= Prompts Section =======
+
+function renderSettingsPromptCard(prompt) {
+  const categoryLabel = prompt.category || 'general';
+  const updatedAt = prompt.updated_at ? new Date(prompt.updated_at).toLocaleDateString() : '';
+  return `
+    <details class="prompt-card" data-prompt-key="${escapeHtml(prompt.prompt_key)}">
+      <summary class="prompt-card__summary">
+        <span class="prompt-card__name">${escapeHtml(prompt.name)}</span>
+        <span class="prompt-card__meta">
+          <span class="prompt-card__category">${escapeHtml(categoryLabel)}</span>
+          <span class="prompt-card__length">${prompt.template_length || 0} chars</span>
+          ${updatedAt ? `<span class="prompt-card__updated">Updated ${updatedAt}</span>` : ''}
+        </span>
+      </summary>
+      <div class="prompt-card__body">
+        <p class="prompt-card__desc">${escapeHtml(prompt.description || '')}</p>
+        <textarea class="prompt-card__textarea" id="prompt-textarea-${escapeHtml(prompt.prompt_key)}" rows="12" spellcheck="false">Loading...</textarea>
+        <div class="prompt-card__actions">
+          <button class="btn btn-primary btn-sm" onclick="savePrompt('${escapeHtml(prompt.prompt_key)}')">Save</button>
+          <button class="btn btn-secondary btn-sm" onclick="resetPromptToDefault('${escapeHtml(prompt.prompt_key)}')">Reset to Default</button>
+        </div>
+      </div>
+    </details>
+  `;
+}
+
+// Lazy-load prompt template when details element is opened
+document.addEventListener('toggle', async (e) => {
+  const details = e.target.closest('.prompt-card');
+  if (!details || !details.open) return;
+  const key = details.dataset.promptKey;
+  const textarea = document.getElementById(`prompt-textarea-${key}`);
+  if (!textarea || textarea.dataset.loaded) return;
+  try {
+    const data = await API.get(`/settings/prompts/${key}`);
+    textarea.value = data.prompt?.template || '';
+    textarea.dataset.loaded = 'true';
+  } catch (err) {
+    textarea.value = 'Error loading template: ' + err.message;
+  }
+}, true);
+
+async function savePrompt(key) {
+  const textarea = document.getElementById(`prompt-textarea-${key}`);
+  if (!textarea) return;
+  const template = textarea.value;
+  try {
+    await API.put(`/settings/prompts/${key}`, { template });
+    showToast('Prompt saved', 'success');
+  } catch (err) {
+    showToast('Error saving prompt: ' + err.message, 'error');
+  }
+}
+
+async function resetPromptToDefault(key) {
+  showConfirmToast('Reset this prompt to its default template? Your customizations will be lost.', async () => {
+    try {
+      await API.post(`/settings/prompts/${key}/reset`);
+      // Reload the template text
+      const textarea = document.getElementById(`prompt-textarea-${key}`);
+      if (textarea) {
+        const data = await API.get(`/settings/prompts/${key}`);
+        textarea.value = data.prompt?.template || '';
+      }
+      showToast('Prompt reset to default', 'success');
+    } catch (err) {
+      showToast('Error resetting prompt: ' + err.message, 'error');
+    }
+  });
 }
 
 async function showSourceErrors(domain, failureCount) {

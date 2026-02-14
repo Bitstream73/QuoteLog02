@@ -5,6 +5,7 @@ import logger from './logger.js';
 import { resolvePersonId } from './nameDisambiguator.js';
 import { insertAndDeduplicateQuote } from './quoteDeduplicator.js';
 import { fetchAndStoreHeadshot } from './personPhoto.js';
+import { getPromptTemplate } from './promptManager.js';
 
 // Quote detection patterns
 const QUOTE_CHARS = /["\u201C\u201D]/;
@@ -53,84 +54,12 @@ async function extractQuotesWithGemini(articleText, article) {
     return [];
   }
 
-  const prompt = `You are a precise news quote extraction system. Extract ONLY direct, verbatim quotes from this news article.
-
-Article published: ${article.published_at || 'Unknown date'}
-Article title: ${article.title || 'Untitled'}
-
-For each quote, return:
-- quote_text: The exact quoted text as it appears in quotation marks. Use the verbatim words only.
-- speaker: The full name of the person being quoted. Never use pronouns — resolve "he", "she", "they" to the actual name.
-- speaker_title: Their role, title, or affiliation as mentioned in the article (e.g., "CEO of Apple", "U.S. Senator"). Null if not mentioned.
-- speaker_category: One of: "Politician", "Government Official", "Business Leader", "Entertainer", "Athlete", "Pundit", "Journalist", "Scientist/Academic", "Legal/Judicial", "Military/Defense", "Activist/Advocate", "Religious Leader", "Other". Choose based on the speaker's primary public role.
-- speaker_category_context: Brief context for the category. For Politicians: party and office (e.g. "Republican, U.S. Senator from Texas"). For Athletes: team and sport (e.g. "Los Angeles Lakers, NBA"). For Business Leaders: company and title. For Entertainers: medium and notable works. For Pundits/Journalists: outlet. For others: relevant affiliation. Null if unknown.
-- quote_type: Always "direct".
-- context: One sentence describing what the quote is about and why it was said.
-- quote_date: The date when this quote was actually spoken/written, in ISO format (YYYY-MM-DD).
-  * For current news quotes: use the article's publication date provided above.
-  * For historical quotes (quoting someone from the past, reprinting old statements): use the original date if mentioned in the article, otherwise "unknown".
-  * For "yesterday"/"last week" references: compute the actual date relative to the article publication date.
-  * If the speaker is deceased or the quote clearly predates the article, do NOT use the article date.
-- topics: Array of 1-3 SPECIFIC subject categories. Use the most specific applicable name:
-
-  Politics: "U.S. Presidential Politics", "U.S. Congressional Politics", "UK Politics", "EU Politics", "State/Local Politics", "Voting Rights"
-  Government: "U.S. Foreign Policy", "Diplomacy", "Intelligence & Espionage", "Military & Defense", "Governance"
-  Law: "Supreme Court", "Criminal Justice", "Constitutional Law", "Civil Rights & Liberties", "Law Enforcement"
-  Economy: "U.S. Finance", "Global Economy", "Federal Reserve", "Trade & Tariffs", "Labor & Employment", "Cryptocurrency"
-  Business: "Big Tech", "Startups", "Corporate Governance", "Energy Industry"
-  Social: "Healthcare", "Education", "Immigration", "Housing", "Gun Control", "Reproductive Rights"
-  Science: "Climate & Environment", "Space Exploration", "Artificial Intelligence", "Public Health"
-  Culture: "Film & Television", "Music", "Olympic Sports", "NFL", "NBA", "MLB", "Soccer", "Social Media"
-  World: "Middle East Conflict", "Ukraine War", "China-Taiwan Relations", "African Affairs", "Latin American Affairs"
-  Media: "Journalism", "Misinformation", "Media Industry"
-  Philosophy: "Philosophy", "Ethics", "Religion"
-
-  IMPORTANT: Use specific names, NOT broad ones. "U.S. Finance" not "Business". "UK Politics" not "Politics". "Olympic Sports" not "Sports". "Supreme Court" not "Law".
-
-- keywords: Array of 2-5 specific named entities relevant to this quote. Follow these rules STRICTLY:
-
-  GOOD keywords (use as models):
-  "Donald Trump", "Supreme Court", "January 6th Committee", "Affordable Care Act",
-  "European Union", "Silicon Valley", "Paris Climate Agreement", "Federal Reserve",
-  "2026 Winter Olympics", "Senate Judiciary Committee"
-
-  BAD keywords (NEVER produce these):
-  "Trump" (incomplete — use "Donald Trump"), "critical" (adjective), "emphasizes" (verb),
-  "policy" (too vague), "Donald" (first name only), "innovation" (generic noun),
-  "business" (generic), "groups" (generic), "competition" (generic), "strength" (generic)
-
-  Rules:
-  1. ALWAYS use FULL proper names: "Donald Trump" not "Trump", "Federal Reserve" not "Fed"
-  2. Multi-word entities are ONE keyword: "January 6th Committee" is one keyword
-  3. Every keyword MUST be a proper noun, named event, specific organization, legislation, or geographic location
-  4. NEVER include: verbs, adjectives, generic nouns, common words, the speaker's own name
-  5. Single-word keywords are ONLY allowed for proper nouns (e.g., "NATO", "OPEC", "Brexit", "Hamas")
-  6. If no specific named entities exist in the quote, return an EMPTY array — never fill with generic words
-
-- significance: Integer 1-10 rating of how noteworthy this quote is:
-  9-10: Historic or landmark statement (declaring war, resignation, major policy)
-  7-8: Strong claim, bold prediction, headline-worthy, reveals new information
-  5-6: Substantive opinion, meaningful analysis, newsworthy reaction
-  3-4: Routine statement, standard commentary, generic encouragement
-  1-2: Vague platitude, meaningless fragment, purely descriptive, no substance
-
-  HIGH: makes a specific claim, sets a goal, predicts, reveals information, accuses, is funny/memorable, provides genuine insight
-  LOW: "We need to do better" (platitude), "It was a nice event" (descriptive), "The meeting begins at noon" (procedural), fragments without assertion
-
-Rules:
-- ONLY extract verbatim quotes that appear inside quotation marks.
-- Do NOT extract indirect/reported speech, paraphrases, or descriptions of what someone said.
-- Only extract quotes attributed to a specific named person. Skip unattributed quotes.
-- If a quote spans multiple paragraphs, combine into one entry.
-- If a person is quoted multiple times, create separate entries for each distinct statement.
-- Do NOT fabricate or embellish quotes. Only extract what is in the article.
-- For speaker names, use the most complete version that appears in the article.
-
-Return a JSON object: { "quotes": [...] }
-If there are no attributable direct quotes, return: { "quotes": [] }
-
-Article text:
-${articleText.substring(0, 15000)}`;
+  // Load prompt template from DB (falls back to hardcoded default)
+  const template = getPromptTemplate('quote_extraction');
+  const prompt = template
+    .replace('{{published_at}}', article.published_at || 'Unknown date')
+    .replace('{{title}}', article.title || 'Untitled')
+    .replace('{{article_text}}', articleText.substring(0, 15000));
 
   // Retry with exponential backoff for rate limits
   let lastError;

@@ -92,7 +92,7 @@ export function indexQuoteKeywords(quoteId, context, text) {
     `INSERT INTO keywords (name, name_normalized, keyword_type) VALUES (?, ?, 'concept')
      ON CONFLICT(name) DO NOTHING`
   );
-  const getKeyword = db.prepare('SELECT id FROM keywords WHERE name = ?');
+  const getKeyword = db.prepare('SELECT id FROM keywords WHERE name = ? AND enabled = 1');
   const linkKeyword = db.prepare(
     'INSERT OR IGNORE INTO quote_keywords (quote_id, keyword_id) VALUES (?, ?)'
   );
@@ -127,7 +127,7 @@ export function backfillKeywords() {
     `INSERT INTO keywords (name, name_normalized, keyword_type) VALUES (?, ?, 'concept')
      ON CONFLICT(name) DO NOTHING`
   );
-  const getKeyword = db.prepare('SELECT id FROM keywords WHERE name = ?');
+  const getKeyword = db.prepare('SELECT id FROM keywords WHERE name = ? AND enabled = 1');
   const linkKeyword = db.prepare(
     'INSERT OR IGNORE INTO quote_keywords (quote_id, keyword_id) VALUES (?, ?)'
   );

@@ -321,7 +321,7 @@ router.put('/topics/:id', (req, res) => {
   try {
     const db = getDb();
     const topicId = parseInt(req.params.id);
-    const { name, description, context, keywords } = req.body;
+    const { name, description, context, keywords, enabled } = req.body;
 
     const existing = db.prepare('SELECT * FROM topics WHERE id = ?').get(topicId);
     if (!existing) {
@@ -333,10 +333,11 @@ router.put('/topics/:id', (req, res) => {
     const newSlug = name ? generateSlug(name.trim()) : existing.slug;
     const newDesc = description !== undefined ? description : existing.description;
     const newCtx = context !== undefined ? context : existing.context;
+    const newEnabled = enabled !== undefined ? (enabled ? 1 : 0) : existing.enabled;
 
     db.prepare(
-      'UPDATE topics SET name = ?, slug = ?, description = ?, context = ? WHERE id = ?'
-    ).run(newName, newSlug, newDesc, newCtx, topicId);
+      'UPDATE topics SET name = ?, slug = ?, description = ?, context = ?, enabled = ? WHERE id = ?'
+    ).run(newName, newSlug, newDesc, newCtx, newEnabled, topicId);
 
     // Update keywords if provided
     if (keywords && Array.isArray(keywords)) {
@@ -491,30 +492,31 @@ router.post('/keywords', (req, res) => {
   }
 });
 
-// PATCH /api/admin/keywords/:id — update keyword name/type
+// PATCH /api/admin/keywords/:id — update keyword name/type/enabled
 router.patch('/keywords/:id', (req, res) => {
   try {
     const db = getDb();
     const keywordId = parseInt(req.params.id);
-    const { name, keyword_type } = req.body;
+    const { name, keyword_type, enabled } = req.body;
 
     const existing = db.prepare('SELECT * FROM keywords WHERE id = ?').get(keywordId);
     if (!existing) {
       return res.status(404).json({ error: 'Keyword not found' });
     }
 
-    if (!name && !keyword_type) {
-      return res.status(400).json({ error: 'At least one of name or keyword_type is required' });
+    if (!name && !keyword_type && enabled === undefined) {
+      return res.status(400).json({ error: 'At least one of name, keyword_type, or enabled is required' });
     }
 
     const newName = name ? name.trim() : existing.name;
     const newNormalized = name ? name.trim().toLowerCase() : existing.name_normalized;
     const newType = keyword_type && VALID_KEYWORD_TYPES.includes(keyword_type) ? keyword_type : existing.keyword_type;
+    const newEnabled = enabled !== undefined ? (enabled ? 1 : 0) : existing.enabled;
 
-    db.prepare('UPDATE keywords SET name = ?, name_normalized = ?, keyword_type = ? WHERE id = ?')
-      .run(newName, newNormalized, newType, keywordId);
+    db.prepare('UPDATE keywords SET name = ?, name_normalized = ?, keyword_type = ?, enabled = ? WHERE id = ?')
+      .run(newName, newNormalized, newType, newEnabled, keywordId);
 
-    const keyword = db.prepare('SELECT id, name, keyword_type FROM keywords WHERE id = ?').get(keywordId);
+    const keyword = db.prepare('SELECT id, name, keyword_type, enabled FROM keywords WHERE id = ?').get(keywordId);
 
     res.json({ success: true, keyword });
   } catch (err) {
@@ -659,6 +661,135 @@ router.delete('/quotes/:id/topics/:topicId', (req, res) => {
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'Failed to remove topic: ' + err.message });
+  }
+});
+
+// --- Noteworthy CRUD ---
+
+// GET /api/admin/noteworthy — list noteworthy items
+router.get('/noteworthy', requireAdmin, (req, res) => {
+  try {
+    const db = getDb();
+    const items = db.prepare(`
+      SELECT n.*,
+        CASE
+          WHEN n.entity_type = 'quote' THEN (SELECT q.text FROM quotes q WHERE q.id = n.entity_id)
+          WHEN n.entity_type = 'article' THEN (SELECT a.title FROM articles a WHERE a.id = n.entity_id)
+          WHEN n.entity_type = 'topic' THEN (SELECT t.name FROM topics t WHERE t.id = n.entity_id)
+        END as entity_label
+      FROM noteworthy_items n
+      WHERE n.active = 1
+      ORDER BY n.display_order ASC, n.created_at DESC
+    `).all();
+    res.json({ items });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to list noteworthy items' });
+  }
+});
+
+// POST /api/admin/noteworthy — add a noteworthy item
+router.post('/noteworthy', requireAdmin, (req, res) => {
+  try {
+    const db = getDb();
+    const { entity_type, entity_id, display_order } = req.body;
+
+    if (!entity_type || !entity_id) {
+      return res.status(400).json({ error: 'entity_type and entity_id are required' });
+    }
+
+    if (!['quote', 'article', 'topic'].includes(entity_type)) {
+      return res.status(400).json({ error: 'entity_type must be quote, article, or topic' });
+    }
+
+    const result = db.prepare(`
+      INSERT OR IGNORE INTO noteworthy_items (entity_type, entity_id, display_order)
+      VALUES (?, ?, ?)
+    `).run(entity_type, entity_id, display_order || 0);
+
+    if (result.changes === 0) {
+      return res.status(409).json({ error: 'Item already in noteworthy list' });
+    }
+
+    res.json({ success: true, id: Number(result.lastInsertRowid) });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to add noteworthy item' });
+  }
+});
+
+// PATCH /api/admin/noteworthy/:id — update display_order or active status
+router.patch('/noteworthy/:id', requireAdmin, (req, res) => {
+  try {
+    const db = getDb();
+    const { id } = req.params;
+    const { display_order, active } = req.body;
+
+    const existing = db.prepare('SELECT * FROM noteworthy_items WHERE id = ?').get(id);
+    if (!existing) {
+      return res.status(404).json({ error: 'Noteworthy item not found' });
+    }
+
+    if (display_order !== undefined) {
+      db.prepare('UPDATE noteworthy_items SET display_order = ? WHERE id = ?').run(display_order, id);
+    }
+    if (active !== undefined) {
+      db.prepare('UPDATE noteworthy_items SET active = ? WHERE id = ?').run(active ? 1 : 0, id);
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update noteworthy item' });
+  }
+});
+
+// DELETE /api/admin/noteworthy/:id — remove a noteworthy item
+router.delete('/noteworthy/:id', requireAdmin, (req, res) => {
+  try {
+    const db = getDb();
+    const result = db.prepare('DELETE FROM noteworthy_items WHERE id = ?').run(req.params.id);
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'Noteworthy item not found' });
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete noteworthy item' });
+  }
+});
+
+// --- Back-propagation routes ---
+
+// POST /api/admin/backprop/trigger — trigger a back-propagation cycle
+router.post('/backprop/trigger', requireAdmin, async (req, res) => {
+  try {
+    const { runBackPropCycle, runBackPropForDate } = await import('../services/backPropagation.js');
+    const io = req.app.get('io');
+    const { target_date } = req.body;
+
+    let result;
+    if (target_date) {
+      // Validate date format
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(target_date)) {
+        return res.status(400).json({ error: 'target_date must be YYYY-MM-DD format' });
+      }
+      result = await runBackPropForDate(target_date, io);
+    } else {
+      result = await runBackPropCycle(io);
+    }
+
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: 'Back-propagation failed: ' + err.message });
+  }
+});
+
+// GET /api/admin/backprop/status — get back-propagation history
+router.get('/backprop/status', requireAdmin, async (req, res) => {
+  try {
+    const { getBackPropStatus } = await import('../services/backPropagation.js');
+    const limit = Math.min(parseInt(req.query.limit) || 10, 50);
+    const entries = getBackPropStatus(limit);
+    res.json({ entries });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to get backprop status' });
   }
 });
 

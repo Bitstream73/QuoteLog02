@@ -24,12 +24,16 @@
           <span class="logo-subhead">Accountability Through Quotes</span>
         </div>
         <div class="header-search">
-          <input type="search" id="header-search-input" placeholder="Search quotes, authors, topics..." class="search-input" onkeydown="if(event.key==='Enter')doHeaderSearch()">
-          <button class="search-btn" onclick="doHeaderSearch()" aria-label="Search">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <button class="search-icon-btn" onclick="toggleSearchBox()" aria-label="Search">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
             </svg>
           </button>
+          <div class="search-box-expanded" id="search-box-expanded" style="display:none">
+            <input type="search" id="header-search-input" placeholder="Search quotes, authors, topics..." class="search-input" onkeydown="onSearchKeydown(event)" oninput="onSearchInput()">
+            <button class="search-close-btn" onclick="toggleSearchBox()" aria-label="Close search">&times;</button>
+            <div class="search-autocomplete-dropdown" id="search-autocomplete-dropdown"></div>
+          </div>
         </div>
         <div class="nav-links">
           <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle dark mode" title="Toggle dark mode">
@@ -124,13 +128,126 @@
   <script src="/js/app.js?v=26"></script>
 
   <script>
+    let _searchDebounce = null;
+
+    function toggleSearchBox() {
+      const box = document.getElementById('search-box-expanded');
+      const input = document.getElementById('header-search-input');
+      const dropdown = document.getElementById('search-autocomplete-dropdown');
+      if (box.style.display === 'none') {
+        box.style.display = 'flex';
+        input.focus();
+      } else {
+        box.style.display = 'none';
+        input.value = '';
+        dropdown.innerHTML = '';
+        dropdown.style.display = 'none';
+      }
+    }
+
+    function onSearchInput() {
+      clearTimeout(_searchDebounce);
+      const input = document.getElementById('header-search-input');
+      const query = input.value.trim();
+      if (query.length < 2) {
+        const dd = document.getElementById('search-autocomplete-dropdown');
+        dd.innerHTML = '';
+        dd.style.display = 'none';
+        return;
+      }
+      _searchDebounce = setTimeout(() => fetchAutocomplete(query), 200);
+    }
+
+    function onSearchKeydown(event) {
+      const dropdown = document.getElementById('search-autocomplete-dropdown');
+      const items = dropdown.querySelectorAll('.ac-item');
+      const current = dropdown.querySelector('.ac-item.highlighted');
+      let idx = Array.from(items).indexOf(current);
+
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        idx = Math.min(idx + 1, items.length - 1);
+        items.forEach(i => i.classList.remove('highlighted'));
+        if (items[idx]) items[idx].classList.add('highlighted');
+      } else if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        idx = Math.max(idx - 1, 0);
+        items.forEach(i => i.classList.remove('highlighted'));
+        if (items[idx]) items[idx].classList.add('highlighted');
+      } else if (event.key === 'Enter') {
+        event.preventDefault();
+        if (current) {
+          current.click();
+        } else {
+          doHeaderSearch();
+        }
+      } else if (event.key === 'Escape') {
+        toggleSearchBox();
+      }
+    }
+
+    async function fetchAutocomplete(query) {
+      try {
+        const data = await API.get('/search/autocomplete?q=' + encodeURIComponent(query) + '&limit=8');
+        renderAutocompleteDropdown(data.suggestions || [], query);
+      } catch (err) {
+        // Silent fail
+      }
+    }
+
+    function renderAutocompleteDropdown(suggestions, query) {
+      const dropdown = document.getElementById('search-autocomplete-dropdown');
+      if (suggestions.length === 0) {
+        dropdown.innerHTML = '';
+        dropdown.style.display = 'none';
+        return;
+      }
+
+      const typeIcons = {
+        person: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
+        topic: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M4 12h16M4 17h10"/></svg>',
+        keyword: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>',
+      };
+
+      let html = suggestions.map(s => {
+        const icon = typeIcons[s.type] || '';
+        const typeBadge = `<span class="ac-type">${s.type}</span>`;
+        let onclick = '';
+        if (s.type === 'person') onclick = `navigateTo('/author/${s.id}'); toggleSearchBox();`;
+        else if (s.type === 'topic') onclick = `navigateTo('/topic/${s.id}'); toggleSearchBox();`;
+        else onclick = `document.getElementById('header-search-input').value='${escapeHtml(s.label.replace(/'/g, "\\'"))}'; doHeaderSearch();`;
+        return `<div class="ac-item" onclick="${onclick}">${icon} <span class="ac-label">${escapeHtml(s.label)}</span> ${typeBadge}</div>`;
+      }).join('');
+
+      html += `<div class="ac-item ac-item--search" onclick="doHeaderSearch()">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        <span class="ac-label">Search for "${escapeHtml(query)}"</span>
+      </div>`;
+
+      dropdown.innerHTML = html;
+      dropdown.style.display = 'block';
+    }
+
     function doHeaderSearch() {
       const input = document.getElementById('header-search-input');
       const query = input.value.trim();
       if (query.length >= 2) {
+        const dropdown = document.getElementById('search-autocomplete-dropdown');
+        dropdown.innerHTML = '';
+        dropdown.style.display = 'none';
         navigate(null, '/?search=' + encodeURIComponent(query));
       }
     }
+
+    // Close autocomplete when clicking outside
+    document.addEventListener('click', (e) => {
+      const searchArea = document.querySelector('.header-search');
+      const dropdown = document.getElementById('search-autocomplete-dropdown');
+      if (searchArea && dropdown && !searchArea.contains(e.target)) {
+        dropdown.innerHTML = '';
+        dropdown.style.display = 'none';
+      }
+    });
   </script>
 </body>
 </html>

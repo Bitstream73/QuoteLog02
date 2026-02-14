@@ -28,7 +28,7 @@ async function renderQuote(id) {
     };
     const mainQuoteTopics = q.topics || [];
 
-    // Hero quote layout
+    // Author block
     const heroPersonName = q.personName || '';
     const heroPhotoUrl = q.photoUrl || '';
     const heroInitial = (heroPersonName || '?').charAt(0).toUpperCase();
@@ -43,22 +43,29 @@ async function renderQuote(id) {
       ? renderImportantButton('quote', q.id, q.importantsCount || q.importants_count || 0, false)
       : '';
 
+    // Quote date
+    const quoteDateStr = formatDateTime(q.quote_datetime || q.quoteDateTime || '');
+
     let html = `
       <p style="margin-bottom:1.5rem;font-family:var(--font-ui);font-size:var(--text-sm)">
         <a href="/" onclick="navigateBackToQuotes(event)" style="color:var(--accent);text-decoration:none">&larr; Back to quotes</a>
       </p>
 
-      <div class="quote-hero">
-        <div class="quote-hero__text">
-          <span class="quote-mark quote-mark--open">\u201C</span>${escapeHtml(q.text)}<span class="quote-mark quote-mark--close">\u201D</span>
-        </div>
-        <div class="quote-hero__speaker" onclick="navigateTo('/author/${q.personId}')">
-          ${heroAvatarHtml}
-          <div>
-            <span class="quote-hero__name">${escapeHtml(heroPersonName)}</span>
-            ${q.personDisambiguation ? `<span class="quote-hero__role">${escapeHtml(q.personDisambiguation)}</span>` : ''}
-          </div>
-        </div>
+      <!-- 1. Quote text — left-justified -->
+      <div class="quote-page__text">
+        <span class="quote-mark quote-mark--open">\u201C</span>${escapeHtml(q.text)}<span class="quote-mark quote-mark--close">\u201D</span>
+      </div>
+
+      <!-- 2. Author block — centered -->
+      <div class="quote-page__author-block" onclick="navigateTo('/author/${q.personId}')" style="cursor:pointer">
+        ${heroAvatarHtml}
+        <span class="quote-hero__name">${escapeHtml(heroPersonName)}</span>
+        ${q.personDisambiguation ? `<span class="quote-hero__role">${escapeHtml(q.personDisambiguation)}</span>` : ''}
+      </div>
+
+      <!-- 3. Context — date, context text, share + IMPORTANT -->
+      <div class="quote-page__context">
+        ${quoteDateStr ? `<span class="quote-date-inline">${quoteDateStr}</span>` : ''}
         ${q.context ? `<div class="quote-hero__summary">${escapeHtml(q.context)}</div>` : ''}
         <div class="quote-hero__actions">
           ${shareHtml}
@@ -67,16 +74,16 @@ async function renderQuote(id) {
       </div>
     `;
 
-    // Articles / Sources — renamed "FROM"
+    // 4. Source — title (links to article), context, org + published date
     if (data.articles && data.articles.length > 0) {
-      html += '<h2 class="quote-section-label">FROM</h2>';
-      html += '<div class="quote-detail-sources">';
+      html += '<div class="quote-page__source">';
       for (const a of data.articles) {
         const sourceName = a.source_name || a.domain || 'Source';
         const articleDate = a.published_at ? formatDateTime(a.published_at) : '';
         html += `
           <div class="quote-detail-source-item">
             <a href="/article/${a.id}" onclick="navigate(event, '/article/${a.id}')" class="quote-article-title-link">${escapeHtml(a.title || 'Untitled Article')}</a>
+            ${a.context ? `<div style="font-family:var(--font-ui);font-size:var(--text-sm);color:var(--text-secondary);margin-top:0.25rem">${escapeHtml(a.context)}</div>` : ''}
             <div style="display:flex;gap:0.5rem;align-items:center;margin-top:0.25rem">
               <span class="quote-primary-source">${escapeHtml(sourceName)}</span>
               ${articleDate ? `<span class="quote-date-inline">${articleDate}</span>` : ''}
@@ -88,13 +95,10 @@ async function renderQuote(id) {
       html += '</div>';
     }
 
-    // AI Analysis section (auto-loading for all users)
+    // 5. AI Analysis — no header, no rerun button; truth badge at top
     html += `
       <div id="context-container" style="margin-top:2rem;padding-top:1.5rem;border-top:1px solid var(--divider-light)">
-        <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:1rem">
-          <h2 class="quote-section-label" style="margin:0">AI ANALYSIS</h2>
-          <button class="context-refresh-btn" id="context-refresh-btn" onclick="loadQuoteContext(${q.id}, true)" style="display:none" title="Refresh analysis">&#x21bb;</button>
-        </div>
+        <div id="truth-badge-slot"></div>
         <div id="context-content">
           <div class="context-loading">
             <div class="context-loading-spinner"></div>
@@ -104,13 +108,9 @@ async function renderQuote(id) {
       </div>
     `;
 
-    // Fact Check section (auto-loading for all users)
+    // Fact Check section (renders into truth badge + inline content)
     html += `
-      <div id="fact-check-container" style="margin-top:1.5rem;padding-top:1.5rem;border-top:1px solid var(--divider-light)">
-        <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:1rem">
-          <h2 class="quote-section-label" style="margin:0">FACT CHECK</h2>
-          <button class="context-refresh-btn" id="fact-check-refresh-btn" onclick="runFactCheck(${q.id}, true)" style="display:none" title="Refresh fact check">&#x21bb;</button>
-        </div>
+      <div id="fact-check-container" style="margin-top:1.5rem">
         <div id="fact-check-content">
           <div class="context-loading">
             <div class="context-loading-spinner"></div>
@@ -120,10 +120,9 @@ async function renderQuote(id) {
       </div>
     `;
 
-    // Smart Related Quotes section (auto-loading)
+    // 6. Related Quotes — two-column at 768px+
     html += `
       <div id="smart-related-section" style="margin-top:2rem;padding-top:1.5rem;border-top:1px solid var(--divider-light)">
-        <h2 class="quote-section-label">RELATED QUOTES</h2>
         <div id="smart-related-content">
           <div class="smart-related-loading">
             <div class="context-loading-spinner"></div>
@@ -165,40 +164,45 @@ async function loadSmartRelated(quoteId) {
 
   try {
     const data = await API.get(`/quotes/${quoteId}/smart-related`);
-    let html = '';
 
-    // Contradictions
+    // Column 1: contradictions + supporting context (same author)
+    let col1 = '';
     if (data.contradictions && data.contradictions.length > 0) {
-      html += '<div id="contradictions-section" class="smart-related-group">';
-      html += '<h3 class="smart-related-group-title" style="color:var(--danger, #dc3545)">Contradictions from Same Author</h3>';
+      col1 += '<div class="smart-related-group">';
+      col1 += '<h3 class="smart-related-group-title" style="color:var(--danger, #dc3545)">Contradictions</h3>';
       for (const c of data.contradictions) {
-        html += buildSmartRelatedQuoteBlock(c);
+        col1 += buildSmartRelatedQuoteBlock(c);
       }
-      html += '</div>';
+      col1 += '</div>';
     }
-
-    // Supporting context
     if (data.supportingContext && data.supportingContext.length > 0) {
-      html += '<div id="supporting-context-section" class="smart-related-group">';
-      html += '<h3 class="smart-related-group-title">More Context from Same Author</h3>';
+      col1 += '<div class="smart-related-group">';
+      col1 += '<h3 class="smart-related-group-title">More Context from Same Author</h3>';
       for (const c of data.supportingContext) {
-        html += buildSmartRelatedQuoteBlock(c);
+        col1 += buildSmartRelatedQuoteBlock(c);
       }
-      html += '</div>';
+      col1 += '</div>';
     }
 
-    // Mentions by others
+    // Column 2: mentions by others
+    let col2 = '';
     if (data.mentionsByOthers && data.mentionsByOthers.length > 0) {
-      html += '<div id="mentions-section" class="smart-related-group">';
-      html += '<h3 class="smart-related-group-title" style="color:var(--accent)">What Others Say</h3>';
+      col2 += '<div class="smart-related-group">';
+      col2 += '<h3 class="smart-related-group-title" style="color:var(--accent)">What Others Say</h3>';
       for (const m of data.mentionsByOthers) {
-        html += buildSmartRelatedQuoteBlock(m);
+        col2 += buildSmartRelatedQuoteBlock(m);
       }
-      html += '</div>';
+      col2 += '</div>';
     }
 
-    if (!html) {
+    let html = '';
+    if (!col1 && !col2) {
       html = '<p style="font-family:var(--font-ui);font-size:0.85rem;color:var(--text-muted)">No related quotes found.</p>';
+    } else {
+      html = '<div class="smart-related-columns">';
+      html += `<div class="smart-related-col">${col1}</div>`;
+      html += `<div class="smart-related-col">${col2}</div>`;
+      html += '</div>';
     }
 
     container.innerHTML = html;
@@ -248,7 +252,6 @@ async function loadQuoteContext(quoteId, force) {
         const cached = JSON.parse(raw);
         if (Date.now() - cached.timestamp < CTX_CACHE_TTL_MS) {
           renderContextResult(container, cached.data);
-          showRefreshBtn('context-refresh-btn');
           return;
         }
         sessionStorage.removeItem(CTX_CACHE_PREFIX + quoteId);
@@ -276,7 +279,6 @@ async function loadQuoteContext(quoteId, force) {
     } catch { /* sessionStorage full */ }
 
     renderContextResult(container, data);
-    showRefreshBtn('context-refresh-btn');
   } catch (err) {
     container.innerHTML = `<div class="context-error"><p>Analysis unavailable. ${escapeHtml(err.message)}</p><button class="context-btn" onclick="loadQuoteContext(${quoteId}, false)">Try Again</button></div>`;
   }
@@ -288,12 +290,20 @@ async function loadQuoteContext(quoteId, force) {
 function renderContextResult(container, data) {
   let html = '';
 
+  // "Referenced in this Quote" section
+  const hasEvidence = data.claims && data.claims.some(c =>
+    (c.supporting && c.supporting.length) || (c.contradicting && c.contradicting.length) || (c.addingContext && c.addingContext.length)
+  );
+  if (hasEvidence) {
+    html += '<h3 class="quote-section-label" style="margin-top:0">Referenced in this Quote</h3>';
+  }
+
   // Summary
   if (data.summary) {
     html += `<div class="context-summary">${escapeHtml(data.summary)}</div>`;
   }
 
-  // Claims
+  // Claims with cited quotes at 0.5em
   if (data.claims && data.claims.length > 0) {
     for (const claim of data.claims) {
       html += '<div class="context-claim">';
@@ -370,7 +380,7 @@ function buildClaimTypeBadge(type) {
 function buildEvidenceItem(ev) {
   let html = '<div class="context-evidence-item">';
 
-  // Cited quote with link
+  // Cited quote with link — half font size, clickable to /quote/:id
   if (ev.quoteId && ev.quoteText) {
     html += `<a href="/quote/${ev.quoteId}" onclick="navigate(event, '/quote/${ev.quoteId}')" class="evidence-quote-link">"${escapeHtml(ev.quoteText)}"</a>`;
     if (ev.authorName) {
@@ -421,7 +431,6 @@ async function runFactCheck(quoteId, force) {
         if (Date.now() - cached.timestamp < FC_CACHE_TTL_MS) {
           renderFactCheckResult(container, cached.data);
           annotateQuoteText(cached.data);
-          showRefreshBtn('fact-check-refresh-btn');
           return;
         }
         sessionStorage.removeItem(FC_CACHE_PREFIX + quoteId);
@@ -437,8 +446,8 @@ async function runFactCheck(quoteId, force) {
     </div>
   `;
 
-  // Gather quote data from the DOM (use quote-hero on detail page)
-  const heroText = document.querySelector('.quote-hero__text');
+  // Gather quote data from the DOM
+  const heroText = document.querySelector('.quote-page__text') || document.querySelector('.quote-hero__text');
   const quoteText = heroText?.textContent?.replace(/["\u201C\u201D]/g, '').trim() || '';
   const heroName = document.querySelector('.quote-hero__name');
   const authorName = heroName?.textContent?.trim() || '';
@@ -475,7 +484,6 @@ async function runFactCheck(quoteId, force) {
 
     renderFactCheckResult(container, result);
     annotateQuoteText(result);
-    showRefreshBtn('fact-check-refresh-btn');
 
   } catch (err) {
     container.innerHTML = `<div class="context-error"><p>Fact check unavailable.</p><button class="context-btn" onclick="runFactCheck(${quoteId}, false)">Try Again</button></div>`;
@@ -484,6 +492,32 @@ async function runFactCheck(quoteId, force) {
 
 function renderFactCheckResult(container, result) {
   container.innerHTML = result.combinedHtml || result.html || '';
+
+  // Extract verdict badge and place it at top of analysis section
+  const badgeSlot = document.getElementById('truth-badge-slot');
+  if (badgeSlot && result.verdict) {
+    const verdictColors = {
+      TRUE: 'var(--success, #16a34a)',
+      FALSE: 'var(--error, #c41e3a)',
+      MOSTLY_TRUE: '#059669',
+      MOSTLY_FALSE: '#d97706',
+      MISLEADING: '#d97706',
+      LACKS_CONTEXT: 'var(--info, #2563eb)',
+      UNVERIFIABLE: 'var(--text-muted)',
+    };
+    const verdictLabels = {
+      TRUE: 'True',
+      FALSE: 'False',
+      MOSTLY_TRUE: 'Mostly True',
+      MOSTLY_FALSE: 'Mostly False',
+      MISLEADING: 'Misleading',
+      LACKS_CONTEXT: 'Lacks Context',
+      UNVERIFIABLE: 'Unverifiable',
+    };
+    const color = verdictColors[result.verdict] || 'var(--text-muted)';
+    const label = verdictLabels[result.verdict] || result.verdict;
+    badgeSlot.innerHTML = `<div class="truth-badge" style="background:${color}">${escapeHtml(label)}</div>`;
+  }
 }
 
 /**
@@ -494,7 +528,7 @@ function annotateQuoteText(result) {
   if (quoteTextAnnotated) return;
   if (!result.references?.references) return;
 
-  const quoteTextEl = document.querySelector('.quote-hero__text') || document.querySelector('.quote-block__text');
+  const quoteTextEl = document.querySelector('.quote-page__text') || document.querySelector('.quote-hero__text') || document.querySelector('.quote-block__text');
   if (!quoteTextEl) return;
 
   const foundRefs = result.references.references.filter(r => r.enrichment?.found && r.enrichment?.primary_url);

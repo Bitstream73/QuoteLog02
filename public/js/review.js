@@ -13,8 +13,9 @@ async function renderReview() {
     </p>
     <h1 class="page-title">Review</h1>
     <div class="review-tab-bar">
-      <button class="review-tab ${_reviewActiveTab === 'quotes' ? 'active' : ''}" onclick="switchReviewTab('quotes')">Quote Management</button>
-      <button class="review-tab ${_reviewActiveTab === 'disambiguation' ? 'active' : ''}" onclick="switchReviewTab('disambiguation')">Disambiguation Review <span class="disambig-tab-badge" id="disambig-tab-badge" style="display:none"></span></button>
+      <button class="review-tab ${_reviewActiveTab === 'quotes' ? 'active' : ''}" data-tab="quotes" onclick="switchReviewTab('quotes')">Quote Management</button>
+      <button class="review-tab ${_reviewActiveTab === 'disambiguation' ? 'active' : ''}" data-tab="disambiguation" onclick="switchReviewTab('disambiguation')">Disambiguation Review <span class="disambig-tab-badge" id="disambig-tab-badge" style="display:none"></span></button>
+      <button class="review-tab ${_reviewActiveTab === 'topics-keywords' ? 'active' : ''}" data-tab="topics-keywords" onclick="switchReviewTab('topics-keywords')">Topics &amp; Keywords <span class="tkr-tab-badge" id="tkr-tab-badge" style="display:none"></span></button>
     </div>
     <div id="review-tab-content"></div>
   `;
@@ -22,6 +23,8 @@ async function renderReview() {
 
   if (_reviewActiveTab === 'disambiguation') {
     await renderDisambiguationTab();
+  } else if (_reviewActiveTab === 'topics-keywords') {
+    await renderTopicsKeywordsReviewTab();
   } else {
     await renderQuoteManagementTab();
   }
@@ -31,13 +34,15 @@ function switchReviewTab(tab) {
   _reviewActiveTab = tab;
   // Update tab bar active state
   document.querySelectorAll('.review-tab').forEach(btn => {
-    btn.classList.toggle('active', btn.textContent.toLowerCase().includes(tab === 'disambiguation' ? 'disambiguation' : 'quote'));
+    btn.classList.toggle('active', btn.dataset.tab === tab);
   });
   const container = document.getElementById('review-tab-content');
   if (!container) return;
   container.innerHTML = '<div class="loading">Loading...</div>';
   if (tab === 'disambiguation') {
     renderDisambiguationTab();
+  } else if (tab === 'topics-keywords') {
+    renderTopicsKeywordsReviewTab();
   } else {
     renderQuoteManagementTab();
   }
@@ -434,6 +439,230 @@ function expandBatch(button) {
 
   // Re-render the page to show individual cards
   renderReview();
+}
+
+// ===================================
+// Topics & Keywords Review Tab
+// ===================================
+
+let _tkrPage = 1;
+
+async function renderTopicsKeywordsReviewTab() {
+  const container = document.getElementById('review-tab-content');
+  if (!container) return;
+
+  try {
+    const [data, stats] = await Promise.all([
+      API.get(`/review/topics-keywords?page=${_tkrPage}&limit=20`),
+      API.get('/review/topics-keywords/stats'),
+    ]);
+
+    updateTkrTabBadge(stats.pending);
+
+    let html = `
+      <p class="page-subtitle">Review AI-generated and migrated topics and keywords</p>
+      <div class="review-stats">
+        <span class="stat"><strong>${stats.pending}</strong> pending</span>
+        <span class="stat"><strong>${stats.pendingTopics}</strong> topics</span>
+        <span class="stat"><strong>${stats.pendingKeywords}</strong> keywords</span>
+        <span class="stat"><strong>${stats.approved}</strong> approved</span>
+        <span class="stat"><strong>${stats.rejected}</strong> rejected</span>
+      </div>
+    `;
+
+    if (data.items.length === 0) {
+      html += `
+        <div class="empty-state">
+          <h3>No items to review</h3>
+          <p>All topics and keywords have been reviewed.</p>
+        </div>
+      `;
+    } else {
+      // Batch action bar
+      html += `
+        <div class="tkr-batch-bar">
+          <label class="tkr-select-all"><input type="checkbox" id="tkr-select-all" onchange="toggleTkrSelectAll(this.checked)"> Select All</label>
+          <button class="btn btn-success btn-sm" onclick="batchTkrAction('approve')">Approve Selected</button>
+          <button class="btn btn-danger btn-sm" onclick="batchTkrAction('reject')">Reject Selected</button>
+        </div>
+      `;
+
+      for (const item of data.items) {
+        html += renderTkrCard(item);
+      }
+
+      // Pagination
+      if (data.totalPages > 1) {
+        html += '<div class="pagination">';
+        for (let i = 1; i <= Math.min(data.totalPages, 10); i++) {
+          html += `<button class="page-btn ${i === _tkrPage ? 'active' : ''}" onclick="loadTkrPage(${i})">${i}</button>`;
+        }
+        if (data.totalPages > 10) {
+          html += `<span class="pagination-ellipsis">...</span>`;
+          html += `<button class="page-btn" onclick="loadTkrPage(${data.totalPages})">${data.totalPages}</button>`;
+        }
+        html += '</div>';
+      }
+    }
+
+    container.innerHTML = html;
+  } catch (err) {
+    container.innerHTML = `<div class="empty-state"><h3>Error</h3><p>${escapeHtml(err.message)}</p></div>`;
+  }
+}
+
+function renderTkrCard(item) {
+  const typeBadgeColor = item.entity_type === 'topic' ? 'var(--accent, #2563eb)' : '#7c3aed';
+  const sourceLabel = item.source === 'ai' ? 'AI Generated' : item.source === 'migration' ? 'Migration' : 'User';
+  const sourceBadgeColor = item.source === 'ai' ? '#d97706' : item.source === 'migration' ? 'var(--text-muted)' : '#059669';
+
+  return `
+    <div class="tkr-card" data-tkr-id="${item.id}">
+      <div class="tkr-card__header">
+        <label class="tkr-card__select"><input type="checkbox" class="tkr-checkbox" value="${item.id}"></label>
+        <span class="tkr-badge" style="background:${typeBadgeColor}">${escapeHtml(item.entity_type)}</span>
+        <span class="tkr-badge" style="background:${sourceBadgeColor}">${sourceLabel}</span>
+      </div>
+      <div class="tkr-card__body">
+        <div class="tkr-card__name">${escapeHtml(item.current_name || item.original_name)}</div>
+        ${item.current_name && item.current_name !== item.original_name ? `<div class="tkr-card__original">Original: ${escapeHtml(item.original_name)}</div>` : ''}
+      </div>
+      <div class="tkr-card__actions">
+        <button class="btn btn-success btn-sm" onclick="approveTkr(${item.id})">Approve</button>
+        <button class="btn btn-danger btn-sm" onclick="rejectTkr(${item.id})">Reject</button>
+        <button class="btn btn-secondary btn-sm" onclick="editTkr(${item.id}, '${escapeHtml((item.current_name || item.original_name).replace(/'/g, "\\'"))}')">Edit</button>
+      </div>
+    </div>
+  `;
+}
+
+async function approveTkr(id) {
+  const card = document.querySelector(`.tkr-card[data-tkr-id="${id}"]`);
+  if (card) card.classList.add('processing');
+
+  try {
+    await API.post(`/review/topics-keywords/${id}/approve`);
+    if (card) {
+      card.classList.add('resolved');
+      setTimeout(() => card.remove(), 400);
+    }
+    updateTkrCount(-1);
+    showToast('Approved', 'success');
+  } catch (err) {
+    if (card) card.classList.remove('processing');
+    showToast('Error: ' + err.message, 'error', 5000);
+  }
+}
+
+async function rejectTkr(id) {
+  const card = document.querySelector(`.tkr-card[data-tkr-id="${id}"]`);
+  if (card) card.classList.add('processing');
+
+  try {
+    await API.post(`/review/topics-keywords/${id}/reject`);
+    if (card) {
+      card.classList.add('resolved');
+      setTimeout(() => card.remove(), 400);
+    }
+    updateTkrCount(-1);
+    showToast('Rejected', 'success');
+  } catch (err) {
+    if (card) card.classList.remove('processing');
+    showToast('Error: ' + err.message, 'error', 5000);
+  }
+}
+
+function editTkr(id, currentName) {
+  const card = document.querySelector(`.tkr-card[data-tkr-id="${id}"]`);
+  if (!card) return;
+
+  const actionsEl = card.querySelector('.tkr-card__actions');
+  if (!actionsEl) return;
+
+  actionsEl.innerHTML = `
+    <input type="text" class="input-text" id="tkr-edit-${id}" value="${escapeHtml(currentName)}" style="flex:1;min-width:0">
+    <button class="btn btn-success btn-sm" onclick="submitTkrEdit(${id})">Save</button>
+    <button class="btn btn-secondary btn-sm" onclick="renderTopicsKeywordsReviewTab()">Cancel</button>
+  `;
+  const input = document.getElementById(`tkr-edit-${id}`);
+  if (input) input.focus();
+}
+
+async function submitTkrEdit(id) {
+  const input = document.getElementById(`tkr-edit-${id}`);
+  if (!input) return;
+
+  const newName = input.value.trim();
+  if (!newName) {
+    showToast('Name cannot be empty', 'error');
+    return;
+  }
+
+  const card = document.querySelector(`.tkr-card[data-tkr-id="${id}"]`);
+  if (card) card.classList.add('processing');
+
+  try {
+    await API.post(`/review/topics-keywords/${id}/edit`, { new_name: newName });
+    if (card) {
+      card.classList.add('resolved');
+      setTimeout(() => card.remove(), 400);
+    }
+    updateTkrCount(-1);
+    showToast('Edited and approved', 'success');
+  } catch (err) {
+    if (card) card.classList.remove('processing');
+    showToast('Error: ' + err.message, 'error', 5000);
+  }
+}
+
+function toggleTkrSelectAll(checked) {
+  document.querySelectorAll('.tkr-checkbox').forEach(cb => { cb.checked = checked; });
+}
+
+async function batchTkrAction(action) {
+  const checked = document.querySelectorAll('.tkr-checkbox:checked');
+  const ids = Array.from(checked).map(cb => parseInt(cb.value));
+
+  if (ids.length === 0) {
+    showToast('Select at least one item', 'error');
+    return;
+  }
+
+  try {
+    const result = await API.post('/review/topics-keywords/batch', { action, ids });
+    const successCount = (result.results || []).filter(r => r.success).length;
+    showToast(`${successCount} item${successCount !== 1 ? 's' : ''} ${action}d`, 'success');
+    updateTkrCount(-successCount);
+    // Reload the tab
+    renderTopicsKeywordsReviewTab();
+  } catch (err) {
+    showToast('Error: ' + err.message, 'error', 5000);
+  }
+}
+
+function loadTkrPage(page) {
+  _tkrPage = page;
+  renderTopicsKeywordsReviewTab();
+}
+
+function updateTkrCount(delta) {
+  const badge = document.getElementById('tkr-tab-badge');
+  if (badge) {
+    let count = parseInt(badge.textContent) || 0;
+    count = Math.max(0, count + delta);
+    updateTkrTabBadge(count);
+  }
+}
+
+function updateTkrTabBadge(count) {
+  const badge = document.getElementById('tkr-tab-badge');
+  if (!badge) return;
+  if (count > 0) {
+    badge.textContent = count > 99 ? '99+' : count;
+    badge.style.display = '';
+  } else {
+    badge.style.display = 'none';
+  }
 }
 
 function updateReviewCount(delta) {

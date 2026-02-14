@@ -49,27 +49,39 @@ function buildAuthorQuoteHtml(q, authorName, authorCategoryContext) {
     ? renderImportantButton('quote', q.id, q.importantsCount || q.importants_count || q.voteScore || 0, false)
     : '';
 
+  // Author portrait
+  const photoUrl = q.photoUrl || q.photo_url || '';
+  const authorInitial = (authorName || '?').charAt(0).toUpperCase();
+  const authorAvatarHtml = photoUrl
+    ? `<img src="${escapeHtml(photoUrl)}" alt="${escapeHtml(authorName)}" class="quote-hero__avatar" onerror="this.outerHTML='<div class=\\'quote-hero__avatar-placeholder\\'>${authorInitial}</div>'" loading="lazy">`
+    : `<div class="quote-hero__avatar-placeholder">${authorInitial}</div>`;
+
   return `
     <div class="quote-entry" id="qe-${q.id}">
       <div class="quote-entry-content">
-        <div class="quote-text-row">
+        <!-- 1. Quote text — left-justified, entire text clickable -->
+        <a href="/quote/${q.id}" onclick="navigate(event, '/quote/${q.id}')" class="author-quote-text-link">
           <p class="quote-text" id="qt-${q.id}">${escapeHtml(truncatedText)}</p>
-          ${isLong ? `<a href="#" class="show-more-toggle" onclick="toggleQuoteText(event, ${q.id})">show more</a>` : ''}
-        </div>
-        <div class="quote-author-block">
-          <div class="quote-author-row">
-            ${quoteTypeHtml}
-            ${dateHtml}
+          ${isLong ? `<span class="show-more-toggle">show more</span>` : ''}
+        </a>
+        <!-- 2. Author block — left-justified with portrait + name + description -->
+        <div class="author-quote__author-block">
+          ${authorAvatarHtml}
+          <div>
+            <span class="quote-hero__name">${escapeHtml(authorName)}</span>
+            ${authorCategoryContext ? `<span class="quote-hero__role">${escapeHtml(authorCategoryContext)}</span>` : ''}
           </div>
         </div>
-        ${contextHtml}
-        <div class="quote-sources-row">
-          ${primarySourceHtml}
-          ${articleTitleHtml}
+        <!-- 3. Context — date + context text -->
+        <div class="author-quote__context">
+          ${quoteTypeHtml}
+          ${dateHtml}
+          ${contextHtml}
         </div>
+        <!-- 4. Share buttons + IMPORTANT -->
         <div style="display:flex;gap:1rem;align-items:center;margin-top:0.5rem">
-          ${importantHtml}
           ${shareHtml}
+          ${importantHtml}
         </div>
         ${typeof buildAdminActionsHtml === 'function' ? buildAdminActionsHtml({
           id: q.id, personId: q.personId, personName: authorName,

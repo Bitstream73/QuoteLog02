@@ -5,6 +5,7 @@ import { createBackup, pruneOldBackups } from './backup.js';
 import { materializeTopics } from './topicMaterializer.js';
 import { suggestTopics } from './topicSuggester.js';
 import { recalculateTrendingScores } from './trendingCalculator.js';
+import { runBackPropCycle } from './backPropagation.js';
 
 let fetchTimer = null;
 let appInstance = null;
@@ -247,6 +248,21 @@ async function runFetchCycle() {
         logger.info('scheduler', 'trending_scores_recalculated');
       } catch (err) {
         logger.error('scheduler', 'trending_recalculation_error', { error: err.message });
+      }
+    }
+
+    // Phase 3: Back-propagation (optional — fills gaps in past days)
+    const backpropEnabled = getSettingValue('backprop_enabled', '0') === '1';
+    if (backpropEnabled) {
+      try {
+        const backpropResult = await runBackPropCycle(io);
+        if (backpropResult.targetDate) {
+          logger.info('scheduler', 'backprop_complete', backpropResult);
+          totalNewArticles += backpropResult.articlesFound;
+          totalNewQuotes += backpropResult.quotesExtracted;
+        }
+      } catch (err) {
+        logger.error('scheduler', 'backprop_error', { error: err.message });
       }
     }
 

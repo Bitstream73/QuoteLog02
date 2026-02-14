@@ -12,11 +12,12 @@ export function materializeTopics(dbOverride) {
   // Clear existing quote_topics
   db.exec('DELETE FROM quote_topics');
 
-  const topics = db.prepare('SELECT id FROM topics').all();
+  const topics = db.prepare('SELECT id FROM topics WHERE enabled = 1').all();
 
   const findQuotes = db.prepare(`
     SELECT DISTINCT qk.quote_id
     FROM topic_keywords tk
+    JOIN keywords k ON k.id = tk.keyword_id AND k.enabled = 1
     JOIN quote_keywords qk ON qk.keyword_id = tk.keyword_id
     JOIN quotes q ON q.id = qk.quote_id AND q.is_visible = 1
     WHERE tk.topic_id = ?
@@ -58,6 +59,7 @@ export function materializeSingleTopic(topicId, dbOverride) {
   const quotes = db.prepare(`
     SELECT DISTINCT qk.quote_id
     FROM topic_keywords tk
+    JOIN keywords k ON k.id = tk.keyword_id AND k.enabled = 1
     JOIN quote_keywords qk ON qk.keyword_id = tk.keyword_id
     JOIN quotes q ON q.id = qk.quote_id AND q.is_visible = 1
     WHERE tk.topic_id = ?

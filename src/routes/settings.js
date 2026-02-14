@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { getDb, getSettingValue, setSettingValue, exportSettingsSeed } from '../config/database.js';
 import { requireAdmin } from '../middleware/auth.js';
+import { listPrompts, getPromptFull, updatePrompt, resetPrompt } from '../services/promptManager.js';
 
 const router = Router();
 
@@ -124,6 +125,61 @@ router.post('/fetch-now', requireAdmin, async (req, res) => {
     res.json({ message: 'Fetch cycle started' });
   } else {
     res.status(409).json({ error: 'A fetch cycle is already running' });
+  }
+});
+
+// --- Prompt management routes ---
+
+// GET /api/settings/prompts — list all prompt templates
+router.get('/prompts', requireAdmin, (req, res) => {
+  try {
+    const prompts = listPrompts();
+    res.json({ prompts });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to list prompts' });
+  }
+});
+
+// GET /api/settings/prompts/:key — get a single prompt (includes template text)
+router.get('/prompts/:key', requireAdmin, (req, res) => {
+  try {
+    const prompt = getPromptFull(req.params.key);
+    if (!prompt) {
+      return res.status(404).json({ error: 'Prompt not found' });
+    }
+    res.json({ prompt });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to get prompt' });
+  }
+});
+
+// PUT /api/settings/prompts/:key — update a prompt template
+router.put('/prompts/:key', requireAdmin, (req, res) => {
+  try {
+    const { template } = req.body;
+    if (!template || typeof template !== 'string') {
+      return res.status(400).json({ error: 'template (string) is required' });
+    }
+    const result = updatePrompt(req.params.key, template);
+    if (!result.success) {
+      return res.status(404).json({ error: result.error });
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update prompt' });
+  }
+});
+
+// POST /api/settings/prompts/:key/reset — reset a prompt to hardcoded default
+router.post('/prompts/:key/reset', requireAdmin, (req, res) => {
+  try {
+    const result = resetPrompt(req.params.key);
+    if (!result.success) {
+      return res.status(404).json({ error: result.error });
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to reset prompt' });
   }
 });
 
