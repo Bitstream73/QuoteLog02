@@ -488,7 +488,9 @@ function renderFactCheckResult(container, result) {
 
 /**
  * After rendering reference cards, annotate the quote text with inline links
- * for referenced phrases. Guarded against double-run.
+ * for referenced phrases. Uses DOM TreeWalker to only match inside text nodes,
+ * preventing accidental replacement inside href URLs or HTML attributes.
+ * Guarded against double-run.
  */
 function annotateQuoteText(result) {
   if (quoteTextAnnotated) return;
@@ -500,34 +502,52 @@ function annotateQuoteText(result) {
   const foundRefs = result.references.references.filter(r => r.enrichment?.found && r.enrichment?.primary_url);
   if (foundRefs.length === 0) return;
 
-  let html = quoteTextEl.innerHTML;
-
-  // Sort by text_span length descending to avoid partial replacement issues
+  // Sort by text_span length descending to handle longer matches first
   const sorted = [...foundRefs].sort((a, b) => (b.text_span?.length || 0) - (a.text_span?.length || 0));
 
   for (const ref of sorted) {
     const span = ref.text_span;
-    if (!span || !html.includes(span)) continue;
+    if (!span) continue;
 
-    const url = ref.enrichment.primary_url;
-    const title = ref.enrichment.title || ref.display_name || span;
-    const type = ref.type || 'concept';
+    const walker = document.createTreeWalker(quoteTextEl, NodeFilter.SHOW_TEXT);
+    let node;
+    let replaced = false;
+    while (!replaced && (node = walker.nextNode())) {
+      const idx = node.textContent.indexOf(span);
+      if (idx === -1) continue;
 
-    const annotatedLink = `<a class="fc-inline-ref fc-inline-ref--${escapeHtmlAttr(type)}" href="${escapeHtmlAttr(url)}" target="_blank" rel="noopener" title="${escapeHtmlAttr(title)}" data-ref-type="${escapeHtmlAttr(type)}">${span}</a>`;
+      const url = cleanUrlForAttr(ref.enrichment.primary_url);
+      const title = ref.enrichment.title || ref.display_name || span;
+      const type = ref.type || 'concept';
 
-    html = html.replace(span, annotatedLink);
+      const link = document.createElement('a');
+      link.className = `fc-inline-ref fc-inline-ref--${type}`;
+      link.href = url;
+      link.target = '_blank';
+      link.rel = 'noopener';
+      link.title = title;
+      link.dataset.refType = type;
+      link.textContent = span;
+
+      const after = node.splitText(idx);
+      after.textContent = after.textContent.substring(span.length);
+      node.parentNode.insertBefore(link, after);
+      replaced = true;
+    }
   }
 
-  quoteTextEl.innerHTML = html;
   quoteTextAnnotated = true;
 }
 
-function escapeHtmlAttr(str) {
-  if (!str) return '';
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#x27;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+/** Decode HTML entities that AI models sometimes embed in URLs. */
+function cleanUrlForAttr(url) {
+  if (!url) return '';
+  return String(url)
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;/g, "'")
+    .replace(/&#39;/g, "'");
 }
+
