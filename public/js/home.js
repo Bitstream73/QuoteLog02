@@ -178,11 +178,15 @@ function initViewTracking() {
 /**
  * Build HTML for a single quote block (new layout)
  */
-function buildQuoteBlockHtml(q, topics, isImportant) {
+function buildQuoteBlockHtml(q, topics, isImportant, options = {}) {
   // Admin mode: use expanded admin quote block
   if (typeof isAdmin !== 'undefined' && isAdmin) {
     return buildAdminQuoteBlockHtml(q, topics, isImportant);
   }
+
+  const variant = options.variant || 'default';  // 'default'|'compact'|'hero'|'featured'
+  const showAvatar = options.showAvatar !== undefined ? options.showAvatar : true;
+  const showSummary = options.showSummary !== undefined ? options.showSummary : true;
 
   const isLong = q.text && q.text.length > 280;
   const truncatedText = isLong ? q.text.substring(0, 280) + '...' : (q.text || '');
@@ -216,63 +220,50 @@ function buildQuoteBlockHtml(q, topics, isImportant) {
   const _isAdm = typeof isAdmin !== 'undefined' && isAdmin;
   const _safeName = escapeHtml((personName || '').replace(/'/g, "\\'"));
   const headshotHtml = photoUrl
-    ? (_isAdm
-      ? `<img src="${escapeHtml(photoUrl)}" alt="${escapeHtml(personName)}" class="quote-block__headshot admin-headshot-clickable" onclick="adminChangeHeadshot(${personId}, '${_safeName}')" title="Click to change photo" style="cursor:pointer" onerror="this.outerHTML='<div class=\\'quote-headshot-placeholder\\'>${initial}</div>'" loading="lazy">`
-      : `<img src="${escapeHtml(photoUrl)}" alt="${escapeHtml(personName)}" class="quote-block__headshot" onerror="this.outerHTML='<div class=\\'quote-headshot-placeholder\\'>${initial}</div>'" loading="lazy">`)
-    : (_isAdm
-      ? `<a href="https://www.google.com/search?tbm=isch&q=${encodeURIComponent((personName || '') + ' ' + (personCategoryContext || ''))}" target="_blank" rel="noopener" class="admin-headshot-search" title="Search Google Images"><div class="quote-headshot-placeholder">${initial}</div></a>`
-      : `<div class="quote-headshot-placeholder">${initial}</div>`);
+    ? `<img src="${escapeHtml(photoUrl)}" alt="${escapeHtml(personName)}" class="quote-block__headshot" onerror="this.outerHTML='<div class=\\'quote-headshot-placeholder\\'>${initial}</div>'" loading="lazy">`
+    : `<div class="quote-headshot-placeholder">${initial}</div>`;
 
-  // Admin buttons
-  const visibilityBtn = _isAdm && typeof q.is_visible !== 'undefined'
-    ? `<button class="btn-visibility" onclick="toggleVisibility(event, ${q.id}, ${q.is_visible === 0 ? 'true' : 'false'})" title="${q.is_visible === 0 ? 'Show' : 'Hide'}">${q.is_visible === 0
-      ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>'
-      : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'
-    }</button>`
-    : '';
+  // Topic tags
+  const topicTags = (topics || []).slice(0, 2).map(t =>
+    `<a class="quote-block__topic-tag" onclick="navigateTo('/topic/${t.slug}')">${escapeHtml(t.name)}</a>`
+  ).join('');
 
-  const editBtn = _isAdm
-    ? `<button class="btn-edit-quote" onclick="editQuoteInline(event, ${q.id})" title="Edit quote"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>`
-    : '';
+  // Share buttons + important
+  const shareButtons = buildShareButtonsHtml('quote', q.id, q.text, personName);
+  const importantButton = renderImportantButton('quote', q.id, importantsCount, isImportant);
+
+  const variantClass = variant !== 'default' ? ' quote-block--' + variant : '';
 
   return `
-    <div class="quote-block" data-quote-id="${q.id}" data-track-type="quote" data-track-id="${q.id}" data-created-at="${q.created_at || ''}" data-importance="${(importantsCount + shareCount + viewCount) || 0}" data-share-view="${(shareCount + viewCount) || 0}">
+    <div class="quote-block${variantClass}" data-quote-id="${q.id}" data-track-type="quote" data-track-id="${q.id}" data-created-at="${q.created_at || ''}" data-importance="${(importantsCount + shareCount + viewCount) || 0}" data-share-view="${(shareCount + viewCount) || 0}">
       <div class="quote-block__text" onclick="navigateTo('/quote/${q.id}')">
         <span class="quote-mark quote-mark--open">\u201C</span>${escapeHtml(truncatedText)}${isLong ? `<a href="#" class="show-more-toggle" onclick="toggleQuoteText(event, ${q.id})">show more</a>` : ''}<span class="quote-mark quote-mark--close">\u201D</span>
       </div>
 
-      <div class="quote-block__author" onclick="navigateTo('/author/${personId}')">
-        ${headshotHtml}
-        <div class="quote-block__author-info">
-          <span class="quote-block__author-name">${escapeHtml(personName)}</span>
-          ${personCategoryContext ? `<span class="quote-block__author-desc">${escapeHtml(personCategoryContext)}</span>` : ''}
-        </div>
+      <div class="quote-block__byline" onclick="navigateTo('/author/${personId}')">
+        ${showAvatar ? headshotHtml : ''}
+        <span class="quote-block__attribution">
+          &mdash; ${escapeHtml(personName)}${personCategoryContext ? ', ' + escapeHtml(personCategoryContext) : ''}
+        </span>
       </div>
 
-      ${context ? `<div class="quote-block__context" onclick="navigateTo('/article/${articleId}')">${escapeHtml(context)}</div>` : ''}
-
-      ${quoteDateTime || viewCount > 0 || visibilityBtn || editBtn ? `<div class="quote-block__meta-row">
-        ${quoteDateTime ? `<span class="quote-block__datetime">${formatDateTime(quoteDateTime)}</span>` : ''}
-        ${viewCount > 0 ? `<span class="quote-block__views">${viewCount} views</span>` : ''}
-        ${visibilityBtn}
-        ${editBtn}
-      </div>` : ''}
+      ${showSummary && context ? `<div class="quote-block__summary">${escapeHtml(context)}</div>` : ''}
 
       <div class="quote-block__footer">
-        <div class="quote-block__links">
-          ${articleId ? `<a class="quote-block__source-link" onclick="navigateTo('/article/${articleId}')">${escapeHtml(sourceName || sourceDomain || 'Source')}</a>` : ''}
-          ${(topics || []).slice(0, 2).map(t =>
-            `<a class="quote-block__topic-tag" onclick="navigateTo('/topic/${t.slug}')">${escapeHtml(t.name)}</a>`
-          ).join('')}
+        <div class="quote-block__footer-always">
+          ${sourceName || sourceDomain ? `<a class="quote-block__source-name" onclick="navigateTo('/article/${articleId}')">${escapeHtml(sourceName || sourceDomain)}</a>` : ''}
+          ${quoteDateTime ? `<span class="quote-block__time">${formatRelativeTime(quoteDateTime)}</span>` : ''}
         </div>
-        <div class="quote-block__share">
-          ${buildShareButtonsHtml('quote', q.id, q.text, personName)}
+        <div class="quote-block__footer-hover">
+          ${topicTags}
+          ${shareButtons}
           ${shareCount > 0 ? `<span class="quote-block__share-count">${shareCount}</span>` : ''}
-          ${renderImportantButton('quote', q.id, importantsCount, isImportant)}
+          ${importantButton}
         </div>
       </div>
       ${typeof buildAdminActionsHtml === 'function' ? buildAdminActionsHtml(q) : ''}
     </div>
+    <hr class="quote-divider">
   `;
 }
 
@@ -306,11 +297,12 @@ function buildAdminQuoteBlockHtml(q, topics, isImportant) {
   const context = q.context || '';
   const shareViewScore = (shareCount + viewCount) || 0;
 
-  // Author headshot
+  // Author headshot (admin: clickable to change, searchable if missing)
   const initial = (personName || '?').charAt(0).toUpperCase();
+  const _safeName = escapeHtml((personName || '').replace(/'/g, "\\'"));
   const headshotHtml = photoUrl
-    ? `<img src="${escapeHtml(photoUrl)}" alt="${escapeHtml(personName)}" class="quote-block__headshot" onerror="this.outerHTML='<div class=\\'quote-headshot-placeholder\\'>${initial}</div>'" loading="lazy">`
-    : `<div class="quote-headshot-placeholder">${initial}</div>`;
+    ? `<img src="${escapeHtml(photoUrl)}" alt="${escapeHtml(personName)}" class="quote-block__headshot admin-headshot-clickable" onclick="adminChangeHeadshot(${personId}, '${_safeName}')" title="Click to change photo" style="cursor:pointer" onerror="this.outerHTML='<div class=\\'quote-headshot-placeholder\\'>${initial}</div>'" loading="lazy">`
+    : `<a href="https://www.google.com/search?tbm=isch&q=${encodeURIComponent((personName || '') + ' ' + (personCategoryContext || ''))}" target="_blank" rel="noopener" class="admin-headshot-search" title="Search Google Images"><div class="quote-headshot-placeholder">${initial}</div></a>`;
 
   return `
     <div class="admin-quote-block quote-block" data-quote-id="${q.id}" data-track-type="quote" data-track-id="${q.id}" data-created-at="${q.created_at || ''}" data-importance="${(importantsCount + shareViewScore) || 0}" data-share-view="${shareViewScore}">
@@ -765,7 +757,7 @@ function buildTabBarHtml(activeTab) {
 
   return `
     <div class="homepage-tabs">
-      ${tabs.map(t => `<button class="homepage-tab ${t.key === activeTab ? 'active' : ''}" data-tab="${t.key}" onclick="switchHomepageTab('${t.key}')">${t.label}</button>`).join('')}
+      ${tabs.map(t => `<button class="homepage-tab ${t.key === activeTab ? 'active' : ''}" data-tab="${t.key}" onclick="switchHomepageTab('${t.key}')">${t.label}<span class="tab-badge" id="tab-count-${t.key}"></span></button>`).join('')}
     </div>
     <div id="homepage-tab-content"></div>
   `;
@@ -852,13 +844,15 @@ async function renderTrendingTopicsTab(container) {
 function buildTopicCardHtml(topic, isImportant) {
   const quotes = topic.quotes || [];
   const _isAdm = typeof isAdmin !== 'undefined' && isAdmin;
+  const maxVisible = 4;
 
-  // Fetch important statuses for quotes
-  const quoteKeys = quotes.map(q => `quote:${q.id}`);
-  // These will be fetched in batch, use cached values
-  const quotesHtml = quotes.map(q => {
+  // Build quotes with variant options
+  const quotesHtml = quotes.slice(0, maxVisible).map((q, i) => {
     const isQImp = _importantStatuses[`quote:${q.id}`] || false;
-    return buildQuoteBlockHtml(q, q.topics || [], isQImp);
+    const opts = i === 0
+      ? { variant: 'featured', showAvatar: true }
+      : { showAvatar: false };
+    return buildQuoteBlockHtml(q, q.topics || [], isQImp, opts);
   }).join('');
 
   // Admin: stats row and edit button
@@ -888,22 +882,22 @@ function buildTopicCardHtml(topic, isImportant) {
       </div>
     </div>` : '';
 
+  const seeAllLink = quotes.length > maxVisible
+    ? `<a class="topic-card__see-all" onclick="navigateTo('/topic/${escapeHtml(topic.slug)}')">See all ${topic.quote_count || quotes.length} quotes in ${escapeHtml(topic.name)} &rarr;</a>`
+    : '';
+
   return `
     <div class="topic-card" data-track-type="topic" data-track-id="${topic.id}">
-      <h2 class="topic-card__name" onclick="navigateTo('/topic/${escapeHtml(topic.slug)}')">${escapeHtml(topic.name)}</h2>
-      ${topic.context ? `<p class="topic-card__context">${escapeHtml(topic.context)}</p>` : ''}
-      <div class="card-sort-toggle" data-card-id="topic-${topic.id}">
-        Sort by: <button class="sort-btn active" onclick="sortCardQuotes(this, 'topic-${topic.id}', 'date')">Date</button>
-        <button class="sort-btn" onclick="sortCardQuotes(this, 'topic-${topic.id}', 'importance')">Importance</button>
+      <div class="topic-section-header">
+        <hr class="topic-section-rule">
+        <h2 class="topic-card__name" onclick="navigateTo('/topic/${escapeHtml(topic.slug)}')">${escapeHtml(topic.name)}</h2>
+        <hr class="topic-section-rule">
       </div>
+      ${topic.context ? `<p class="topic-card__context">${escapeHtml(topic.context)}</p>` : ''}
       <div class="card-quotes-container" id="card-quotes-topic-${topic.id}">
         ${quotesHtml}
       </div>
-      <div class="topic-card__actions">
-        <a class="topic-card__see-more" onclick="navigateTo('/topic/${escapeHtml(topic.slug)}')">See More</a>
-        ${renderImportantButton('topic', topic.id, topic.importants_count || 0, isImportant)}
-        ${buildShareButtonsHtml('topic', topic.id, topic.name, '')}
-      </div>
+      ${seeAllLink}
       ${adminStatsHtml}
       ${adminKeywordsHtml}
     </div>
@@ -961,10 +955,13 @@ async function renderTrendingSourcesTab(container) {
 function buildSourceCardHtml(article, isImportant) {
   const quotes = article.quotes || [];
   const _isAdm = typeof isAdmin !== 'undefined' && isAdmin;
-  const quotesHtml = quotes.map(q => {
-    const isQImp = _importantStatuses[`quote:${q.id}`] || false;
-    return buildQuoteBlockHtml(q, q.topics || [], isQImp);
-  }).join('');
+
+  // First quote expanded, rest collapsed
+  const firstQuoteHtml = quotes.length > 0
+    ? buildQuoteBlockHtml(quotes[0], quotes[0].topics || [], _importantStatuses[`quote:${quotes[0].id}`] || false)
+    : '';
+
+  const extraCount = quotes.length - 1;
 
   const dateStr = formatRelativeTime(article.published_at);
 
@@ -985,21 +982,27 @@ function buildSourceCardHtml(article, isImportant) {
           ${dateStr ? `<time class="source-card__date">${dateStr}</time>` : ''}
         </div>
       </div>
-      <div class="card-sort-toggle" data-card-id="source-${article.id}">
-        Sort by: <button class="sort-btn active" onclick="sortCardQuotes(this, 'source-${article.id}', 'date')">Date</button>
-        <button class="sort-btn" onclick="sortCardQuotes(this, 'source-${article.id}', 'importance')">Importance</button>
-      </div>
       <div class="card-quotes-container" id="card-quotes-source-${article.id}">
-        ${quotesHtml}
+        ${firstQuoteHtml}
       </div>
-      <div class="source-card__actions">
-        <a class="source-card__see-more" onclick="navigateTo('/article/${article.id}')">See More</a>
-        ${renderImportantButton('article', article.id, article.importants_count || 0, isImportant)}
-        ${buildShareButtonsHtml('article', article.id, article.title, '')}
+      ${extraCount > 0 ? `<button class="article-group-expander" onclick="expandSourceQuotes(this, ${article.id})">+${extraCount} more quote${extraCount !== 1 ? 's' : ''}</button>` : ''}
+      <div class="source-card__extra-quotes" id="extra-quotes-source-${article.id}" style="display:none">
+        ${quotes.slice(1).map(q => {
+          const isQImp = _importantStatuses[`quote:${q.id}`] || false;
+          return buildQuoteBlockHtml(q, q.topics || [], isQImp, { showAvatar: false });
+        }).join('')}
       </div>
       ${adminStatsHtml}
     </div>
   `;
+}
+
+function expandSourceQuotes(btn, articleId) {
+  const container = document.getElementById(`extra-quotes-source-${articleId}`);
+  if (container) {
+    container.style.display = '';
+    btn.style.display = 'none';
+  }
 }
 
 // ======= Trending Quotes Tab =======
@@ -1019,20 +1022,20 @@ async function renderTrendingQuotesTab(container) {
 
   // Quote of the Day
   if (data.quote_of_day) {
-    html += `<h2 class="trending-section-heading">Quote of the Day</h2>`;
-    html += buildQuoteBlockHtml(data.quote_of_day, data.quote_of_day.topics || [], _importantStatuses[`quote:${data.quote_of_day.id}`] || false);
+    html += `<div class="trending-section-header"><hr class="topic-section-rule"><h2 class="trending-section-heading">QUOTE OF THE DAY</h2><hr class="topic-section-rule"></div>`;
+    html += buildQuoteBlockHtml(data.quote_of_day, data.quote_of_day.topics || [], _importantStatuses[`quote:${data.quote_of_day.id}`] || false, { variant: 'hero' });
   }
 
   // Quote of the Week
   if (data.quote_of_week) {
-    html += `<h2 class="trending-section-heading">Quote of the Week</h2>`;
-    html += buildQuoteBlockHtml(data.quote_of_week, data.quote_of_week.topics || [], _importantStatuses[`quote:${data.quote_of_week.id}`] || false);
+    html += `<div class="trending-section-header"><hr class="topic-section-rule"><h2 class="trending-section-heading">QUOTE OF THE WEEK</h2><hr class="topic-section-rule"></div>`;
+    html += buildQuoteBlockHtml(data.quote_of_week, data.quote_of_week.topics || [], _importantStatuses[`quote:${data.quote_of_week.id}`] || false, { variant: 'featured' });
   }
 
   // Quote of the Month
   if (data.quote_of_month) {
-    html += `<h2 class="trending-section-heading">Quote of the Month</h2>`;
-    html += buildQuoteBlockHtml(data.quote_of_month, data.quote_of_month.topics || [], _importantStatuses[`quote:${data.quote_of_month.id}`] || false);
+    html += `<div class="trending-section-header"><hr class="topic-section-rule"><h2 class="trending-section-heading">QUOTE OF THE MONTH</h2><hr class="topic-section-rule"></div>`;
+    html += buildQuoteBlockHtml(data.quote_of_month, data.quote_of_month.topics || [], _importantStatuses[`quote:${data.quote_of_month.id}`] || false, { variant: 'featured' });
   }
 
   html += `<p class="trending-disclaimer"><em>*Trending quotes change over time as views and shares change</em></p>`;
@@ -1085,6 +1088,19 @@ async function sortRecentQuotes(sortBy) {
 let _allSortBy = 'date';
 let _allPage = 1;
 
+function getDateLabel(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
+  const articleDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+
+  if (articleDay.getTime() === today.getTime()) return 'TODAY';
+  if (articleDay.getTime() === yesterday.getTime()) return 'YESTERDAY';
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).toUpperCase();
+}
+
 async function renderAllTab(container, page, sortBy) {
   _allPage = page || 1;
   _allSortBy = sortBy || 'date';
@@ -1094,8 +1110,9 @@ async function renderAllTab(container, page, sortBy) {
   const articles = data.articles || [];
 
   let html = `<div class="all-tab__sort">
-    Sort by: <button class="sort-btn ${_allSortBy === 'date' ? 'active' : ''}" data-sort="date" onclick="switchAllSort('date')">Date</button>
-    <button class="sort-btn ${_allSortBy === 'importance' ? 'active' : ''}" data-sort="importance" onclick="switchAllSort('importance')">Importance</button>
+    Sort: <a class="sort-toggle-text ${_allSortBy === 'date' ? 'active' : ''}" onclick="switchAllSort('date')">Date</a>
+    <span class="sort-toggle-divider">|</span>
+    <a class="sort-toggle-text ${_allSortBy === 'importance' ? 'active' : ''}" onclick="switchAllSort('importance')">Importance</a>
   </div>`;
 
   if (articles.length === 0) {
@@ -1103,7 +1120,14 @@ async function renderAllTab(container, page, sortBy) {
   } else {
     await fetchImportantStatuses(articles.map(a => `article:${a.id}`));
 
+    let lastDateLabel = '';
     for (const article of articles) {
+      // Date header grouping
+      const dateLabel = getDateLabel(article.published_at);
+      if (dateLabel && dateLabel !== lastDateLabel) {
+        html += `<div class="date-header">${dateLabel}</div>`;
+        lastDateLabel = dateLabel;
+      }
       const isImp = _importantStatuses[`article:${article.id}`] || false;
       html += buildSourceCardHtml(article, isImp);
     }
@@ -1318,7 +1342,7 @@ function showNewQuotesBanner() {
   if (!banner) {
     banner = document.createElement('div');
     banner.id = 'new-quotes-banner';
-    banner.className = 'new-quotes-banner';
+    banner.className = 'new-quotes-snackbar';
     const content = document.getElementById('content');
     if (content && content.firstChild) {
       content.insertBefore(banner, content.firstChild);
@@ -1326,8 +1350,15 @@ function showNewQuotesBanner() {
   }
 
   const label = _pendingNewQuotes === 1 ? '1 new quote' : `${_pendingNewQuotes} new quotes`;
-  banner.innerHTML = `${label} available <button class="new-quotes-refresh-btn" onclick="loadNewQuotes()">Refresh</button>`;
+  banner.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> ${label}`;
   banner.style.display = '';
+  banner.onclick = function() { loadNewQuotes(); };
+
+  // Auto-dismiss after 10 seconds
+  if (banner._autoDismiss) clearTimeout(banner._autoDismiss);
+  banner._autoDismiss = setTimeout(() => {
+    if (banner) banner.style.display = 'none';
+  }, 10000);
 }
 
 function loadNewQuotes() {

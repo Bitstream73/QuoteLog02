@@ -9,7 +9,7 @@ function applyTheme(theme) {
   document.documentElement.setAttribute('data-theme', theme);
   localStorage.setItem('ql-theme', theme);
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.content = theme === 'dark' ? '#1a1a1a' : '#ffffff';
+  if (meta) meta.content = theme === 'dark' ? '#0D0D14' : '#FAFAF8';
 }
 
 function toggleTheme() {

@@ -33,7 +33,7 @@ function destroyAllCharts() {
 
 function initChartDefaults() {
   if (typeof Chart === 'undefined') return;
-  Chart.defaults.font.family = "'Inter', sans-serif";
+  Chart.defaults.font.family = "'DM Sans', sans-serif";
   Chart.defaults.font.size = 12;
   Chart.defaults.color = '#4a4a4a';
   Chart.defaults.plugins.tooltip.backgroundColor = '#1a1a1a';

@@ -28,19 +28,48 @@ async function renderQuote(id) {
     };
     const mainQuoteTopics = q.topics || [];
 
+    // Hero quote layout
+    const heroPersonName = q.personName || '';
+    const heroPhotoUrl = q.photoUrl || '';
+    const heroInitial = (heroPersonName || '?').charAt(0).toUpperCase();
+    const heroAvatarHtml = heroPhotoUrl
+      ? `<img src="${escapeHtml(heroPhotoUrl)}" alt="${escapeHtml(heroPersonName)}" class="quote-hero__avatar" onerror="this.outerHTML='<div class=\\'quote-hero__avatar-placeholder\\'>${heroInitial}</div>'" loading="lazy">`
+      : `<div class="quote-hero__avatar-placeholder">${heroInitial}</div>`;
+
+    const shareHtml = typeof buildShareButtonsHtml === 'function'
+      ? buildShareButtonsHtml('quote', q.id, q.text, q.personName)
+      : '';
+    const importantHtml = typeof renderImportantButton === 'function'
+      ? renderImportantButton('quote', q.id, q.importantsCount || q.importants_count || 0, false)
+      : '';
+
     let html = `
-      <p style="margin-bottom:1.5rem;font-family:var(--font-ui);font-size:0.85rem">
+      <p style="margin-bottom:1.5rem;font-family:var(--font-ui);font-size:var(--text-sm)">
         <a href="/" onclick="navigateBackToQuotes(event)" style="color:var(--accent);text-decoration:none">&larr; Back to quotes</a>
       </p>
-      ${typeof buildQuoteBlockHtml === 'function'
-        ? buildQuoteBlockHtml(mainQuoteData, mainQuoteTopics, false)
-        : `<div class="quote-detail-card"><div class="quote-detail-text">${escapeHtml(q.text)}</div></div>`
-      }
+
+      <div class="quote-hero">
+        <div class="quote-hero__text">
+          <span class="quote-mark quote-mark--open">\u201C</span>${escapeHtml(q.text)}<span class="quote-mark quote-mark--close">\u201D</span>
+        </div>
+        <div class="quote-hero__speaker" onclick="navigateTo('/author/${q.personId}')">
+          ${heroAvatarHtml}
+          <div>
+            <span class="quote-hero__name">${escapeHtml(heroPersonName)}</span>
+            ${q.personDisambiguation ? `<span class="quote-hero__role">${escapeHtml(q.personDisambiguation)}</span>` : ''}
+          </div>
+        </div>
+        ${q.context ? `<div class="quote-hero__summary">${escapeHtml(q.context)}</div>` : ''}
+        <div class="quote-hero__actions">
+          ${shareHtml}
+          ${importantHtml}
+        </div>
+      </div>
     `;
 
-    // Articles / Sources
+    // Articles / Sources — renamed "FROM"
     if (data.articles && data.articles.length > 0) {
-      html += '<h2 style="margin:2rem 0 1rem;font-family:var(--font-headline);font-size:1.3rem">Sources</h2>';
+      html += '<h2 class="quote-section-label">FROM</h2>';
       html += '<div class="quote-detail-sources">';
       for (const a of data.articles) {
         const sourceName = a.source_name || a.domain || 'Source';
@@ -51,7 +80,7 @@ async function renderQuote(id) {
             <div style="display:flex;gap:0.5rem;align-items:center;margin-top:0.25rem">
               <span class="quote-primary-source">${escapeHtml(sourceName)}</span>
               ${articleDate ? `<span class="quote-date-inline">${articleDate}</span>` : ''}
-              ${a.url ? `<a href="${escapeHtml(a.url)}" target="_blank" rel="noopener" style="font-family:var(--font-ui);font-size:0.75rem;color:var(--accent);text-decoration:none">View original &rarr;</a>` : ''}
+              ${a.url ? `<a href="${escapeHtml(a.url)}" target="_blank" rel="noopener" style="font-family:var(--font-ui);font-size:var(--text-xs);color:var(--accent);text-decoration:none">View original &rarr;</a>` : ''}
             </div>
           </div>
         `;
@@ -59,32 +88,46 @@ async function renderQuote(id) {
       html += '</div>';
     }
 
-    // Share buttons
-    const shareHtml = typeof buildShareButtonsHtml === 'function'
-      ? buildShareButtonsHtml('quote', q.id, q.text, q.personName)
-      : '';
-    html += `<div style="margin-top:1.5rem">${shareHtml}</div>`;
-
-    // Context & Analysis section (Get More Context button)
+    // AI Analysis section (auto-loading for all users)
     html += `
-      <div class="context-analysis-section" style="margin-top:2rem;padding-top:1.5rem;border-top:1px solid var(--border)">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
-          <h2 style="margin:0;font-family:var(--font-headline);font-size:1.3rem">Context & Analysis</h2>
-          <button class="context-btn" id="context-btn" onclick="loadQuoteContext(${q.id}, false)">Get More Context</button>
-          <button class="context-btn" id="fact-check-btn" onclick="runFactCheck(${q.id})">Fact Check</button>
+      <div id="context-container" style="margin-top:2rem;padding-top:1.5rem;border-top:1px solid var(--divider-light)">
+        <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:1rem">
+          <h2 class="quote-section-label" style="margin:0">AI ANALYSIS</h2>
+          <button class="context-refresh-btn" id="context-refresh-btn" onclick="loadQuoteContext(${q.id}, true)" style="display:none" title="Refresh analysis">&#x21bb;</button>
         </div>
-        <div id="context-analysis-content"></div>
+        <div id="context-content">
+          <div class="context-loading">
+            <div class="context-loading-spinner"></div>
+            <span style="font-family:var(--font-ui);font-size:var(--text-sm);color:var(--text-muted)">Analyzing quote...</span>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Fact Check section (auto-loading for all users)
+    html += `
+      <div id="fact-check-container" style="margin-top:1.5rem;padding-top:1.5rem;border-top:1px solid var(--divider-light)">
+        <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:1rem">
+          <h2 class="quote-section-label" style="margin:0">FACT CHECK</h2>
+          <button class="context-refresh-btn" id="fact-check-refresh-btn" onclick="runFactCheck(${q.id}, true)" style="display:none" title="Refresh fact check">&#x21bb;</button>
+        </div>
+        <div id="fact-check-content">
+          <div class="context-loading">
+            <div class="context-loading-spinner"></div>
+            <span style="font-family:var(--font-ui);font-size:var(--text-sm);color:var(--text-muted)">Checking facts...</span>
+          </div>
+        </div>
       </div>
     `;
 
     // Smart Related Quotes section (auto-loading)
     html += `
-      <div id="smart-related-section" style="margin-top:2rem;padding-top:1.5rem;border-top:1px solid var(--border)">
-        <h2 style="margin:0 0 1rem;font-family:var(--font-headline);font-size:1.3rem">Related Quotes</h2>
+      <div id="smart-related-section" style="margin-top:2rem;padding-top:1.5rem;border-top:1px solid var(--divider-light)">
+        <h2 class="quote-section-label">RELATED QUOTES</h2>
         <div id="smart-related-content">
           <div class="smart-related-loading">
             <div class="context-loading-spinner"></div>
-            <span style="font-family:var(--font-ui);font-size:0.85rem;color:var(--text-muted)">Loading related quotes...</span>
+            <span style="font-family:var(--font-ui);font-size:var(--text-sm);color:var(--text-muted)">Loading related quotes...</span>
           </div>
         </div>
       </div>
@@ -101,8 +144,13 @@ async function renderQuote(id) {
 
     content.innerHTML = html;
 
-    // Auto-load smart related quotes
+    // Reset annotation flag for this page render
+    quoteTextAnnotated = false;
+
+    // Auto-load all sections in parallel
     loadSmartRelated(q.id);
+    loadQuoteContext(q.id);
+    runFactCheck(q.id);
   } catch (err) {
     content.innerHTML = `<div class="empty-state"><h3>Error</h3><p>${escapeHtml(err.message)}</p></div>`;
   }
@@ -182,90 +230,123 @@ function buildSmartRelatedQuoteBlock(item) {
     source_name: item.source_name || item.sourceName || '',
   };
   const topics = item.topics || [];
-  return buildQuoteBlockHtml(quoteData, topics, false);
+  return buildQuoteBlockHtml(quoteData, topics, false, { variant: 'compact', showAvatar: false, showSummary: false });
 }
 
 /**
- * Load AI context analysis for a quote (triggered by button click).
+ * Load AI context analysis for a quote (auto-loads on page render).
  */
 async function loadQuoteContext(quoteId, force) {
-  const btn = document.getElementById('context-btn');
-  const container = document.getElementById('context-analysis-content');
-  if (!btn || !container) return;
+  const container = document.getElementById('context-content');
+  if (!container) return;
 
-  // Update button state
-  btn.disabled = true;
-  btn.innerHTML = '<span class="context-loading-spinner" style="display:inline-block;width:14px;height:14px;vertical-align:middle;margin-right:0.5rem"></span>Analyzing...';
-  container.innerHTML = '';
+  // Check client-side cache (skip if force refresh)
+  if (!force) {
+    try {
+      const raw = sessionStorage.getItem(CTX_CACHE_PREFIX + quoteId);
+      if (raw) {
+        const cached = JSON.parse(raw);
+        if (Date.now() - cached.timestamp < CTX_CACHE_TTL_MS) {
+          renderContextResult(container, cached.data);
+          showRefreshBtn('context-refresh-btn');
+          return;
+        }
+        sessionStorage.removeItem(CTX_CACHE_PREFIX + quoteId);
+      }
+    } catch { /* ignore */ }
+  }
+
+  // Show loading spinner
+  container.innerHTML = `
+    <div class="context-loading">
+      <div class="context-loading-spinner"></div>
+      <span style="font-family:var(--font-ui);font-size:var(--text-sm);color:var(--text-muted)">Analyzing quote...</span>
+    </div>
+  `;
 
   try {
     const data = await API.post(`/quotes/${quoteId}/context${force ? '?force=true' : ''}`);
-    let html = '';
 
-    // Summary
-    if (data.summary) {
-      html += `<div class="context-summary">${escapeHtml(data.summary)}</div>`;
-    }
+    // Cache result
+    try {
+      sessionStorage.setItem(CTX_CACHE_PREFIX + quoteId, JSON.stringify({
+        data,
+        timestamp: Date.now(),
+      }));
+    } catch { /* sessionStorage full */ }
 
-    // Claims
-    if (data.claims && data.claims.length > 0) {
-      for (const claim of data.claims) {
-        html += '<div class="context-claim">';
-        html += `<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem">`;
-        html += buildClaimTypeBadge(claim.type);
-        html += `<span style="font-family:var(--font-headline);font-weight:600">${escapeHtml(claim.claim)}</span>`;
-        html += '</div>';
-
-        // Supporting evidence
-        if (claim.supporting && claim.supporting.length > 0) {
-          html += '<div class="context-evidence context-evidence-supporting">';
-          html += '<div class="context-evidence-label">Supporting</div>';
-          for (const ev of claim.supporting) {
-            html += buildEvidenceItem(ev);
-          }
-          html += '</div>';
-        }
-
-        // Contradicting evidence
-        if (claim.contradicting && claim.contradicting.length > 0) {
-          html += '<div class="context-evidence context-evidence-contradicting">';
-          html += '<div class="context-evidence-label">Contradicting</div>';
-          for (const ev of claim.contradicting) {
-            html += buildEvidenceItem(ev);
-          }
-          html += '</div>';
-        }
-
-        // Additional context
-        if (claim.addingContext && claim.addingContext.length > 0) {
-          html += '<div class="context-evidence context-evidence-context">';
-          html += '<div class="context-evidence-label">Additional Context</div>';
-          for (const ev of claim.addingContext) {
-            html += buildEvidenceItem(ev);
-          }
-          html += '</div>';
-        }
-
-        html += '</div>';
-      }
-    }
-
-    // Confidence note
-    if (data.confidenceNote) {
-      html += `<div class="context-confidence-note">${escapeHtml(data.confidenceNote)}</div>`;
-    }
-
-    container.innerHTML = html;
-
-    // Update button to "Refresh Analysis"
-    btn.disabled = false;
-    btn.innerHTML = 'Refresh Analysis';
-    btn.onclick = function() { loadQuoteContext(quoteId, true); };
+    renderContextResult(container, data);
+    showRefreshBtn('context-refresh-btn');
   } catch (err) {
     container.innerHTML = `<div class="context-error"><p>Analysis unavailable. ${escapeHtml(err.message)}</p><button class="context-btn" onclick="loadQuoteContext(${quoteId}, false)">Try Again</button></div>`;
-    btn.disabled = false;
-    btn.innerHTML = 'Get More Context';
   }
+}
+
+/**
+ * Render context analysis result into a container.
+ */
+function renderContextResult(container, data) {
+  let html = '';
+
+  // Summary
+  if (data.summary) {
+    html += `<div class="context-summary">${escapeHtml(data.summary)}</div>`;
+  }
+
+  // Claims
+  if (data.claims && data.claims.length > 0) {
+    for (const claim of data.claims) {
+      html += '<div class="context-claim">';
+      html += `<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem">`;
+      html += buildClaimTypeBadge(claim.type);
+      html += `<span style="font-family:var(--font-headline);font-weight:600">${escapeHtml(claim.claim)}</span>`;
+      html += '</div>';
+
+      if (claim.supporting && claim.supporting.length > 0) {
+        html += '<div class="context-evidence context-evidence-supporting">';
+        html += '<div class="context-evidence-label">Supporting</div>';
+        for (const ev of claim.supporting) {
+          html += buildEvidenceItem(ev);
+        }
+        html += '</div>';
+      }
+
+      if (claim.contradicting && claim.contradicting.length > 0) {
+        html += '<div class="context-evidence context-evidence-contradicting">';
+        html += '<div class="context-evidence-label">Contradicting</div>';
+        for (const ev of claim.contradicting) {
+          html += buildEvidenceItem(ev);
+        }
+        html += '</div>';
+      }
+
+      if (claim.addingContext && claim.addingContext.length > 0) {
+        html += '<div class="context-evidence context-evidence-context">';
+        html += '<div class="context-evidence-label">Additional Context</div>';
+        for (const ev of claim.addingContext) {
+          html += buildEvidenceItem(ev);
+        }
+        html += '</div>';
+      }
+
+      html += '</div>';
+    }
+  }
+
+  // Confidence note
+  if (data.confidenceNote) {
+    html += `<div class="context-confidence-note">${escapeHtml(data.confidenceNote)}</div>`;
+  }
+
+  container.innerHTML = html;
+}
+
+/**
+ * Show a refresh button by ID.
+ */
+function showRefreshBtn(btnId) {
+  const btn = document.getElementById(btnId);
+  if (btn) btn.style.display = '';
 }
 
 /**
@@ -312,71 +393,65 @@ function buildEvidenceItem(ev) {
 }
 
 // ---------------------------------------------------------------------------
-// Fact Check
+// Client-side caching
 // ---------------------------------------------------------------------------
+
+const CTX_CACHE_PREFIX = 'ctx_cache_';
+const CTX_CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
 
 const FC_CACHE_PREFIX = 'fc_cache_';
 const FC_CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
 
+// Guard against double annotation of quote text
+let quoteTextAnnotated = false;
+
 /**
- * Run fact-check + reference enrichment for a quote.
- * Triggered by the "Fact Check" button on quote detail pages.
+ * Run fact-check + reference enrichment for a quote (auto-loads on page render).
  */
-async function runFactCheck(quoteId) {
-  const btn = document.getElementById('fact-check-btn');
-  const container = document.getElementById('context-analysis-content');
-  if (!btn || !container) return;
+async function runFactCheck(quoteId, force) {
+  const container = document.getElementById('fact-check-content');
+  if (!container) return;
 
-  // Check client-side cache
-  try {
-    const raw = sessionStorage.getItem(FC_CACHE_PREFIX + quoteId);
-    if (raw) {
-      const cached = JSON.parse(raw);
-      if (Date.now() - cached.timestamp < FC_CACHE_TTL_MS) {
-        renderFactCheckResult(container, cached.data);
-        annotateQuoteText(cached.data);
-        return;
+  // Check client-side cache (skip if force refresh)
+  if (!force) {
+    try {
+      const raw = sessionStorage.getItem(FC_CACHE_PREFIX + quoteId);
+      if (raw) {
+        const cached = JSON.parse(raw);
+        if (Date.now() - cached.timestamp < FC_CACHE_TTL_MS) {
+          renderFactCheckResult(container, cached.data);
+          annotateQuoteText(cached.data);
+          showRefreshBtn('fact-check-refresh-btn');
+          return;
+        }
+        sessionStorage.removeItem(FC_CACHE_PREFIX + quoteId);
       }
-      sessionStorage.removeItem(FC_CACHE_PREFIX + quoteId);
-    }
-  } catch { /* ignore */ }
-
-  // Show loading
-  btn.disabled = true;
-  btn.textContent = 'Checking...';
-
-  // Build a fact-check container inside context-analysis-content
-  let fcContainer = document.getElementById('fact-check-container');
-  if (!fcContainer) {
-    fcContainer = document.createElement('div');
-    fcContainer.id = 'fact-check-container';
-    fcContainer.className = 'fact-check-result';
-    container.appendChild(fcContainer);
+    } catch { /* ignore */ }
   }
-  fcContainer.innerHTML = `
-    <h3>Fact Check</h3>
-    <div id="fact-check-result-content">
-      <div class="fc-loading">
-        <div class="fc-spinner"></div>
-        <span>Analyzing quote for verifiable claims...</span>
-      </div>
+
+  // Show loading spinner
+  container.innerHTML = `
+    <div class="context-loading">
+      <div class="context-loading-spinner"></div>
+      <span style="font-family:var(--font-ui);font-size:var(--text-sm);color:var(--text-muted)">Checking facts...</span>
     </div>
   `;
 
-  // Gather quote data from the DOM
-  const quoteBlock = document.querySelector('.quote-block');
-  const quoteText = quoteBlock?.querySelector('.quote-block__text')?.textContent
-    ?.replace(/["\u201C\u201D]/g, '').trim() || '';
-  const authorName = quoteBlock?.querySelector('.quote-block__author-name')?.textContent?.trim() || '';
-  const authorDesc = quoteBlock?.querySelector('.quote-block__author-desc')?.textContent?.trim() || '';
-  const contextEl = quoteBlock?.querySelector('.quote-block__context');
-  const contextText = contextEl?.textContent?.trim() || '';
-  const sourceLink = quoteBlock?.querySelector('.quote-block__source-link');
-  const sourceName = sourceLink?.textContent?.trim() || '';
-  const tagEls = quoteBlock?.querySelectorAll('.quote-block__topic-tag') || [];
+  // Gather quote data from the DOM (use quote-hero on detail page)
+  const heroText = document.querySelector('.quote-hero__text');
+  const quoteText = heroText?.textContent?.replace(/["\u201C\u201D]/g, '').trim() || '';
+  const heroName = document.querySelector('.quote-hero__name');
+  const authorName = heroName?.textContent?.trim() || '';
+  const heroRole = document.querySelector('.quote-hero__role');
+  const authorDesc = heroRole?.textContent?.trim() || '';
+  const heroSummary = document.querySelector('.quote-hero__summary');
+  const contextText = heroSummary?.textContent?.trim() || '';
+  const sourceEl = document.querySelector('.quote-primary-source');
+  const sourceName = sourceEl?.textContent?.trim() || '';
+  const tagEls = document.querySelectorAll('.quote-block__topic-tag') || [];
   const tags = [...tagEls].map(t => t.textContent.trim());
-  const createdAt = quoteBlock?.dataset?.createdAt || '';
-  const sourceDate = createdAt ? createdAt.split(' ')[0] : new Date().toISOString().split('T')[0];
+  const dateEl = document.querySelector('.quote-date-inline');
+  const sourceDate = dateEl?.textContent?.trim() || new Date().toISOString().split('T')[0];
 
   try {
     const result = await API.post('/fact-check/check', {
@@ -398,31 +473,28 @@ async function runFactCheck(quoteId) {
       }));
     } catch { /* sessionStorage full */ }
 
-    renderFactCheckResult(fcContainer, result);
+    renderFactCheckResult(container, result);
     annotateQuoteText(result);
+    showRefreshBtn('fact-check-refresh-btn');
 
   } catch (err) {
-    const resultContent = fcContainer.querySelector('#fact-check-result-content') || fcContainer;
-    resultContent.innerHTML = `<div class="fc-error">Unable to perform fact-check at this time.</div>`;
+    container.innerHTML = `<div class="context-error"><p>Fact check unavailable.</p><button class="context-btn" onclick="runFactCheck(${quoteId}, false)">Try Again</button></div>`;
   }
-
-  btn.disabled = false;
-  btn.textContent = 'Fact Check';
 }
 
 function renderFactCheckResult(container, result) {
-  const resultContent = container.querySelector('#fact-check-result-content') || container;
-  resultContent.innerHTML = result.combinedHtml || result.html || '';
+  container.innerHTML = result.combinedHtml || result.html || '';
 }
 
 /**
  * After rendering reference cards, annotate the quote text with inline links
- * for referenced phrases.
+ * for referenced phrases. Guarded against double-run.
  */
 function annotateQuoteText(result) {
+  if (quoteTextAnnotated) return;
   if (!result.references?.references) return;
 
-  const quoteTextEl = document.querySelector('.quote-block__text');
+  const quoteTextEl = document.querySelector('.quote-hero__text') || document.querySelector('.quote-block__text');
   if (!quoteTextEl) return;
 
   const foundRefs = result.references.references.filter(r => r.enrichment?.found && r.enrichment?.primary_url);
@@ -447,6 +519,7 @@ function annotateQuoteText(result) {
   }
 
   quoteTextEl.innerHTML = html;
+  quoteTextAnnotated = true;
 }
 
 function escapeHtmlAttr(str) {

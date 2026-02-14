@@ -15,20 +15,21 @@ async function renderArticle(id) {
 
     let html = `
       <div class="article-sticky-header">
-        <p style="margin-bottom:0.5rem;font-family:var(--font-ui);font-size:0.85rem">
+        <p style="margin-bottom:0.5rem;font-family:var(--font-ui);font-size:var(--text-sm)">
           <a href="/" onclick="navigateBackToQuotes(event)" style="color:var(--accent);text-decoration:none">&larr; Back to quotes</a>
         </p>
+        ${sourceLabel ? `<span class="article-page__source-label">${escapeHtml(sourceLabel)}</span>` : ''}
         <h1 class="page-title" style="font-size:1.8rem;margin-bottom:0.5rem">${escapeHtml(a.title || 'Untitled Source')}</h1>
-        <div style="font-family:var(--font-ui);font-size:0.85rem;color:var(--text-secondary);display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center">
-          ${sourceLabel ? `<span class="quote-primary-source">${escapeHtml(sourceLabel)}</span>` : ''}
+        <div style="font-family:var(--font-ui);font-size:var(--text-sm);color:var(--text-muted)">
           ${dateStr ? `<span>${dateStr}</span>` : ''}
-          ${a.url ? `<a href="${escapeHtml(a.url)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">View source &rarr;</a>` : ''}
+          <span style="margin-left:0.5rem">&middot; ${data.quotes.length} quote${data.quotes.length !== 1 ? 's' : ''}</span>
+        </div>
+        <div style="margin-top:0.5rem;display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap">
+          ${a.url ? `<a href="${escapeHtml(a.url)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-size:var(--text-sm);font-family:var(--font-ui)">View original article &rarr;</a>` : ''}
           ${isAdmin ? `<label class="top-story-label" title="Mark as Top Story">
             <input type="checkbox" ${a.isTopStory ? 'checked' : ''} onchange="toggleArticleTopStory(${a.id}, this.checked)">
             <span class="top-story-label-text">Top Story</span>
           </label>` : ''}
-        </div>
-        <div style="margin-top:0.75rem">
           ${typeof renderImportantButton === 'function' ? renderImportantButton('article', a.id, a.importantsCount || a.importants_count || 0, false) : ''}
         </div>
       </div>
@@ -37,24 +38,53 @@ async function renderArticle(id) {
     if (data.quotes.length === 0) {
       html += '<div class="empty-state"><h3>No quotes from this source</h3></div>';
     } else {
-      html += `<p class="quote-count">${data.quotes.length} quote${data.quotes.length !== 1 ? 's' : ''} from this source</p>`;
-
+      // Group consecutive quotes by speaker
+      const groups = [];
+      let currentGroup = null;
       for (const q of data.quotes) {
-        // Use buildQuoteBlockHtml — provides new layout with Important? and share buttons
-        html += typeof buildQuoteBlockHtml === 'function'
-          ? buildQuoteBlockHtml({
-              ...q,
-              articleId: null,
-              articleTitle: null,
-              articlePublishedAt: a.publishedAt,
-              articleUrl: null,
-              primarySourceDomain: null,
-              primarySourceName: null,
-              person_name: q.personName,
-              person_id: q.personId,
-              importants_count: q.importantsCount || q.importants_count || 0,
-            }, [], false)
-          : `<div class="quote-block"><p class="quote-block__text">${escapeHtml(q.text)}</p></div>`;
+        const pid = q.personId || q.person_id;
+        if (currentGroup && currentGroup.personId === pid) {
+          currentGroup.quotes.push(q);
+        } else {
+          currentGroup = { personId: pid, name: q.personName, photo: q.photoUrl, role: q.personDisambiguation, quotes: [q] };
+          groups.push(currentGroup);
+        }
+      }
+
+      for (const group of groups) {
+        const initial = (group.name || '?').charAt(0).toUpperCase();
+        const avatarHtml = group.photo
+          ? `<img src="${escapeHtml(group.photo)}" alt="${escapeHtml(group.name)}" class="speaker-group__avatar" onerror="this.outerHTML='<div class=\\'speaker-group__avatar-placeholder\\'>${initial}</div>'" loading="lazy">`
+          : `<div class="speaker-group__avatar-placeholder">${initial}</div>`;
+
+        html += `<div class="speaker-group">
+          <div class="speaker-group__header" onclick="navigateTo('/author/${group.personId}')">
+            ${avatarHtml}
+            <div>
+              <span class="speaker-group__name">${escapeHtml(group.name)}</span>
+              ${group.role ? `<span class="speaker-group__role">${escapeHtml(group.role)}</span>` : ''}
+            </div>
+          </div>`;
+
+        for (let i = 0; i < group.quotes.length; i++) {
+          const q = group.quotes[i];
+          if (i > 0) html += '<hr class="speaker-group__divider">';
+          html += typeof buildQuoteBlockHtml === 'function'
+            ? buildQuoteBlockHtml({
+                ...q,
+                articleId: null,
+                articleTitle: null,
+                articlePublishedAt: a.publishedAt,
+                articleUrl: null,
+                primarySourceDomain: null,
+                primarySourceName: null,
+                person_name: q.personName,
+                person_id: q.personId,
+                importants_count: q.importantsCount || q.importants_count || 0,
+              }, [], false, { showAvatar: false })
+            : `<div class="quote-block"><p class="quote-block__text">${escapeHtml(q.text)}</p></div>`;
+        }
+        html += '</div>';
       }
 
       // Chart section at bottom (only if 2+ quotes)
