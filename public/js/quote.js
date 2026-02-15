@@ -65,8 +65,8 @@ async function renderQuote(id) {
 
       <!-- 3. Context — date, context text, share + IMPORTANT -->
       <div class="quote-page__context">
-        ${quoteDateStr ? `<span class="quote-date-inline">${quoteDateStr}</span>` : ''}
-        ${q.context ? `<div class="quote-hero__summary">${escapeHtml(q.context)}</div>` : ''}
+        ${quoteDateStr ? `<div style="font-family:var(--font-ui);font-size:var(--text-sm);margin-bottom:0.5rem"><strong>Uttered:</strong> ${quoteDateStr}</div>` : ''}
+        ${q.context ? `<div style="margin-bottom:0.5rem"><strong style="font-family:var(--font-ui);font-size:var(--text-sm)">Quote Context:</strong><div class="quote-hero__summary">${escapeHtml(q.context)}</div></div>` : ''}
         <div class="quote-hero__actions">
           ${shareHtml}
           ${importantHtml}
@@ -336,11 +336,6 @@ function renderContextResult(container, data) {
 
       html += '</div>';
     }
-  }
-
-  // Confidence note
-  if (data.confidenceNote) {
-    html += `<div class="context-confidence-note">${escapeHtml(data.confidenceNote)}</div>`;
   }
 
   container.innerHTML = html;

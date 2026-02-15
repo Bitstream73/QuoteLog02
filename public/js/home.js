@@ -1686,12 +1686,56 @@ async function renderTopicPage(slug) {
       }
     }
 
+    // Analytics charts section (only if 2+ quotes)
+    if (quotes.length >= 2) {
+      html += `
+        <div class="article-charts-section" id="topic-charts">
+          <div class="chart-row">
+            <div class="chart-panel">
+              <h3>Quotes by Author</h3>
+              <div class="chart-container" style="height:200px"><canvas id="chart-topic-authors"></canvas></div>
+            </div>
+            <div class="chart-panel">
+              <h3>Source Distribution</h3>
+              <div class="chart-container" style="height:200px"><canvas id="chart-topic-sources"></canvas></div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
     html += '</div>';
     content.innerHTML = html;
     initViewTracking();
     if (typeof isAdmin !== 'undefined' && isAdmin) initAdminQuoteBlocks();
+
+    // Load charts after DOM is set
+    if (quotes.length >= 2) {
+      loadTopicCharts(topic.id);
+    }
   } catch (err) {
     content.innerHTML = `<div class="empty-state"><h3>Error</h3><p>${escapeHtml(err.message)}</p></div>`;
+  }
+}
+
+async function loadTopicCharts(topicId) {
+  if (typeof initChartDefaults === 'function') initChartDefaults();
+  try {
+    const data = await API.get(`/analytics/trends/topic/${topicId}`);
+
+    if (data.authors && data.authors.length >= 2 && typeof createBarChart === 'function') {
+      const authorLabels = data.authors.map(a => a.name);
+      const authorValues = data.authors.map(a => a.quote_count);
+      createBarChart('chart-topic-authors', authorLabels, authorValues);
+    }
+
+    if (data.sources && data.sources.length >= 2 && typeof createDoughnutChart === 'function') {
+      const sourceLabels = data.sources.map(s => s.source_name);
+      const sourceValues = data.sources.map(s => s.article_count);
+      createDoughnutChart('chart-topic-sources', sourceLabels, sourceValues);
+    }
+  } catch (err) {
+    console.error('Failed to load topic charts:', err);
   }
 }
 

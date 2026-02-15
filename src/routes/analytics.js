@@ -103,7 +103,7 @@ router.get('/trending-topics', (req, res) => {
       LEFT JOIN sources s ON s.id = a.source_id
       WHERE q.is_visible = 1
       GROUP BY q.id
-      ORDER BY q.created_at DESC
+      ORDER BY COALESCE(q.quote_datetime, q.created_at) DESC
       LIMIT 3
     `);
 
@@ -249,13 +249,13 @@ router.get('/topic/:slug', (req, res) => {
   `).get(topic.id).count;
 
   const quotes = db.prepare(`
-    SELECT q.id, q.text, q.context, q.created_at,
+    SELECT q.id, q.text, q.context, q.created_at, q.quote_datetime,
            p.id AS person_id, p.canonical_name, p.photo_url, p.category
     FROM quote_topics qt
     JOIN quotes q ON q.id = qt.quote_id AND q.is_visible = 1
     JOIN persons p ON p.id = q.person_id
     WHERE qt.topic_id = ?
-    ORDER BY q.created_at DESC
+    ORDER BY COALESCE(q.quote_datetime, q.created_at) DESC
     LIMIT ? OFFSET ?
   `).all(topic.id, limit, offset);
 
@@ -282,13 +282,13 @@ router.get('/keyword/:id', (req, res) => {
   `).get(keyword.id).count;
 
   const quotes = db.prepare(`
-    SELECT q.id, q.text, q.context, q.created_at,
+    SELECT q.id, q.text, q.context, q.created_at, q.quote_datetime,
            p.id AS person_id, p.canonical_name, p.photo_url, p.category
     FROM quote_keywords qk
     JOIN quotes q ON q.id = qk.quote_id AND q.is_visible = 1
     JOIN persons p ON p.id = q.person_id
     WHERE qk.keyword_id = ?
-    ORDER BY q.created_at DESC
+    ORDER BY COALESCE(q.quote_datetime, q.created_at) DESC
     LIMIT ? OFFSET ?
   `).all(keyword.id, limit, offset);
 
@@ -332,7 +332,7 @@ router.get('/trending-sources', (req, res) => {
       JOIN quote_articles qa ON qa.quote_id = q.id AND qa.article_id = ?
       JOIN persons p ON p.id = q.person_id
       WHERE q.is_visible = 1
-      ORDER BY q.created_at DESC
+      ORDER BY COALESCE(q.quote_datetime, q.created_at) DESC
       LIMIT 3
     `);
 
@@ -432,7 +432,7 @@ router.get('/all-sources', (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = Math.min(parseInt(req.query.limit) || 20, 50);
     const offset = (page - 1) * limit;
-    const sort = req.query.sort === 'importance' ? 'a.trending_score DESC' : 'a.created_at DESC';
+    const sort = req.query.sort === 'importance' ? 'a.trending_score DESC' : 'COALESCE(a.published_at, a.created_at) DESC';
 
     const articles = db.prepare(`
       SELECT a.id, a.url, a.title, a.published_at, a.importants_count, a.share_count,
@@ -472,7 +472,7 @@ router.get('/all-sources', (req, res) => {
       JOIN quote_articles qa ON qa.quote_id = q.id AND qa.article_id = ?
       JOIN persons p ON p.id = q.person_id
       WHERE q.is_visible = 1
-      ORDER BY q.created_at DESC
+      ORDER BY COALESCE(q.quote_datetime, q.created_at) DESC
       LIMIT 3
     `);
 
@@ -648,7 +648,7 @@ router.get('/trending-authors', (req, res) => {
       LEFT JOIN sources s ON s.id = a.source_id
       WHERE q.person_id = ? AND q.is_visible = 1 AND q.canonical_quote_id IS NULL
       GROUP BY q.id
-      ORDER BY q.created_at DESC
+      ORDER BY COALESCE(q.quote_datetime, q.created_at) DESC
       LIMIT 4
     `);
 
@@ -660,6 +660,45 @@ router.get('/trending-authors', (req, res) => {
     res.json({ authors: authorsWithQuotes });
   } catch (err) {
     console.error('Trending authors error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/analytics/trends/topic/:id - Chart data for a topic
+router.get('/trends/topic/:id', (req, res) => {
+  try {
+    const db = getDb();
+    const topicId = parseInt(req.params.id);
+
+    // Authors who were quoted in this topic
+    const authors = db.prepare(`
+      SELECT p.canonical_name as name, COUNT(q.id) as quote_count
+      FROM quotes q
+      JOIN quote_topics qt ON qt.quote_id = q.id AND qt.topic_id = ?
+      JOIN persons p ON p.id = q.person_id
+      WHERE q.is_visible = 1
+      GROUP BY p.id
+      ORDER BY quote_count DESC
+      LIMIT 10
+    `).all(topicId);
+
+    // Sources for quotes in this topic
+    const sources = db.prepare(`
+      SELECT s.name as source_name, COUNT(DISTINCT a.id) as article_count
+      FROM quotes q
+      JOIN quote_topics qt ON qt.quote_id = q.id AND qt.topic_id = ?
+      JOIN quote_articles qa ON qa.quote_id = q.id
+      JOIN articles a ON a.id = qa.article_id
+      JOIN sources s ON s.id = a.source_id
+      WHERE q.is_visible = 1
+      GROUP BY s.id
+      ORDER BY article_count DESC
+      LIMIT 8
+    `).all(topicId);
+
+    res.json({ authors, sources });
+  } catch (err) {
+    console.error('Topic trends error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

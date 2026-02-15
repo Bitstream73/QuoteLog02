@@ -70,7 +70,7 @@ router.get('/:slug', (req, res) => {
       LEFT JOIN sources s ON a.source_id = s.id
       WHERE qt.topic_id = ? AND q.is_visible = 1
       GROUP BY q.id
-      ORDER BY q.importants_count DESC, q.created_at DESC
+      ORDER BY q.importants_count DESC, COALESCE(q.quote_datetime, q.created_at) DESC
       LIMIT ? OFFSET ?
     `).all(topic.id, limit, offset);
 
