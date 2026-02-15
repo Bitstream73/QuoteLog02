@@ -5330,3 +5330,267 @@ span.evidence-source-cite {
   margin-left: 0.25rem;
   vertical-align: middle;
 }
+
+/* ===================================
+   Phase 2: Homepage tweaks
+   =================================== */
+
+/* 2C: Reduce quote font on homepage */
+#homepage-tab-content .quote-block__text {
+  font-size: calc(var(--text-xl, 1.953rem) * 0.5);
+  line-height: 1.5;
+}
+
+/* 2D: Sticky tabs */
+.homepage-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: var(--bg-primary);
+  padding-top: 0.5rem;
+}
+
+/* 2E: Single column quotes on homepage */
+#homepage-tab-content .quotes-grid,
+#homepage-tab-content .card-quotes-container {
+  display: block;
+}
+
+/* Tab sort controls */
+.tab-sort-controls {
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  margin-bottom: 1rem;
+  padding: 0.5rem 0;
+}
+.tab-sort-controls .sort-toggle-text {
+  cursor: pointer;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+.tab-sort-controls .sort-toggle-text.active {
+  color: var(--accent);
+  font-weight: 600;
+}
+.tab-sort-controls .sort-toggle-divider {
+  color: var(--text-muted);
+  margin: 0 0.25rem;
+}
+
+/* ===================================
+   Trending Authors card
+   =================================== */
+
+.author-card {
+  margin-bottom: 2rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--divider-light);
+}
+
+.author-card__header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  cursor: pointer;
+}
+
+.author-card__photo {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.author-card__info {
+  display: flex;
+  flex-direction: column;
+}
+
+.author-card__name {
+  font-family: var(--font-headline);
+  font-size: 1.3rem;
+  font-weight: 700;
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.author-card__role {
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.author-card__stats {
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+/* ===================================
+   Phase 3: Quote page — related quotes
+   =================================== */
+
+.smart-related-columns {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+}
+@media (min-width: 768px) {
+  .smart-related-columns {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.smart-related-col .quote-block__text {
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: calc(var(--text-xl, 1.953rem) * 0.5);
+}
+
+.smart-related-col .quote-block {
+  min-height: 12rem;
+}
+
+/* ===================================
+   Phase 4: Author page — bigger quote font
+   =================================== */
+
+.quote-entry .quote-text {
+  font-size: calc(var(--text-xl, 1.953rem) * 1.25);
+}
+
+/* ===================================
+   Phase 7: Settings filters
+   =================================== */
+
+.settings-filter-bar {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.settings-filter-btn {
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  padding: 0.3rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.settings-filter-btn.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+/* Topic keyword chips in settings */
+.settings-topic-keywords {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 0.35rem;
+}
+
+.settings-kw-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-family: var(--font-ui);
+  font-size: 0.7rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 3px;
+  background: var(--bg-secondary, #f3f4f6);
+  color: var(--text-secondary);
+}
+
+.settings-kw-chip .chip-remove {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.7rem;
+  padding: 0;
+  line-height: 1;
+}
+.settings-kw-chip .chip-remove:hover {
+  color: var(--error, #c41e3a);
+}
+
+.settings-add-kw-btn {
+  font-family: var(--font-ui);
+  font-size: 0.65rem;
+  padding: 0.15rem 0.4rem;
+  border: 1px dashed var(--border);
+  border-radius: 3px;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.settings-add-kw-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ===================================
+   Phase 8: IMPORTANT tooltip popup
+   =================================== */
+
+.important-tooltip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  font-family: var(--font-ui);
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  cursor: help;
+  margin-left: 0.25rem;
+  vertical-align: middle;
+}
+
+.important-tooltip:hover::after {
+  content: "Mark items as Important to boost their visibility. Items with more 'Important' marks rise in trending rankings.";
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 220px;
+  padding: 0.5rem 0.75rem;
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  font-weight: 400;
+  line-height: 1.4;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  z-index: 100;
+  white-space: normal;
+}
+
+.important-tooltip:hover::before {
+  content: '';
+  position: absolute;
+  bottom: calc(100% + 2px);
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: var(--border);
+  z-index: 101;
+}
+
+/* Phase 8B: Search box overlap fix — already has proper z-index at line 225 */

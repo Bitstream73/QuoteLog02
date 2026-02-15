@@ -399,6 +399,29 @@ router.delete('/topics/:id', (req, res) => {
 
 // --- Topic Keyword Link/Unlink ---
 
+// GET /api/admin/topics/:id/keywords — list keywords for a topic
+router.get('/topics/:id/keywords', (req, res) => {
+  try {
+    const db = getDb();
+    const topicId = parseInt(req.params.id);
+
+    const topic = db.prepare('SELECT id, name FROM topics WHERE id = ?').get(topicId);
+    if (!topic) return res.status(404).json({ error: 'Topic not found' });
+
+    const keywords = db.prepare(`
+      SELECT k.id, k.name, k.keyword_type, k.enabled
+      FROM topic_keywords tk
+      JOIN keywords k ON k.id = tk.keyword_id
+      WHERE tk.topic_id = ?
+      ORDER BY k.name
+    `).all(topicId);
+
+    res.json({ keywords });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to get topic keywords: ' + err.message });
+  }
+});
+
 // POST /api/admin/topics/:id/keywords — link a keyword to a topic
 router.post('/topics/:id/keywords', (req, res) => {
   try {

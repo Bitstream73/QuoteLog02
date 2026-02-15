@@ -26,9 +26,9 @@ export function findNextGapDate() {
   const cutoff = ninetyDaysAgo.toISOString().split('T')[0];
 
   const datesWithQuotes = db.prepare(`
-    SELECT DISTINCT DATE(created_at) as quote_date
+    SELECT DISTINCT DATE(COALESCE(quote_datetime, created_at)) as quote_date
     FROM quotes
-    WHERE is_visible = 1 AND DATE(created_at) >= ?
+    WHERE is_visible = 1 AND DATE(COALESCE(quote_datetime, created_at)) >= ?
     ORDER BY quote_date DESC
   `).all(cutoff).map(r => r.quote_date);
 

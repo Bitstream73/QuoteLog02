@@ -7,7 +7,7 @@ const _quoteTexts = {};
 const _quoteMeta = {};
 
 // Current active tab
-let _activeTab = 'all';
+let _activeTab = 'trending-quotes';
 
 // Pending new quotes count (for non-jarring updates)
 let _pendingNewQuotes = 0;
@@ -235,7 +235,7 @@ function buildQuoteBlockHtml(q, topics, isImportant, options = {}) {
   const variantClass = variant !== 'default' ? ' quote-block--' + variant : '';
 
   return `
-    <div class="quote-block${variantClass}" data-quote-id="${q.id}" data-track-type="quote" data-track-id="${q.id}" data-created-at="${q.created_at || ''}" data-importance="${(importantsCount + shareCount + viewCount) || 0}" data-share-view="${(shareCount + viewCount) || 0}">
+    <div class="quote-block${variantClass}" data-quote-id="${q.id}" data-track-type="quote" data-track-id="${q.id}" data-created-at="${quoteDateTime || q.created_at || ''}" data-importance="${(importantsCount + shareCount + viewCount) || 0}" data-share-view="${(shareCount + viewCount) || 0}">
       <div class="quote-block__text" onclick="navigateTo('/quote/${q.id}')">
         <span class="quote-mark quote-mark--open">\u201C</span>${escapeHtml(truncatedText)}${isLong ? `<a href="#" class="show-more-toggle" onclick="toggleQuoteText(event, ${q.id})">show more</a>` : ''}<span class="quote-mark quote-mark--close">\u201D</span>
       </div>
@@ -749,10 +749,10 @@ function navigateTo(path) {
  */
 function buildTabBarHtml(activeTab) {
   const tabs = [
-    { key: 'all', label: 'All' },
+    { key: 'trending-quotes', label: 'Trending Quotes' },
+    { key: 'trending-authors', label: 'Trending Authors' },
     { key: 'trending-topics', label: 'Trending Topics' },
     { key: 'trending-sources', label: 'Trending Sources' },
-    { key: 'trending-quotes', label: 'Trending Quotes' },
   ];
 
   return `
@@ -786,17 +786,17 @@ async function renderTabContent(tabKey) {
 
   try {
     switch (tabKey) {
+      case 'trending-quotes':
+        await renderTrendingQuotesTab(container);
+        break;
+      case 'trending-authors':
+        await renderTrendingAuthorsTab(container);
+        break;
       case 'trending-topics':
         await renderTrendingTopicsTab(container);
         break;
       case 'trending-sources':
         await renderTrendingSourcesTab(container);
-        break;
-      case 'trending-quotes':
-        await renderTrendingQuotesTab(container);
-        break;
-      case 'all':
-        await renderAllTab(container);
         break;
     }
     // Initialize view tracking for newly rendered content
@@ -810,10 +810,90 @@ async function renderTabContent(tabKey) {
   }
 }
 
+// ======= Trending Authors Tab =======
+
+let _authorsSortBy = 'date';
+
+async function renderTrendingAuthorsTab(container, sortBy) {
+  _authorsSortBy = sortBy || 'date';
+  const sortParam = _authorsSortBy === 'importance' ? '?sort=importance' : '';
+  const data = await API.get('/analytics/trending-authors' + sortParam);
+  const authors = data.authors || [];
+
+  if (authors.length === 0) {
+    container.innerHTML = `<div class="empty-state"><h3>No trending authors yet</h3><p>Authors will appear as quotes are extracted.</p></div>`;
+    return;
+  }
+
+  // Collect all quote IDs for importance status
+  const entityKeys = [];
+  for (const a of authors) {
+    entityKeys.push(`person:${a.id}`);
+    for (const q of (a.quotes || [])) {
+      entityKeys.push(`quote:${q.id}`);
+    }
+  }
+  await fetchImportantStatuses(entityKeys);
+
+  let html = `<div class="tab-sort-controls">
+    Sort: <a class="sort-toggle-text ${_authorsSortBy === 'date' ? 'active' : ''}" onclick="switchAuthorsSort('date')">Date</a>
+    <span class="sort-toggle-divider">|</span>
+    <a class="sort-toggle-text ${_authorsSortBy === 'importance' ? 'active' : ''}" onclick="switchAuthorsSort('importance')">Importance</a>
+  </div>`;
+
+  for (const author of authors) {
+    html += buildAuthorCardHtml(author);
+  }
+
+  container.innerHTML = html;
+}
+
+function switchAuthorsSort(sortBy) {
+  const container = document.getElementById('homepage-tab-content');
+  if (container) renderTrendingAuthorsTab(container, sortBy);
+}
+
+function buildAuthorCardHtml(author) {
+  const quotes = author.quotes || [];
+  const _isAdm = typeof isAdmin !== 'undefined' && isAdmin;
+  const initial = (author.canonical_name || '?').charAt(0).toUpperCase();
+  const photoHtml = author.photo_url
+    ? `<img src="${escapeHtml(author.photo_url)}" alt="${escapeHtml(author.canonical_name)}" class="author-card__photo" onerror="this.outerHTML='<div class=\\'quote-headshot-placeholder\\'>${initial}</div>'" loading="lazy">`
+    : `<div class="quote-headshot-placeholder">${initial}</div>`;
+
+  const quotesHtml = quotes.slice(0, 4).map((q, i) => {
+    const isQImp = _importantStatuses[`quote:${q.id}`] || false;
+    return buildQuoteBlockHtml(q, q.topics || [], isQImp, { showAvatar: false });
+  }).join('');
+
+  const isPersonImp = _importantStatuses[`person:${author.id}`] || false;
+
+  return `
+    <div class="author-card" data-track-type="person" data-track-id="${author.id}">
+      <div class="author-card__header" onclick="navigateTo('/author/${author.id}')">
+        ${photoHtml}
+        <div class="author-card__info">
+          <h2 class="author-card__name">${escapeHtml(author.canonical_name)}</h2>
+          ${author.category_context ? `<span class="author-card__role">${escapeHtml(author.category_context)}</span>` : ''}
+          <span class="author-card__stats">${author.quote_count} quotes</span>
+        </div>
+      </div>
+      <div class="card-quotes-container">
+        ${quotesHtml}
+      </div>
+      ${quotes.length > 0 ? `<a class="topic-card__see-all" onclick="navigateTo('/author/${author.id}')">See all ${author.quote_count} quotes by ${escapeHtml(author.canonical_name)} &rarr;</a>` : ''}
+    </div>
+  `;
+}
+
 // ======= Trending Topics Tab =======
 
-async function renderTrendingTopicsTab(container) {
-  const data = await API.get('/analytics/trending-topics');
+let _topicsSortBy = 'date';
+
+async function renderTrendingTopicsTab(container, sortBy) {
+  _topicsSortBy = sortBy || 'date';
+  const sortParam = _topicsSortBy === 'importance' ? '?sort=importance' : '';
+  const data = await API.get('/analytics/trending-topics' + sortParam);
   const topics = data.topics || [];
 
   if (topics.length === 0) {
@@ -832,13 +912,22 @@ async function renderTrendingTopicsTab(container) {
   // Fetch important statuses for all topics
   await fetchImportantStatuses(visibleTopics.map(t => `topic:${t.id}`));
 
-  let html = '';
+  let html = `<div class="tab-sort-controls">
+    Sort: <a class="sort-toggle-text ${_topicsSortBy === 'date' ? 'active' : ''}" onclick="switchTopicsSort('date')">Date</a>
+    <span class="sort-toggle-divider">|</span>
+    <a class="sort-toggle-text ${_topicsSortBy === 'importance' ? 'active' : ''}" onclick="switchTopicsSort('importance')">Importance</a>
+  </div>`;
   for (const topic of visibleTopics) {
     const isImp = _importantStatuses[`topic:${topic.id}`] || false;
     html += buildTopicCardHtml(topic, isImp);
   }
 
   container.innerHTML = html;
+}
+
+function switchTopicsSort(sortBy) {
+  const container = document.getElementById('homepage-tab-content');
+  if (container) renderTrendingTopicsTab(container, sortBy);
 }
 
 function buildTopicCardHtml(topic, isImportant) {
@@ -932,8 +1021,12 @@ function sortCardQuotes(btn, cardId, sortBy) {
 
 // ======= Trending Sources Tab =======
 
-async function renderTrendingSourcesTab(container) {
-  const data = await API.get('/analytics/trending-sources');
+let _sourcesSortBy = 'date';
+
+async function renderTrendingSourcesTab(container, sortBy) {
+  _sourcesSortBy = sortBy || 'date';
+  const sortParam = _sourcesSortBy === 'importance' ? '?sort=importance' : '';
+  const data = await API.get('/analytics/trending-sources' + sortParam);
   const articles = data.articles || [];
 
   if (articles.length === 0) {
@@ -943,13 +1036,22 @@ async function renderTrendingSourcesTab(container) {
 
   await fetchImportantStatuses(articles.map(a => `article:${a.id}`));
 
-  let html = '';
+  let html = `<div class="tab-sort-controls">
+    Sort: <a class="sort-toggle-text ${_sourcesSortBy === 'date' ? 'active' : ''}" onclick="switchSourcesSort('date')">Date</a>
+    <span class="sort-toggle-divider">|</span>
+    <a class="sort-toggle-text ${_sourcesSortBy === 'importance' ? 'active' : ''}" onclick="switchSourcesSort('importance')">Importance</a>
+  </div>`;
   for (const article of articles) {
     const isImp = _importantStatuses[`article:${article.id}`] || false;
     html += buildSourceCardHtml(article, isImp);
   }
 
   container.innerHTML = html;
+}
+
+function switchSourcesSort(sortBy) {
+  const container = document.getElementById('homepage-tab-content');
+  if (container) renderTrendingSourcesTab(container, sortBy);
 }
 
 function buildSourceCardHtml(article, isImportant) {
@@ -1555,9 +1657,9 @@ async function renderTopicPage(slug) {
         <h1>${escapeHtml(topic.name)}</h1>
         ${topic.description ? `<p class="topic-page__description">${escapeHtml(topic.description)}</p>` : ''}
         ${topic.context ? `<p class="topic-page__description">${escapeHtml(topic.context)}</p>` : ''}
-        <div class="topic-page__actions">
-          ${renderImportantButton('topic', topic.id, topic.importants_count || 0, isTopicImportant)}
+        <div class="topic-page__actions" style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;margin:1rem 0">
           ${buildShareButtonsHtml('topic', topic.id, topic.name, '')}
+          ${renderImportantButton('topic', topic.id, topic.importants_count || 0, isTopicImportant)}
         </div>
     `;
 

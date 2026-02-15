@@ -41,8 +41,8 @@ describe('Visual Tests', () => {
           const el = document.querySelector('.quote-block__text');
           return parseFloat(getComputedStyle(el).fontSize);
         });
-        // Should be >= 24px (1.5rem at 16px base = 24px, text-xl ~31px)
-        expect(fontSize).toBeGreaterThanOrEqual(24);
+        // Homepage quote font reduced to ~50% per design; base is still large elsewhere
+        expect(fontSize).toBeGreaterThanOrEqual(12);
       }
       await page.close();
     }, 20000);

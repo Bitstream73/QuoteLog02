@@ -64,25 +64,22 @@ function buildAuthorQuoteHtml(q, authorName, authorCategoryContext) {
           <p class="quote-text" id="qt-${q.id}">${escapeHtml(truncatedText)}</p>
           ${isLong ? `<span class="show-more-toggle">show more</span>` : ''}
         </a>
-        <!-- 2. Author block — left-justified with portrait + name + description -->
-        <div class="author-quote__author-block">
-          ${authorAvatarHtml}
-          <div>
-            <span class="quote-hero__name">${escapeHtml(authorName)}</span>
-            ${authorCategoryContext ? `<span class="quote-hero__role">${escapeHtml(authorCategoryContext)}</span>` : ''}
-          </div>
-        </div>
-        <!-- 3. Context — date + context text -->
+        <!-- 2. Context — date + context text -->
         <div class="author-quote__context">
           ${quoteTypeHtml}
           ${dateHtml}
           ${contextHtml}
         </div>
-        <!-- 4. Share buttons + IMPORTANT -->
+        <!-- 3. Share buttons + IMPORTANT -->
         <div style="display:flex;gap:1rem;align-items:center;margin-top:0.5rem">
           ${shareHtml}
           ${importantHtml}
         </div>
+        <!-- 4. Source — article title + org + date -->
+        ${articleTitleHtml || primarySourceHtml ? `<div class="author-quote__source" style="margin-top:0.5rem">
+          ${articleTitleHtml}
+          ${primarySourceHtml}
+        </div>` : ''}
         ${typeof buildAdminActionsHtml === 'function' ? buildAdminActionsHtml({
           id: q.id, personId: q.personId, personName: authorName,
           text: q.text, context: q.context, isVisible: q.isVisible,

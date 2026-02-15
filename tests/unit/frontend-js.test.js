@@ -168,23 +168,23 @@ describe('Frontend JS files', () => {
   describe('home.js 4-tab system tabs', () => {
     const homeJs = fs.readFileSync(path.join(process.cwd(), 'public/js/home.js'), 'utf-8');
 
-    it('should default active tab to all', () => {
-      expect(homeJs).toContain("let _activeTab = 'all'");
+    it('should default active tab to trending-quotes', () => {
+      expect(homeJs).toContain("let _activeTab = 'trending-quotes'");
     });
 
     it('should include all 4 tab keys', () => {
       expect(homeJs).toContain("'trending-topics'");
       expect(homeJs).toContain("'trending-sources'");
       expect(homeJs).toContain("'trending-quotes'");
-      expect(homeJs).toContain("key: 'all'");
+      expect(homeJs).toContain("key: 'trending-authors'");
     });
 
     it('should have renderTrendingTopicsTab function', () => {
       expect(homeJs).toContain('async function renderTrendingTopicsTab');
     });
 
-    it('should have renderAllTab function', () => {
-      expect(homeJs).toContain('async function renderAllTab');
+    it('should have renderTrendingAuthorsTab function', () => {
+      expect(homeJs).toContain('async function renderTrendingAuthorsTab');
     });
   });
 
@@ -484,8 +484,8 @@ describe('Frontend JS files', () => {
       expect(homeJs).toContain('trending-quotes');
     });
 
-    it('should have all tab key defined', () => {
-      expect(homeJs).toContain("key: 'all'");
+    it('should have trending-authors tab key defined', () => {
+      expect(homeJs).toContain("key: 'trending-authors'");
     });
 
     it('should define buildQuoteBlockHtml function', () => {

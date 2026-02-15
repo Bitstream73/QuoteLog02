@@ -178,7 +178,7 @@ async function loadSmartRelated(quoteId) {
     if (data.supportingContext && data.supportingContext.length > 0) {
       col1 += '<div class="smart-related-group">';
       col1 += '<h3 class="smart-related-group-title">More Context from Same Author</h3>';
-      for (const c of data.supportingContext) {
+      for (const c of data.supportingContext.slice(0, 4)) {
         col1 += buildSmartRelatedQuoteBlock(c);
       }
       col1 += '</div>';
@@ -189,7 +189,7 @@ async function loadSmartRelated(quoteId) {
     if (data.mentionsByOthers && data.mentionsByOthers.length > 0) {
       col2 += '<div class="smart-related-group">';
       col2 += '<h3 class="smart-related-group-title" style="color:var(--accent)">What Others Say</h3>';
-      for (const m of data.mentionsByOthers) {
+      for (const m of data.mentionsByOthers.slice(0, 4)) {
         col2 += buildSmartRelatedQuoteBlock(m);
       }
       col2 += '</div>';
@@ -296,11 +296,6 @@ function renderContextResult(container, data) {
   );
   if (hasEvidence) {
     html += '<h3 class="quote-section-label" style="margin-top:0">Referenced in this Quote</h3>';
-  }
-
-  // Summary
-  if (data.summary) {
-    html += `<div class="context-summary">${escapeHtml(data.summary)}</div>`;
   }
 
   // Claims with cited quotes at 0.5em

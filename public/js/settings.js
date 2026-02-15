@@ -232,6 +232,11 @@ async function renderSettings() {
             <h3 class="subsection-title">Topics (${topics.length})</h3>
             <button class="btn btn-primary btn-sm" onclick="settingsCreateTopic()">New Topic</button>
           </div>
+          <div class="settings-filter-bar">
+            <button class="settings-filter-btn active" onclick="filterSettingsTopics('all', this)">All</button>
+            <button class="settings-filter-btn" onclick="filterSettingsTopics('enabled', this)">Enabled</button>
+            <button class="settings-filter-btn" onclick="filterSettingsTopics('disabled', this)">Disabled</button>
+          </div>
           <div id="settings-topics-list" class="topics-keywords-list">
             ${topics.length === 0 ? '<p class="empty-message">No topics configured yet.</p>' : topics.map(t => renderSettingsTopicRow(t)).join('')}
           </div>
@@ -242,6 +247,11 @@ async function renderSettings() {
           <div class="subsection-header">
             <h3 class="subsection-title">Keywords (${keywords.length})</h3>
             <button class="btn btn-primary btn-sm" onclick="settingsCreateKeyword()">New Keyword</button>
+          </div>
+          <div class="settings-filter-bar">
+            <button class="settings-filter-btn active" onclick="filterSettingsKeywords('all', this)">All</button>
+            <button class="settings-filter-btn" onclick="filterSettingsKeywords('enabled', this)">Enabled</button>
+            <button class="settings-filter-btn" onclick="filterSettingsKeywords('disabled', this)">Disabled</button>
           </div>
           <div id="settings-keywords-list" class="topics-keywords-list">
             ${keywords.length === 0 ? '<p class="empty-message">No keywords configured yet.</p>' : keywords.map(k => renderSettingsKeywordRow(k)).join('')}
@@ -673,12 +683,12 @@ async function testHistoricalSource(key) {
 function renderSettingsTopicRow(topic) {
   const enabledClass = topic.enabled ? '' : ' disabled-row';
   return `
-    <div class="tk-row${enabledClass}" data-topic-id="${topic.id}">
+    <div class="tk-row${enabledClass}" data-topic-id="${topic.id}" data-enabled="${topic.enabled ? '1' : '0'}">
       <div class="tk-row__info">
         <span class="tk-row__name">${escapeHtml(topic.name)}</span>
         ${topic.description ? `<span class="tk-row__desc">${escapeHtml(topic.description)}</span>` : ''}
         <span class="tk-row__stats">${topic.quote_count || 0} quotes, ${topic.keyword_count || 0} keywords</span>
-        <div class="tk-row__keywords" id="settings-topic-keywords-${topic.id}"></div>
+        <div class="settings-topic-keywords" id="settings-topic-keywords-${topic.id}"></div>
       </div>
       <div class="tk-row__actions">
         <label class="toggle" title="${topic.enabled ? 'Enabled' : 'Disabled'}">
@@ -696,7 +706,7 @@ function renderSettingsKeywordRow(keyword) {
   const enabledClass = keyword.enabled ? '' : ' disabled-row';
   const typeLabel = keyword.keyword_type || 'concept';
   return `
-    <div class="tk-row${enabledClass}" data-keyword-id="${keyword.id}">
+    <div class="tk-row${enabledClass}" data-keyword-id="${keyword.id}" data-enabled="${keyword.enabled ? '1' : '0'}">
       <div class="tk-row__info">
         <span class="tk-row__name">${escapeHtml(keyword.name)}</span>
         <span class="tk-row__type">${escapeHtml(typeLabel)}</span>
@@ -715,9 +725,89 @@ function renderSettingsKeywordRow(keyword) {
 }
 
 function loadSettingsTopicKeywordChips(topics) {
-  // Keyword chips are loaded on-demand when the topic section renders.
-  // The keyword_count is already shown in the stats span.
-  // Individual keyword names are visible on the Review Topics & Keywords page.
+  for (const topic of topics) {
+    loadTopicKeywordChipsForSettings(topic.id);
+  }
+}
+
+async function loadTopicKeywordChipsForSettings(topicId) {
+  const container = document.getElementById(`settings-topic-keywords-${topicId}`);
+  if (!container) return;
+  try {
+    const data = await API.get(`/admin/topics/${topicId}/keywords`);
+    const keywords = data.keywords || [];
+    let html = keywords.map(kw =>
+      `<span class="settings-kw-chip" data-keyword-id="${kw.id}">
+        ${escapeHtml(kw.name)}
+        <button class="chip-remove" onclick="event.stopPropagation(); settingsRemoveTopicKeyword(${topicId}, ${kw.id}, this)">x</button>
+      </span>`
+    ).join('');
+    html += `<button class="settings-add-kw-btn" onclick="settingsAddTopicKeyword(${topicId})">+ Add</button>`;
+    container.innerHTML = html;
+  } catch (err) {
+    // Non-blocking
+  }
+}
+
+async function settingsAddTopicKeyword(topicId) {
+  const name = prompt('Keyword name to add to this topic:');
+  if (name === null || name.trim() === '') return;
+  try {
+    // Create keyword if needed
+    const res = await API.post('/admin/keywords', { name: name.trim(), keyword_type: 'concept' });
+    const keywordId = res.keyword?.id;
+    if (keywordId) {
+      await API.post(`/admin/topics/${topicId}/keywords`, { keyword_id: keywordId });
+    }
+    showToast('Keyword added to topic', 'success');
+    loadTopicKeywordChipsForSettings(topicId);
+  } catch (err) {
+    if (err.message && err.message.includes('409')) {
+      showToast('Keyword already exists — try linking it manually', 'info');
+    } else {
+      showToast('Error: ' + err.message, 'error');
+    }
+  }
+}
+
+async function settingsRemoveTopicKeyword(topicId, keywordId, btnEl) {
+  try {
+    await API.delete(`/admin/topics/${topicId}/keywords/${keywordId}`);
+    const chip = btnEl.closest('.settings-kw-chip');
+    if (chip) chip.remove();
+    showToast('Keyword removed from topic', 'success');
+  } catch (err) {
+    showToast('Error: ' + err.message, 'error');
+  }
+}
+
+function filterSettingsTopics(filter, btn) {
+  // Update active filter button
+  btn.closest('.settings-filter-bar').querySelectorAll('.settings-filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+
+  const list = document.getElementById('settings-topics-list');
+  if (!list) return;
+  list.querySelectorAll('.tk-row').forEach(row => {
+    const isEnabled = row.dataset.enabled === '1';
+    if (filter === 'all') row.style.display = '';
+    else if (filter === 'enabled') row.style.display = isEnabled ? '' : 'none';
+    else if (filter === 'disabled') row.style.display = isEnabled ? 'none' : '';
+  });
+}
+
+function filterSettingsKeywords(filter, btn) {
+  btn.closest('.settings-filter-bar').querySelectorAll('.settings-filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+
+  const list = document.getElementById('settings-keywords-list');
+  if (!list) return;
+  list.querySelectorAll('.tk-row').forEach(row => {
+    const isEnabled = row.dataset.enabled === '1';
+    if (filter === 'all') row.style.display = '';
+    else if (filter === 'enabled') row.style.display = isEnabled ? '' : 'none';
+    else if (filter === 'disabled') row.style.display = isEnabled ? 'none' : '';
+  });
 }
 
 async function settingsToggleTopicEnabled(topicId, enabled) {

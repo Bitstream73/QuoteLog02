@@ -4,6 +4,29 @@ import { getDb } from '../config/database.js';
 const router = Router();
 
 /**
+ * Build tiered importance ORDER BY clause for quotes.
+ * Tier 1: importance today (skip 0), Tier 2: this week (skip 0),
+ * Tier 3: this month (skip 0), Tier 4: all time (skip 0),
+ * Tier 5: by date (newest first)
+ * @param {string} dateCol - the date column to use for tiers (e.g. 'q.quote_datetime', 'q.created_at')
+ * @param {string} importantsCol - the importants_count column (e.g. 'q.importants_count')
+ * @returns {string} SQL ORDER BY clause (without ORDER BY keyword)
+ */
+function tieredImportanceOrder(dateCol, importantsCol) {
+  return `
+    CASE
+      WHEN ${importantsCol} > 0 AND ${dateCol} >= datetime('now', '-1 day') THEN 1
+      WHEN ${importantsCol} > 0 AND ${dateCol} >= datetime('now', '-7 days') THEN 2
+      WHEN ${importantsCol} > 0 AND ${dateCol} >= datetime('now', '-30 days') THEN 3
+      WHEN ${importantsCol} > 0 THEN 4
+      ELSE 5
+    END ASC,
+    CASE WHEN ${importantsCol} > 0 THEN ${importantsCol} ELSE 0 END DESC,
+    ${dateCol} DESC
+  `;
+}
+
+/**
  * Enrich an array of quotes with their top 2 topics
  */
 function enrichQuotesWithTopics(db, quotes) {
@@ -34,6 +57,25 @@ router.get('/trending-topics', (req, res) => {
     const db = getDb();
     const limit = Math.min(parseInt(req.query.limit) || 20, 50);
 
+    const sortMode = req.query.sort;
+    let topicOrder;
+    if (sortMode === 'importance') {
+      // For topics, use most recent quote date for tiering
+      topicOrder = `
+        CASE
+          WHEN t.importants_count > 0 AND (SELECT MAX(COALESCE(q2.quote_datetime, q2.created_at)) FROM quote_topics qt3 JOIN quotes q2 ON q2.id = qt3.quote_id WHERE qt3.topic_id = t.id AND q2.is_visible = 1) >= datetime('now', '-1 day') THEN 1
+          WHEN t.importants_count > 0 AND (SELECT MAX(COALESCE(q2.quote_datetime, q2.created_at)) FROM quote_topics qt3 JOIN quotes q2 ON q2.id = qt3.quote_id WHERE qt3.topic_id = t.id AND q2.is_visible = 1) >= datetime('now', '-7 days') THEN 2
+          WHEN t.importants_count > 0 AND (SELECT MAX(COALESCE(q2.quote_datetime, q2.created_at)) FROM quote_topics qt3 JOIN quotes q2 ON q2.id = qt3.quote_id WHERE qt3.topic_id = t.id AND q2.is_visible = 1) >= datetime('now', '-30 days') THEN 3
+          WHEN t.importants_count > 0 THEN 4
+          ELSE 5
+        END ASC,
+        t.importants_count DESC,
+        t.trending_score DESC
+      `;
+    } else {
+      topicOrder = 't.trending_score DESC';
+    }
+
     const topics = db.prepare(`
       SELECT t.id, t.name, t.slug, t.description, t.context,
         t.importants_count, t.trending_score,
@@ -42,7 +84,7 @@ router.get('/trending-topics', (req, res) => {
       WHERE t.enabled = 1
       GROUP BY t.id
       HAVING quote_count > 0
-      ORDER BY t.trending_score DESC
+      ORDER BY ${topicOrder}
       LIMIT ?
     `).all(limit);
 
@@ -259,6 +301,14 @@ router.get('/trending-sources', (req, res) => {
     const db = getDb();
     const limit = Math.min(parseInt(req.query.limit) || 20, 50);
 
+    const sortMode = req.query.sort;
+    let sourceOrder;
+    if (sortMode === 'importance') {
+      sourceOrder = tieredImportanceOrder('COALESCE(a.published_at, a.created_at)', 'a.importants_count');
+    } else {
+      sourceOrder = 'a.trending_score DESC';
+    }
+
     const articles = db.prepare(`
       SELECT a.id, a.url, a.title, a.published_at, a.importants_count, a.share_count,
         a.view_count, a.trending_score,
@@ -268,7 +318,7 @@ router.get('/trending-sources', (req, res) => {
       LEFT JOIN sources s ON s.id = a.source_id
       WHERE a.trending_score > 0
         AND (SELECT COUNT(*) FROM quote_articles qa3 JOIN quotes q ON q.id = qa3.quote_id AND q.is_visible = 1 WHERE qa3.article_id = a.id) > 0
-      ORDER BY a.trending_score DESC
+      ORDER BY ${sourceOrder}
       LIMIT ?
     `).all(limit);
 
@@ -344,8 +394,8 @@ router.get('/trending-quotes', (req, res) => {
     `).get();
 
     const recentSort = req.query.sort === 'importance'
-      ? 'q.importants_count + q.share_count DESC'
-      : 'q.created_at DESC';
+      ? tieredImportanceOrder('COALESCE(q.quote_datetime, q.created_at)', 'q.importants_count')
+      : 'COALESCE(q.quote_datetime, q.created_at) DESC';
     const recentQuotes = db.prepare(`${baseSelect}
       GROUP BY q.id ORDER BY ${recentSort} LIMIT ? OFFSET ?
     `).all(limit, offset);
@@ -545,6 +595,71 @@ router.get('/trends/author/:id', (req, res) => {
     res.json({ author, timeline, topics, peers });
   } catch (err) {
     console.error('Author trends error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/analytics/trending-authors - Authors sorted by trending_score with top quotes
+router.get('/trending-authors', (req, res) => {
+  try {
+    const db = getDb();
+    const limit = Math.min(parseInt(req.query.limit) || 20, 50);
+
+    const sortMode = req.query.sort;
+    let authorOrder;
+    if (sortMode === 'importance') {
+      // For authors, use most recent quote date for tiering
+      authorOrder = `
+        CASE
+          WHEN p.importants_count > 0 AND p.last_seen_at >= datetime('now', '-1 day') THEN 1
+          WHEN p.importants_count > 0 AND p.last_seen_at >= datetime('now', '-7 days') THEN 2
+          WHEN p.importants_count > 0 AND p.last_seen_at >= datetime('now', '-30 days') THEN 3
+          WHEN p.importants_count > 0 THEN 4
+          ELSE 5
+        END ASC,
+        p.importants_count DESC,
+        p.trending_score DESC
+      `;
+    } else {
+      authorOrder = 'p.trending_score DESC';
+    }
+
+    const authors = db.prepare(`
+      SELECT p.id, p.canonical_name, p.photo_url, p.category, p.category_context,
+        p.importants_count, p.share_count, p.view_count, p.quote_count, p.trending_score
+      FROM persons p
+      WHERE p.quote_count > 0
+      ORDER BY ${authorOrder}
+      LIMIT ?
+    `).all(limit);
+
+    // For each author, get top 4 recent quotes
+    const getTopQuotes = db.prepare(`
+      SELECT q.id, q.text, q.context, q.quote_datetime, q.importants_count, q.share_count,
+        q.created_at,
+        p.id as person_id, p.canonical_name as person_name, p.photo_url,
+        p.category_context,
+        a.id as article_id, a.title as article_title, a.url as article_url,
+        s.domain as source_domain, s.name as source_name
+      FROM quotes q
+      JOIN persons p ON p.id = q.person_id
+      LEFT JOIN quote_articles qa ON qa.quote_id = q.id
+      LEFT JOIN articles a ON a.id = qa.article_id
+      LEFT JOIN sources s ON s.id = a.source_id
+      WHERE q.person_id = ? AND q.is_visible = 1 AND q.canonical_quote_id IS NULL
+      GROUP BY q.id
+      ORDER BY q.created_at DESC
+      LIMIT 4
+    `);
+
+    const authorsWithQuotes = authors.map(a => ({
+      ...a,
+      quotes: enrichQuotesWithTopics(db, getTopQuotes.all(a.id)),
+    }));
+
+    res.json({ authors: authorsWithQuotes });
+  } catch (err) {
+    console.error('Trending authors error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
