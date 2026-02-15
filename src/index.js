@@ -65,8 +65,10 @@ export function createApp({ skipDbInit = false } = {}) {
   app.use(requestLogger);
   app.use(logContext);
 
-  // Rate limiting
-  app.use('/api/', createRateLimiter({ windowMs: 15 * 60 * 1000, max: 200 }));
+  // Rate limiting — stricter limit on auth endpoints to prevent brute-force
+  app.use('/api/auth/login', createRateLimiter({ windowMs: 15 * 60 * 1000, max: 20 }));
+  app.use('/api/auth/forgot-password', createRateLimiter({ windowMs: 15 * 60 * 1000, max: 10 }));
+  app.use('/api/', createRateLimiter({ windowMs: 15 * 60 * 1000, max: 1000 }));
 
   // Service worker — must never be cached by browser so updates are detected
   app.get('/sw.js', (req, res) => {
