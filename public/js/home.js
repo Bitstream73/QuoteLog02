@@ -1357,7 +1357,7 @@ async function renderHome() {
 /**
  * Render search results (preserves existing search functionality)
  */
-let _searchActiveTab = 'quotes';
+let _searchActiveTab = 'topics';
 
 async function renderSearchResults(content, searchQuery) {
   content.innerHTML = buildSkeletonHtml(6);
@@ -1384,19 +1384,22 @@ async function renderSearchResults(content, searchQuery) {
     } else {
       // Tab bar
       html += `<div class="search-results-tabs">
-        <button class="search-tab ${_searchActiveTab === 'quotes' ? 'active' : ''}" onclick="switchSearchTab('quotes')">Quotes <span class="tab-count">${quotesCount}</span></button>
-        <button class="search-tab ${_searchActiveTab === 'persons' ? 'active' : ''}" onclick="switchSearchTab('persons')">Authors <span class="tab-count">${personsCount}</span></button>
         <button class="search-tab ${_searchActiveTab === 'topics' ? 'active' : ''}" onclick="switchSearchTab('topics')">Topics <span class="tab-count">${topicsCount}</span></button>
+        <button class="search-tab ${_searchActiveTab === 'persons' ? 'active' : ''}" onclick="switchSearchTab('persons')">Authors <span class="tab-count">${personsCount}</span></button>
+        <button class="search-tab ${_searchActiveTab === 'quotes' ? 'active' : ''}" onclick="switchSearchTab('quotes')">Quotes <span class="tab-count">${quotesCount}</span></button>
         <button class="search-tab ${_searchActiveTab === 'articles' ? 'active' : ''}" onclick="switchSearchTab('articles')">Sources <span class="tab-count">${articlesCount}</span></button>
       </div>`;
 
-      // Quotes tab content
-      html += `<div class="search-tab-content" id="search-tab-quotes" style="display:${_searchActiveTab === 'quotes' ? '' : 'none'}">`;
-      if (quotesCount === 0) {
-        html += `<p class="empty-message">No quotes match your search.</p>`;
+      // Topics tab content
+      html += `<div class="search-tab-content" id="search-tab-topics" style="display:${_searchActiveTab === 'topics' ? '' : 'none'}">`;
+      if (topicsCount === 0) {
+        html += `<p class="empty-message">No topics match your search.</p>`;
       } else {
-        for (const q of data.quotes) {
-          html += buildQuoteBlockHtml(q, q.topics || [], false);
+        for (const t of data.topics) {
+          html += `<div class="search-topic-row" onclick="navigateTo('/topic/${escapeHtml(t.slug)}')">
+            <span class="search-topic__name">${escapeHtml(t.name)}</span>
+            ${t.description ? `<span class="search-topic__desc">${escapeHtml(t.description)}</span>` : ''}
+          </div>`;
         }
       }
       html += `</div>`;
@@ -1423,16 +1426,13 @@ async function renderSearchResults(content, searchQuery) {
       }
       html += `</div>`;
 
-      // Topics tab content
-      html += `<div class="search-tab-content" id="search-tab-topics" style="display:${_searchActiveTab === 'topics' ? '' : 'none'}">`;
-      if (topicsCount === 0) {
-        html += `<p class="empty-message">No topics match your search.</p>`;
+      // Quotes tab content
+      html += `<div class="search-tab-content" id="search-tab-quotes" style="display:${_searchActiveTab === 'quotes' ? '' : 'none'}">`;
+      if (quotesCount === 0) {
+        html += `<p class="empty-message">No quotes match your search.</p>`;
       } else {
-        for (const t of data.topics) {
-          html += `<div class="search-topic-row" onclick="navigateTo('/topic/${escapeHtml(t.slug)}')">
-            <span class="search-topic__name">${escapeHtml(t.name)}</span>
-            ${t.description ? `<span class="search-topic__desc">${escapeHtml(t.description)}</span>` : ''}
-          </div>`;
+        for (const q of data.quotes) {
+          html += buildQuoteBlockHtml(q, q.topics || [], false);
         }
       }
       html += `</div>`;

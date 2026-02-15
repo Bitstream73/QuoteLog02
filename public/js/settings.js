@@ -5,18 +5,20 @@ async function renderSettings() {
   content.innerHTML = '<div class="loading">Loading settings...</div>';
 
   try {
-    const [settings, sourcesData, topicsData, keywordsData, promptsData] = await Promise.all([
+    const [settings, sourcesData, topicsData, keywordsData, promptsData, noteworthyData] = await Promise.all([
       API.get('/settings'),
       API.get('/sources'),
       API.get('/admin/topics'),
       API.get('/admin/keywords'),
       API.get('/settings/prompts').catch(() => ({ prompts: [] })),
+      API.get('/admin/noteworthy').catch(() => ({ items: [] })),
     ]);
 
     const sources = sourcesData.sources || [];
     const topics = topicsData.topics || [];
     const keywords = keywordsData.keywords || [];
     const prompts = promptsData.prompts || [];
+    const noteworthyItems = noteworthyData.items || [];
 
     let html = `
       <p style="margin-bottom:1rem">
@@ -243,6 +245,37 @@ async function renderSettings() {
           </div>
           <div id="settings-keywords-list" class="topics-keywords-list">
             ${keywords.length === 0 ? '<p class="empty-message">No keywords configured yet.</p>' : keywords.map(k => renderSettingsKeywordRow(k)).join('')}
+          </div>
+        </div>
+      </div>
+
+      <!-- Noteworthy Section -->
+      <div class="settings-section" id="settings-section-noteworthy">
+        <h2>Noteworthy</h2>
+        <p class="section-description">Manage items displayed in the Noteworthy section on the homepage. Add quotes, topics, or articles that deserve special attention.</p>
+
+        <div class="settings-subsection">
+          <div class="subsection-header">
+            <h3 class="subsection-title">Add Noteworthy Item</h3>
+          </div>
+          <div class="noteworthy-add-form">
+            <select id="noteworthy-type" class="input-select" style="width:auto;min-width:120px">
+              <option value="quote">Quote</option>
+              <option value="topic">Topic</option>
+              <option value="article">Article</option>
+            </select>
+            <input type="text" id="noteworthy-search" class="input-text" placeholder="Search by name or ID..." style="flex:1">
+            <button class="btn btn-primary btn-sm" onclick="noteworthySearch()">Search</button>
+          </div>
+          <div id="noteworthy-search-results" class="noteworthy-search-results"></div>
+        </div>
+
+        <div class="settings-subsection">
+          <div class="subsection-header">
+            <h3 class="subsection-title">Current Items (${noteworthyItems.length})</h3>
+          </div>
+          <div id="noteworthy-items-list" class="topics-keywords-list">
+            ${noteworthyItems.length === 0 ? '<p class="empty-message">No noteworthy items. Add quotes, topics, or articles above.</p>' : noteworthyItems.map(item => renderNoteworthyRow(item)).join('')}
           </div>
         </div>
       </div>
@@ -836,6 +869,173 @@ function updateSettingsKeywordCount() {
   if (header && list) {
     const count = list.querySelectorAll('.tk-row').length;
     header.textContent = `Keywords (${count})`;
+  }
+}
+
+// ======= Noteworthy Section =======
+
+function renderNoteworthyRow(item) {
+  const typeIcon = item.entity_type === 'quote' ? '\u201C\u201D' : item.entity_type === 'topic' ? '#' : '\uD83D\uDCF0';
+  const label = item.entity_label || `${item.entity_type} #${item.entity_id}`;
+  return `
+    <div class="tk-row" data-noteworthy-id="${item.id}">
+      <div class="tk-row__info">
+        <span class="tk-row__type">${typeIcon} ${escapeHtml(item.entity_type)}</span>
+        <span class="tk-row__name">${escapeHtml(label)}</span>
+        <span class="tk-row__stats">Order: ${item.display_order || 0}</span>
+      </div>
+      <div class="tk-row__actions">
+        <button class="btn btn-secondary btn-sm" onclick="noteworthyMoveUp(${item.id})" title="Move up">\u2191</button>
+        <button class="btn btn-secondary btn-sm" onclick="noteworthyMoveDown(${item.id})" title="Move down">\u2193</button>
+        <button class="btn btn-danger btn-sm" onclick="noteworthyRemove(${item.id})">Remove</button>
+      </div>
+    </div>
+  `;
+}
+
+async function noteworthySearch() {
+  const type = document.getElementById('noteworthy-type').value;
+  const query = document.getElementById('noteworthy-search').value.trim();
+  const resultsDiv = document.getElementById('noteworthy-search-results');
+
+  if (!query) {
+    resultsDiv.innerHTML = '';
+    return;
+  }
+
+  resultsDiv.innerHTML = '<p class="empty-message">Searching...</p>';
+
+  try {
+    let items = [];
+    if (type === 'quote') {
+      const data = await API.get('/search/unified?q=' + encodeURIComponent(query) + '&limit=10');
+      items = (data.quotes || []).map(q => ({
+        id: q.id,
+        label: (q.text || '').substring(0, 100) + ((q.text || '').length > 100 ? '...' : ''),
+        type: 'quote'
+      }));
+    } else if (type === 'topic') {
+      const data = await API.get('/admin/topics');
+      items = (data.topics || []).filter(t =>
+        t.name.toLowerCase().includes(query.toLowerCase())
+      ).slice(0, 10).map(t => ({
+        id: t.id,
+        label: t.name,
+        type: 'topic'
+      }));
+    } else if (type === 'article') {
+      const data = await API.get('/search/unified?q=' + encodeURIComponent(query) + '&limit=10');
+      items = (data.articles || []).map(a => ({
+        id: a.id,
+        label: a.title || 'Untitled',
+        type: 'article'
+      }));
+    }
+
+    if (items.length === 0) {
+      resultsDiv.innerHTML = '<p class="empty-message">No results found.</p>';
+      return;
+    }
+
+    resultsDiv.innerHTML = items.map(item => `
+      <div class="noteworthy-search-item" onclick="noteworthyAdd('${escapeHtml(item.type)}', ${item.id})">
+        <span class="noteworthy-search-item__label">${escapeHtml(item.label)}</span>
+        <button class="btn btn-primary btn-sm">Add</button>
+      </div>
+    `).join('');
+  } catch (err) {
+    resultsDiv.innerHTML = `<p class="empty-message">Search error: ${escapeHtml(err.message)}</p>`;
+  }
+}
+
+async function noteworthyAdd(entityType, entityId) {
+  try {
+    const list = document.getElementById('noteworthy-items-list');
+    const currentCount = list.querySelectorAll('.tk-row').length;
+    await API.post('/admin/noteworthy', {
+      entity_type: entityType,
+      entity_id: entityId,
+      display_order: currentCount
+    });
+    showToast('Added to noteworthy', 'success');
+    document.getElementById('noteworthy-search-results').innerHTML = '';
+    document.getElementById('noteworthy-search').value = '';
+    await refreshNoteworthyList();
+  } catch (err) {
+    showToast('Error: ' + err.message, 'error');
+  }
+}
+
+async function noteworthyRemove(id) {
+  showConfirmToast('Remove this item from noteworthy?', async () => {
+    try {
+      await API.delete(`/admin/noteworthy/${id}`);
+      const row = document.querySelector(`.tk-row[data-noteworthy-id="${id}"]`);
+      if (row) row.remove();
+      updateNoteworthyCount();
+      showToast('Removed from noteworthy', 'success');
+    } catch (err) {
+      showToast('Error: ' + err.message, 'error');
+    }
+  });
+}
+
+async function noteworthyMoveUp(id) {
+  const row = document.querySelector(`.tk-row[data-noteworthy-id="${id}"]`);
+  if (!row || !row.previousElementSibling || !row.previousElementSibling.classList.contains('tk-row')) return;
+  try {
+    const prevId = row.previousElementSibling.dataset.noteworthyId;
+    const rows = document.querySelectorAll('#noteworthy-items-list .tk-row');
+    const ids = Array.from(rows).map(r => parseInt(r.dataset.noteworthyId));
+    const idx = ids.indexOf(id);
+    if (idx <= 0) return;
+    await API.patch(`/admin/noteworthy/${id}`, { display_order: idx - 1 });
+    await API.patch(`/admin/noteworthy/${prevId}`, { display_order: idx });
+    await refreshNoteworthyList();
+  } catch (err) {
+    showToast('Error reordering: ' + err.message, 'error');
+  }
+}
+
+async function noteworthyMoveDown(id) {
+  const row = document.querySelector(`.tk-row[data-noteworthy-id="${id}"]`);
+  if (!row || !row.nextElementSibling || !row.nextElementSibling.classList.contains('tk-row')) return;
+  try {
+    const nextId = row.nextElementSibling.dataset.noteworthyId;
+    const rows = document.querySelectorAll('#noteworthy-items-list .tk-row');
+    const ids = Array.from(rows).map(r => parseInt(r.dataset.noteworthyId));
+    const idx = ids.indexOf(id);
+    if (idx < 0 || idx >= ids.length - 1) return;
+    await API.patch(`/admin/noteworthy/${id}`, { display_order: idx + 1 });
+    await API.patch(`/admin/noteworthy/${nextId}`, { display_order: idx });
+    await refreshNoteworthyList();
+  } catch (err) {
+    showToast('Error reordering: ' + err.message, 'error');
+  }
+}
+
+async function refreshNoteworthyList() {
+  try {
+    const data = await API.get('/admin/noteworthy');
+    const items = data.items || [];
+    const list = document.getElementById('noteworthy-items-list');
+    if (list) {
+      list.innerHTML = items.length === 0
+        ? '<p class="empty-message">No noteworthy items. Add quotes, topics, or articles above.</p>'
+        : items.map(item => renderNoteworthyRow(item)).join('');
+    }
+    updateNoteworthyCount();
+  } catch (err) {
+    console.error('Failed to refresh noteworthy:', err);
+  }
+}
+
+function updateNoteworthyCount() {
+  const list = document.getElementById('noteworthy-items-list');
+  const header = list ? list.closest('.settings-subsection')?.querySelector('.subsection-title') : null;
+  if (header && list) {
+    const count = list.querySelectorAll('.tk-row').length;
+    header.textContent = `Current Items (${count})`;
   }
 }
 

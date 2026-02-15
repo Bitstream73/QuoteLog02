@@ -5184,6 +5184,45 @@ span.evidence-source-cite {
   }
 }
 
+/* Noteworthy Admin (Settings) */
+.noteworthy-add-form {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+.noteworthy-search-results {
+  max-height: 300px;
+  overflow-y: auto;
+  margin-bottom: 0.5rem;
+}
+
+.noteworthy-search-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.noteworthy-search-item:hover {
+  background: var(--bg-hover);
+}
+
+.noteworthy-search-item__label {
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-right: 0.5rem;
+}
+
 /* ===================================
    Phase 4C: Topics & Keywords Review
    =================================== */
