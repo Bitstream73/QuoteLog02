@@ -27,7 +27,7 @@ export function csrfProtection(req, res, next) {
     // Validate referer against allowed origins
     try {
       const refererOrigin = new URL(referer).origin;
-      if (isAllowedOrigin(refererOrigin)) {
+      if (isAllowedOrigin(refererOrigin, req)) {
         return next();
       }
     } catch {
@@ -38,17 +38,31 @@ export function csrfProtection(req, res, next) {
   }
 
   // Validate Origin header
-  if (isAllowedOrigin(origin)) {
+  if (isAllowedOrigin(origin, req)) {
     return next();
   }
 
   return res.status(403).json({ error: 'CSRF validation failed' });
 }
 
-function isAllowedOrigin(origin) {
+function isAllowedOrigin(origin, req) {
   // In dev mode with wildcard CORS, allow everything
   if (config.corsOrigins.includes('*')) {
     return true;
+  }
+
+  // Check against the request's own Host header — this handles reverse
+  // proxies (Railway, nginx, etc.) without requiring APP_URL to be set.
+  const host = req.get('host');
+  if (host) {
+    try {
+      const originHost = new URL(origin).host;
+      if (originHost === host) {
+        return true;
+      }
+    } catch {
+      // Invalid origin URL
+    }
   }
 
   // Check against app URL origin
