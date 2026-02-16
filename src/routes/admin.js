@@ -1048,12 +1048,23 @@ router.get('/taxonomy/suggestions', (req, res) => {
   }
 });
 
+function emitTaxonomySuggestionsUpdate(req) {
+  try {
+    const io = req.app.get('io');
+    if (!io) return;
+    const db = getDb();
+    const row = db.prepare("SELECT COUNT(*) AS count FROM taxonomy_suggestions WHERE status = 'pending'").get();
+    io.emit('taxonomy_suggestions_update', { pending: row.count });
+  } catch (_) { /* best-effort */ }
+}
+
 // POST /api/admin/taxonomy/suggestions/:id/approve — approve (optionally with edited data)
 router.post('/taxonomy/suggestions/:id/approve', (req, res) => {
   try {
     const { id } = req.params;
     const editedData = req.body?.edited_data || null;
     approveSuggestion(parseInt(id), editedData);
+    emitTaxonomySuggestionsUpdate(req);
     res.json({ success: true });
   } catch (err) {
     if (err.message === 'Suggestion not found') {
@@ -1068,6 +1079,7 @@ router.post('/taxonomy/suggestions/:id/reject', (req, res) => {
   try {
     const { id } = req.params;
     rejectSuggestion(parseInt(id));
+    emitTaxonomySuggestionsUpdate(req);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'Failed to reject suggestion: ' + err.message });
@@ -1082,6 +1094,7 @@ router.post('/taxonomy/evolve', async (req, res) => {
     const { runTaxonomyEvolution } = await import('../services/taxonomyEvolution.js');
     const days = parseInt(req.body?.days) || 7;
     const results = runTaxonomyEvolution(days);
+    emitTaxonomySuggestionsUpdate(req);
     res.json({ message: 'Taxonomy evolution complete', ...results });
   } catch (err) {
     res.status(500).json({ error: 'Taxonomy evolution failed: ' + err.message });

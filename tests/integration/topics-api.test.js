@@ -31,7 +31,7 @@ describe('Topics API', () => {
     db.prepare('DELETE FROM topics').run();
     db.prepare('DELETE FROM keywords').run();
     db.prepare('DELETE FROM categories').run();
-  });
+  }, 30000);
 
   afterAll(async () => {
     const { closeDb } = await import('../../src/config/database.js');

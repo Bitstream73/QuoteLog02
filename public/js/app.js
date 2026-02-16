@@ -53,6 +53,12 @@ function initSocket() {
       }
     });
 
+    socket.on('taxonomy_suggestions_update', (data) => {
+      if (typeof updateTaxonomyTabBadge === 'function') {
+        updateTaxonomyTabBadge(data.pending);
+      }
+    });
+
     socket.on('fetch_cycle_complete', (data) => {
       console.log(`Fetch cycle complete: ${data.newArticles} articles, ${data.newQuotes} quotes`);
     });
