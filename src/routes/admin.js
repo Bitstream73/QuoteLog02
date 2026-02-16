@@ -432,6 +432,179 @@ router.get('/backprop/status', requireAdmin, async (req, res) => {
   }
 });
 
+// --- Keywords CRUD ---
+
+// GET /api/admin/keywords — list all keywords with alias count and quote count
+router.get('/keywords', (req, res) => {
+  try {
+    const db = getDb();
+    const keywords = db.prepare(`
+      SELECT k.*,
+        (SELECT COUNT(*) FROM keyword_aliases WHERE keyword_id = k.id) AS alias_count,
+        (SELECT COUNT(*) FROM quote_keywords WHERE keyword_id = k.id) AS quote_count
+      FROM keywords k ORDER BY k.name
+    `).all();
+    res.json({ keywords });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to list keywords: ' + err.message });
+  }
+});
+
+// GET /api/admin/keywords/:id — get single keyword with all aliases
+router.get('/keywords/:id', (req, res) => {
+  try {
+    const db = getDb();
+    const keyword = db.prepare('SELECT * FROM keywords WHERE id = ?').get(req.params.id);
+    if (!keyword) {
+      return res.status(404).json({ error: 'Keyword not found' });
+    }
+    const aliases = db.prepare('SELECT * FROM keyword_aliases WHERE keyword_id = ?').all(req.params.id);
+    res.json({ keyword, aliases });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to get keyword: ' + err.message });
+  }
+});
+
+// POST /api/admin/keywords — create keyword
+router.post('/keywords', (req, res) => {
+  try {
+    const db = getDb();
+    const { name, aliases } = req.body;
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'name is required' });
+    }
+    const trimmedName = name.trim();
+    const nameNormalized = trimmedName.toLowerCase();
+
+    const result = db.prepare(
+      'INSERT INTO keywords (name, name_normalized) VALUES (?, ?)'
+    ).run(trimmedName, nameNormalized);
+
+    const keywordId = Number(result.lastInsertRowid);
+    const insertedAliases = [];
+
+    if (aliases && Array.isArray(aliases)) {
+      const insertAlias = db.prepare(
+        'INSERT INTO keyword_aliases (keyword_id, alias, alias_normalized) VALUES (?, ?, ?)'
+      );
+      for (const alias of aliases) {
+        if (alias && alias.trim()) {
+          const trimmedAlias = alias.trim();
+          insertAlias.run(keywordId, trimmedAlias, trimmedAlias.toLowerCase());
+          insertedAliases.push(trimmedAlias);
+        }
+      }
+    }
+
+    const keyword = db.prepare('SELECT * FROM keywords WHERE id = ?').get(keywordId);
+    res.status(201).json({ keyword, aliases: insertedAliases });
+  } catch (err) {
+    if (err.message?.includes('UNIQUE constraint')) {
+      return res.status(409).json({ error: 'Keyword with this name already exists' });
+    }
+    res.status(500).json({ error: 'Failed to create keyword: ' + err.message });
+  }
+});
+
+// PUT /api/admin/keywords/:id — update keyword name
+router.put('/keywords/:id', (req, res) => {
+  try {
+    const db = getDb();
+    const { id } = req.params;
+    const { name } = req.body;
+
+    const existing = db.prepare('SELECT * FROM keywords WHERE id = ?').get(id);
+    if (!existing) {
+      return res.status(404).json({ error: 'Keyword not found' });
+    }
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'name is required' });
+    }
+
+    const trimmedName = name.trim();
+    const nameNormalized = trimmedName.toLowerCase();
+    db.prepare(
+      'UPDATE keywords SET name = ?, name_normalized = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+    ).run(trimmedName, nameNormalized, id);
+
+    const keyword = db.prepare('SELECT * FROM keywords WHERE id = ?').get(id);
+    res.json({ keyword });
+  } catch (err) {
+    if (err.message?.includes('UNIQUE constraint')) {
+      return res.status(409).json({ error: 'Keyword with this name already exists' });
+    }
+    res.status(500).json({ error: 'Failed to update keyword: ' + err.message });
+  }
+});
+
+// DELETE /api/admin/keywords/:id — delete keyword (CASCADE handles aliases, topic_keywords, quote_keywords)
+router.delete('/keywords/:id', (req, res) => {
+  try {
+    const db = getDb();
+    const result = db.prepare('DELETE FROM keywords WHERE id = ?').run(req.params.id);
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'Keyword not found' });
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete keyword: ' + err.message });
+  }
+});
+
+// POST /api/admin/keywords/:id/aliases — add alias to keyword
+router.post('/keywords/:id/aliases', (req, res) => {
+  try {
+    const db = getDb();
+    const { id } = req.params;
+    const { alias } = req.body;
+
+    if (!alias || !alias.trim()) {
+      return res.status(400).json({ error: 'alias is required' });
+    }
+
+    const keyword = db.prepare('SELECT id FROM keywords WHERE id = ?').get(id);
+    if (!keyword) {
+      return res.status(404).json({ error: 'Keyword not found' });
+    }
+
+    const trimmedAlias = alias.trim();
+    const result = db.prepare(
+      'INSERT INTO keyword_aliases (keyword_id, alias, alias_normalized) VALUES (?, ?, ?)'
+    ).run(id, trimmedAlias, trimmedAlias.toLowerCase());
+
+    res.status(201).json({
+      id: Number(result.lastInsertRowid),
+      keyword_id: Number(id),
+      alias: trimmedAlias,
+      alias_normalized: trimmedAlias.toLowerCase()
+    });
+  } catch (err) {
+    if (err.message?.includes('UNIQUE constraint')) {
+      return res.status(409).json({ error: 'This alias already exists for this keyword' });
+    }
+    res.status(500).json({ error: 'Failed to add alias: ' + err.message });
+  }
+});
+
+// DELETE /api/admin/keywords/:id/aliases/:aliasId — remove alias
+router.delete('/keywords/:id/aliases/:aliasId', (req, res) => {
+  try {
+    const db = getDb();
+    const { id, aliasId } = req.params;
+    const result = db.prepare(
+      'DELETE FROM keyword_aliases WHERE id = ? AND keyword_id = ?'
+    ).run(aliasId, id);
+
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'Alias not found' });
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to remove alias: ' + err.message });
+  }
+});
+
 // --- Topics CRUD ---
 
 function generateSlug(name) {
