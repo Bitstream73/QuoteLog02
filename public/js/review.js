@@ -478,6 +478,15 @@ async function renderTopicsKeywordsReviewTab() {
         </div>
       `;
     } else {
+      // Bulk action bar
+      if (stats.pendingKeywords > 0) {
+        html += `
+          <div class="tkr-batch-bar" style="margin-bottom:0.5rem">
+            <button class="btn btn-danger btn-sm" onclick="rejectAllKeywords(${stats.pendingKeywords})">Reject All ${stats.pendingKeywords.toLocaleString()} Keywords</button>
+          </div>
+        `;
+      }
+
       // Batch action bar
       html += `
         <div class="tkr-batch-bar">
@@ -638,6 +647,19 @@ async function batchTkrAction(action) {
   } catch (err) {
     showToast('Error: ' + err.message, 'error', 5000);
   }
+}
+
+async function rejectAllKeywords(count) {
+  showConfirmToast(`Reject all ${count.toLocaleString()} pending keywords?`, async () => {
+    try {
+      const result = await API.post('/review/topics-keywords/reject-all-keywords');
+      showToast(`Rejected ${result.rejected.toLocaleString()} keywords`, 'success');
+      _tkrPage = 1;
+      renderTopicsKeywordsReviewTab();
+    } catch (err) {
+      showToast('Error: ' + err.message, 'error', 5000);
+    }
+  });
 }
 
 function loadTkrPage(page) {
