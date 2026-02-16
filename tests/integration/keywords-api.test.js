@@ -14,10 +14,36 @@ describe('Keywords API', () => {
   beforeAll(async () => {
     const { createApp } = await import('../../src/index.js');
     app = createApp();
+
+    // Clean up any leftover test keywords from previous runs
+    const { getDb } = await import('../../src/config/database.js');
+    const db = getDb();
+    const testKeywords = ['NATO', 'European Union', 'Supreme Court', 'To Be Deleted',
+      'North Atlantic Treaty Organization'];
+    for (const name of testKeywords) {
+      const kw = db.prepare('SELECT id FROM keywords WHERE name = ?').get(name);
+      if (kw) {
+        db.prepare('DELETE FROM keyword_aliases WHERE keyword_id = ?').run(kw.id);
+        db.prepare('DELETE FROM keywords WHERE id = ?').run(kw.id);
+      }
+    }
   }, 30000);
 
   afterAll(async () => {
-    const { closeDb } = await import('../../src/config/database.js');
+    // Clean up test keywords from the database before closing
+    const { getDb, closeDb } = await import('../../src/config/database.js');
+    try {
+      const db = getDb();
+      const testKeywords = ['NATO', 'European Union', 'Supreme Court', 'To Be Deleted',
+        'North Atlantic Treaty Organization'];
+      for (const name of testKeywords) {
+        const kw = db.prepare('SELECT id FROM keywords WHERE name = ?').get(name);
+        if (kw) {
+          db.prepare('DELETE FROM keyword_aliases WHERE keyword_id = ?').run(kw.id);
+          db.prepare('DELETE FROM keywords WHERE id = ?').run(kw.id);
+        }
+      }
+    } catch {}
     closeDb();
     const fs = await import('fs');
     for (const suffix of ['', '-wal', '-shm']) {
@@ -125,7 +151,8 @@ describe('Keywords API', () => {
         .set('Cookie', authCookie);
 
       const names = res.body.keywords.map(k => k.name);
-      const sorted = [...names].sort((a, b) => a.localeCompare(b));
+      // SQLite ORDER BY name is case-sensitive (binary collation)
+      const sorted = [...names].sort();
       expect(names).toEqual(sorted);
     });
   });
