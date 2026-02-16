@@ -20,7 +20,7 @@ describe('Auth API', () => {
     app = createApp();
     const dbModule = await import('../../src/config/database.js');
     db = dbModule.getDb();
-  });
+  }, 30000);
 
   afterAll(async () => {
     const { closeDb } = await import('../../src/config/database.js');

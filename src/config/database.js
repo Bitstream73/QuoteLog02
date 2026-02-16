@@ -423,13 +423,141 @@ function initializeTables(db) {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_importants_entity ON importants(entity_type, entity_id)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_importants_voter ON importants(voter_hash)`);
 
-  // --- Legacy table cleanup: drop old topic/keyword tables ---
+  // --- Legacy table cleanup: drop old topic/keyword tables that had different schemas ---
   db.exec(`DROP TABLE IF EXISTS topic_keyword_review`);
-  db.exec(`DROP TABLE IF EXISTS topic_keywords`);
-  db.exec(`DROP TABLE IF EXISTS quote_keywords`);
-  db.exec(`DROP TABLE IF EXISTS quote_topics`);
-  db.exec(`DROP TABLE IF EXISTS keywords`);
-  db.exec(`DROP TABLE IF EXISTS topics`);
+
+  // --- New Taxonomy Schema ---
+
+  // Keywords — canonical keyword entities
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS keywords (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      name_normalized TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Keyword aliases — alternate names for a keyword
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS keyword_aliases (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      keyword_id INTEGER NOT NULL REFERENCES keywords(id) ON DELETE CASCADE,
+      alias TEXT NOT NULL,
+      alias_normalized TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(keyword_id, alias)
+    )
+  `);
+
+  // Topics — curated topic entities with lifecycle
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS topics (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      slug TEXT UNIQUE,
+      status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','archived','draft')),
+      start_date TEXT,
+      end_date TEXT,
+      description TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Topic aliases — alternate names for a topic
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS topic_aliases (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      topic_id INTEGER NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
+      alias TEXT NOT NULL,
+      alias_normalized TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(topic_id, alias)
+    )
+  `);
+
+  // Categories — top-level groupings for topics
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS categories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      slug TEXT UNIQUE,
+      sort_order INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Topic-keyword association (many-to-many)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS topic_keywords (
+      topic_id INTEGER NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
+      keyword_id INTEGER NOT NULL REFERENCES keywords(id) ON DELETE CASCADE,
+      PRIMARY KEY (topic_id, keyword_id)
+    )
+  `);
+
+  // Category-topic association (many-to-many)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS category_topics (
+      category_id INTEGER NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+      topic_id INTEGER NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
+      PRIMARY KEY (category_id, topic_id)
+    )
+  `);
+
+  // Quote-keyword association with confidence
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS quote_keywords (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      quote_id INTEGER NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,
+      keyword_id INTEGER NOT NULL REFERENCES keywords(id) ON DELETE CASCADE,
+      confidence TEXT NOT NULL DEFAULT 'high' CHECK(confidence IN ('high','medium','low')),
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(quote_id, keyword_id)
+    )
+  `);
+
+  // Quote-topic association (materialized from quote_keywords + topic_keywords)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS quote_topics (
+      quote_id INTEGER NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,
+      topic_id INTEGER NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
+      PRIMARY KEY (quote_id, topic_id)
+    )
+  `);
+
+  // Taxonomy suggestions — review queue for AI-suggested taxonomy changes
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS taxonomy_suggestions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      suggestion_type TEXT NOT NULL CHECK(suggestion_type IN ('new_keyword','new_topic','keyword_alias','topic_keyword','topic_alias')),
+      suggested_data TEXT NOT NULL,
+      source TEXT NOT NULL CHECK(source IN ('ai_extraction','batch_evolution','confidence_review')),
+      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected','edited')),
+      reviewed_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // --- Taxonomy indexes ---
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_keyword_aliases_keyword_id ON keyword_aliases(keyword_id)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_keyword_aliases_normalized ON keyword_aliases(alias_normalized)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_topic_aliases_topic_id ON topic_aliases(topic_id)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_topic_aliases_normalized ON topic_aliases(alias_normalized)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_topics_status ON topics(status)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_topics_slug ON topics(slug)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_categories_slug ON categories(slug)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_categories_sort ON categories(sort_order)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quote_keywords_quote ON quote_keywords(quote_id)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quote_keywords_keyword ON quote_keywords(keyword_id)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quote_keywords_confidence ON quote_keywords(confidence)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quote_topics_quote ON quote_topics(quote_id)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quote_topics_topic ON quote_topics(topic_id)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_taxonomy_suggestions_status ON taxonomy_suggestions(status)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_taxonomy_suggestions_type ON taxonomy_suggestions(suggestion_type)`);
 
   // --- Site Topic Focus migrations: new columns for importants/share/view/trending ---
 
