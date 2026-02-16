@@ -5,11 +5,23 @@ import crypto from 'crypto';
 import config from '../config/index.js';
 import { getDb } from '../config/database.js';
 import { sendPasswordResetEmail } from '../services/email.js';
+import { createLoginRateLimiter } from '../middleware/rateLimiter.js';
 
 const router = Router();
 
+const loginLimiter = createLoginRateLimiter();
+
+function validatePasswordStrength(password) {
+  if (password.length < 8) return 'Password must be at least 8 characters';
+  if (!/[A-Z]/.test(password)) return 'Password must contain at least one uppercase letter';
+  if (!/[a-z]/.test(password)) return 'Password must contain at least one lowercase letter';
+  if (!/[0-9]/.test(password)) return 'Password must contain at least one number';
+  if (!/[^A-Za-z0-9]/.test(password)) return 'Password must contain at least one special character';
+  return null;
+}
+
 // POST /api/auth/login
-router.post('/login', async (req, res) => {
+router.post('/login', loginLimiter, async (req, res) => {
   const { email, password } = req.body;
 
   if (!email || !password) {
@@ -32,7 +44,7 @@ router.post('/login', async (req, res) => {
   res.cookie('auth_token', token, {
     httpOnly: true,
     secure: config.nodeEnv === 'production',
-    sameSite: 'lax',
+    sameSite: 'strict',
     path: '/',
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
   });
@@ -101,13 +113,9 @@ router.post('/reset-password', async (req, res) => {
     return res.status(400).json({ error: 'Token and password are required' });
   }
 
-  if (password.length < 8) {
-    return res.status(400).json({ error: 'Password must be at least 8 characters' });
-  }
-
   const db = getDb();
 
-  // Find valid token
+  // Find valid token first (before password validation — better UX for invalid links)
   const resetToken = db.prepare(
     "SELECT * FROM password_reset_tokens WHERE token = ? AND used = 0 AND expires_at > datetime('now')"
   ).get(token);
@@ -116,9 +124,14 @@ router.post('/reset-password', async (req, res) => {
     return res.status(400).json({ error: 'Invalid or expired reset token' });
   }
 
-  // Hash new password and update user
+  const passwordError = validatePasswordStrength(password);
+  if (passwordError) {
+    return res.status(400).json({ error: passwordError });
+  }
+
+  // Hash new password and update user, set password_changed_at for session invalidation
   const hash = bcryptjs.hashSync(password, 12);
-  db.prepare("UPDATE admin_users SET password_hash = ?, updated_at = datetime('now') WHERE email = ?")
+  db.prepare("UPDATE admin_users SET password_hash = ?, password_changed_at = datetime('now'), updated_at = datetime('now') WHERE email = ?")
     .run(hash, resetToken.email);
 
   // Mark token as used
@@ -128,4 +141,5 @@ router.post('/reset-password', async (req, res) => {
   res.json({ success: true });
 });
 
+export { validatePasswordStrength };
 export default router;
