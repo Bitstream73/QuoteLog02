@@ -424,6 +424,23 @@ function initializeTables(db) {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_importants_voter ON importants(voter_hash)`);
 
   // --- Legacy table cleanup: drop old topic/keyword tables that had different schemas ---
+  // The old taxonomy tables (topics, keywords, quote_keywords, quote_topics, topic_keywords)
+  // have incompatible schemas. DROP them so CREATE TABLE IF NOT EXISTS creates the new versions.
+  // Check if old schema exists by looking for missing columns before dropping.
+  const oldTopicCols = db.prepare("PRAGMA table_info(topics)").all().map(c => c.name);
+  if (oldTopicCols.length > 0 && !oldTopicCols.includes('status')) {
+    // Old topics table exists without 'status' column — drop all old taxonomy tables
+    db.exec(`DROP TABLE IF EXISTS quote_topics`);
+    db.exec(`DROP TABLE IF EXISTS quote_keywords`);
+    db.exec(`DROP TABLE IF EXISTS topic_keywords`);
+    db.exec(`DROP TABLE IF EXISTS category_topics`);
+    db.exec(`DROP TABLE IF EXISTS topic_aliases`);
+    db.exec(`DROP TABLE IF EXISTS keyword_aliases`);
+    db.exec(`DROP TABLE IF EXISTS taxonomy_suggestions`);
+    db.exec(`DROP TABLE IF EXISTS categories`);
+    db.exec(`DROP TABLE IF EXISTS topics`);
+    db.exec(`DROP TABLE IF EXISTS keywords`);
+  }
   db.exec(`DROP TABLE IF EXISTS topic_keyword_review`);
 
   // --- New Taxonomy Schema ---
