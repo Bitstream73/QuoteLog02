@@ -11,7 +11,6 @@ describe('Trending System', () => {
   let testPersonId;
   let testQuoteIds = [];
   let testArticleId;
-  let testTopicId;
 
   beforeAll(async () => {
     const { createApp } = await import('../../src/index.js');
@@ -38,14 +37,6 @@ describe('Trending System', () => {
     db.prepare('INSERT INTO quote_articles (quote_id, article_id) VALUES (?, ?)').run(testQuoteIds[0], testArticleId);
     db.prepare('INSERT INTO quote_articles (quote_id, article_id) VALUES (?, ?)').run(testQuoteIds[1], testArticleId);
 
-    // Create topic + keyword + links
-    const topicResult = db.prepare("INSERT INTO topics (name, slug) VALUES (?, ?)").run('Trending Test', 'trending-test');
-    testTopicId = Number(topicResult.lastInsertRowid);
-    db.prepare("INSERT INTO keywords (name, name_normalized, keyword_type) VALUES (?, ?, 'concept')").run('trending_kw', 'trending_kw');
-    const kwId = db.prepare("SELECT id FROM keywords WHERE name = 'trending_kw'").get().id;
-    db.prepare('INSERT INTO topic_keywords (topic_id, keyword_id) VALUES (?, ?)').run(testTopicId, kwId);
-    db.prepare('INSERT INTO quote_keywords (quote_id, keyword_id) VALUES (?, ?)').run(testQuoteIds[0], kwId);
-    db.prepare('INSERT INTO quote_topics (quote_id, topic_id) VALUES (?, ?)').run(testQuoteIds[0], testTopicId);
   }, 30000);
 
   afterAll(async () => {
@@ -68,10 +59,6 @@ describe('Trending System', () => {
       // Quote with importants_count=5 should have trending_score > 0
       const q1 = db.prepare('SELECT trending_score FROM quotes WHERE id = ?').get(testQuoteIds[0]);
       expect(q1.trending_score).toBeGreaterThan(0);
-
-      // Topic score should include child quote importants
-      const topic = db.prepare('SELECT trending_score FROM topics WHERE id = ?').get(testTopicId);
-      expect(topic.trending_score).toBeGreaterThan(0);
 
       // Article score should include child quote importants
       const article = db.prepare('SELECT trending_score FROM articles WHERE id = ?').get(testArticleId);
@@ -99,18 +86,6 @@ describe('Trending System', () => {
       expect(recencyBonus(null)).toBe(0.0);
     });
 
-    it('topic score includes child quote importants', async () => {
-      const { getDb } = await import('../../src/config/database.js');
-      const db = getDb();
-      const { recalculateTrendingScores } = await import('../../src/services/trendingCalculator.js');
-
-      recalculateTrendingScores(db);
-
-      const topic = db.prepare('SELECT trending_score FROM topics WHERE id = ?').get(testTopicId);
-      // Topic has 0 importants_count but child quote has 5 importants * 1.0 = 5.0
-      expect(topic.trending_score).toBeGreaterThanOrEqual(5.0);
-    });
-
     it('recalculateEntityScore only updates targeted entity and parents', async () => {
       const { getDb } = await import('../../src/config/database.js');
       const db = getDb();
@@ -119,7 +94,6 @@ describe('Trending System', () => {
       // Reset all scores to 0
       db.exec('UPDATE quotes SET trending_score = 0');
       db.exec('UPDATE articles SET trending_score = 0');
-      db.exec('UPDATE topics SET trending_score = 0');
       db.exec('UPDATE persons SET trending_score = 0');
 
       // Recalculate only q1
@@ -136,10 +110,6 @@ describe('Trending System', () => {
       // Parent article should also be recalculated
       const article = db.prepare('SELECT trending_score FROM articles WHERE id = ?').get(testArticleId);
       expect(article.trending_score).toBeGreaterThan(0);
-
-      // Parent topic should also be recalculated
-      const topic = db.prepare('SELECT trending_score FROM topics WHERE id = ?').get(testTopicId);
-      expect(topic.trending_score).toBeGreaterThan(0);
     });
   });
 
@@ -149,18 +119,6 @@ describe('Trending System', () => {
       const db = getDb();
       const { recalculateTrendingScores } = await import('../../src/services/trendingCalculator.js');
       recalculateTrendingScores(db);
-    });
-
-    it('GET /api/analytics/trending-topics returns topics with quotes', async () => {
-      const res = await request(app).get('/api/analytics/trending-topics');
-
-      expect(res.status).toBe(200);
-      expect(res.body.topics).toBeDefined();
-      expect(Array.isArray(res.body.topics)).toBe(true);
-      if (res.body.topics.length > 0) {
-        expect(res.body.topics[0]).toHaveProperty('trending_score');
-        expect(res.body.topics[0]).toHaveProperty('quotes');
-      }
     });
 
     it('GET /api/analytics/trending-sources returns articles with quotes', async () => {

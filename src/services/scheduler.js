@@ -2,8 +2,6 @@ import { getDb, getSettingValue } from '../config/database.js';
 import logger from './logger.js';
 import { fetchArticlesFromSource, processArticle } from './articleFetcher.js';
 import { createBackup, pruneOldBackups } from './backup.js';
-import { materializeTopics } from './topicMaterializer.js';
-import { suggestTopics } from './topicSuggester.js';
 import { recalculateTrendingScores } from './trendingCalculator.js';
 import { runBackPropCycle } from './backPropagation.js';
 
@@ -223,26 +221,8 @@ async function runFetchCycle() {
       }
     }
 
-    // Post-fetch: materialize topics and suggest new ones
-    // Also run materialization if quote_topics is empty (first deploy / fresh seed)
-    const qtCount = db.prepare('SELECT COUNT(*) as cnt FROM quote_topics').get().cnt;
-    if (totalNewQuotes > 0 || qtCount === 0) {
-      try {
-        const matResult = materializeTopics();
-        logger.info('scheduler', 'topics_materialized', matResult);
-      } catch (err) {
-        logger.error('scheduler', 'topic_materialization_error', { error: err.message });
-      }
-
-      try {
-        const sugResult = await suggestTopics();
-        if (sugResult.suggested) {
-          logger.info('scheduler', 'topic_suggested', { topicName: sugResult.topicName });
-        }
-      } catch (err) {
-        logger.error('scheduler', 'topic_suggestion_error', { error: err.message });
-      }
-
+    // Post-fetch: recalculate trending scores
+    if (totalNewQuotes > 0) {
       try {
         recalculateTrendingScores();
         logger.info('scheduler', 'trending_scores_recalculated');

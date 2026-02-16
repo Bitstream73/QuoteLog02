@@ -27,9 +27,6 @@ describe('Unified Search API', () => {
     // Hidden quote
     db.prepare("INSERT INTO quotes (person_id, text, context, is_visible, created_at) VALUES (?, ?, ?, 0, datetime('now'))").run(1, 'Secret hidden quote about gravity', 'hidden');
 
-    // Enable a topic for search
-    db.prepare("UPDATE topics SET enabled = 1 WHERE name = 'Artificial Intelligence'");
-
     // Add an article
     db.prepare("INSERT INTO articles (url, title, status, created_at) VALUES (?, ?, 'completed', datetime('now'))").run('https://example.com/science', 'The Future of Science');
   }, 30000);
@@ -54,7 +51,6 @@ describe('Unified Search API', () => {
       expect(res.status).toBe(200);
       expect(res.body).toHaveProperty('quotes');
       expect(res.body).toHaveProperty('persons');
-      expect(res.body).toHaveProperty('topics');
       expect(res.body).toHaveProperty('articles');
       expect(Array.isArray(res.body.quotes)).toBe(true);
       expect(Array.isArray(res.body.persons)).toBe(true);

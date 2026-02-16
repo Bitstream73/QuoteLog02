@@ -81,23 +81,6 @@ function setupTestDb() {
   `);
 
   testDb.exec(`
-    CREATE TABLE topics (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL UNIQUE,
-      slug TEXT NOT NULL UNIQUE,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )
-  `);
-
-  testDb.exec(`
-    CREATE TABLE quote_topics (
-      quote_id INTEGER NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,
-      topic_id INTEGER NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
-      PRIMARY KEY (quote_id, topic_id)
-    )
-  `);
-
-  testDb.exec(`
     CREATE TABLE quote_context_cache (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       quote_id INTEGER NOT NULL UNIQUE REFERENCES quotes(id) ON DELETE CASCADE,

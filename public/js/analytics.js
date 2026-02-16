@@ -1,4 +1,4 @@
-// Analytics page - Trending Topics & Keywords
+// Analytics page
 
 let _analyticsDays = 30;
 
@@ -67,93 +67,6 @@ function renderAnalyticsData(data) {
         <div class="stat-number">${data.total_authors.toLocaleString()}</div>
         <div class="stat-label">Authors</div>
       </div>
-      <div class="stat-card">
-        <div class="stat-number">${data.topics.length}</div>
-        <div class="stat-label">Topics</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-number">${data.keywords.length}</div>
-        <div class="stat-label">Keywords</div>
-      </div>
-    </div>
-  `;
-
-  // Topics section
-  const topicsHtml = `
-    <div class="analytics-section">
-      <h2>Trending Topics</h2>
-      <p class="analytics-subtitle">Broad subject categories across all quotes</p>
-      <div class="topics-cloud">
-        ${data.topics.length > 0 ? data.topics.map(t => `
-          <a href="#" class="topic-tag" onclick="navigateToTopic(event, '${escapeAttr(t.slug)}')" title="${t.quote_count} quotes">
-            <span class="topic-name">${escapeHtml(t.name)}</span>
-            <span class="topic-count">${t.quote_count}</span>
-          </a>
-        `).join('') : '<p class="analytics-empty">No topics yet. Topics are extracted as new quotes are processed.</p>'}
-      </div>
-    </div>
-  `;
-
-  // Keywords section - grouped by type
-  const keywordsByType = {};
-  for (const kw of data.keywords) {
-    const type = kw.keyword_type || 'concept';
-    if (!keywordsByType[type]) keywordsByType[type] = [];
-    keywordsByType[type].push(kw);
-  }
-
-  const typeLabels = {
-    person: 'People',
-    organization: 'Organizations',
-    event: 'Events',
-    legislation: 'Legislation',
-    location: 'Locations',
-    concept: 'Concepts',
-  };
-
-  const typeOrder = ['person', 'event', 'organization', 'location', 'legislation', 'concept'];
-
-  let keywordsInnerHtml = '';
-  if (data.keywords.length > 0) {
-    // Show all keywords in a single cloud, but with type indicators
-    keywordsInnerHtml = `
-      <div class="keywords-cloud">
-        ${data.keywords.map(kw => `
-          <a href="#" class="keyword-tag keyword-type-${kw.keyword_type}" onclick="navigateToKeyword(event, ${kw.id})" title="${kw.quote_count} quotes - ${typeLabels[kw.keyword_type] || kw.keyword_type}">
-            <span class="keyword-name">${escapeHtml(kw.name)}</span>
-            <span class="keyword-count">${kw.quote_count}</span>
-          </a>
-        `).join('')}
-      </div>
-    `;
-
-    // Also show grouped view
-    const groupedSections = typeOrder
-      .filter(type => keywordsByType[type]?.length > 0)
-      .map(type => `
-        <div class="keyword-group">
-          <h4>${typeLabels[type]}</h4>
-          <div class="keywords-cloud">
-            ${keywordsByType[type].map(kw => `
-              <a href="#" class="keyword-tag keyword-type-${kw.keyword_type}" onclick="navigateToKeyword(event, ${kw.id})" title="${kw.quote_count} quotes">
-                <span class="keyword-name">${escapeHtml(kw.name)}</span>
-                <span class="keyword-count">${kw.quote_count}</span>
-              </a>
-            `).join('')}
-          </div>
-        </div>
-      `).join('');
-
-    keywordsInnerHtml += `<div class="keyword-groups">${groupedSections}</div>`;
-  } else {
-    keywordsInnerHtml = '<p class="analytics-empty">No keywords yet. Keywords are extracted as new quotes are processed.</p>';
-  }
-
-  const keywordsHtml = `
-    <div class="analytics-section">
-      <h2>Trending Keywords</h2>
-      <p class="analytics-subtitle">Specific people, events, organizations, and concepts</p>
-      ${keywordsInnerHtml}
     </div>
   `;
 
@@ -177,72 +90,7 @@ function renderAnalyticsData(data) {
     </div>
   `;
 
-  page.insertAdjacentHTML('beforeend', statsHtml + topicsHtml + keywordsHtml + authorsHtml);
-}
-
-function navigateToTopic(event, slug) {
-  event.preventDefault();
-  navigate(null, `/analytics/topic/${slug}`);
-}
-
-function navigateToKeyword(event, id) {
-  event.preventDefault();
-  navigate(null, `/analytics/keyword/${id}`);
-}
-
-async function renderTopicDetail(slug) {
-  const content = document.getElementById('content');
-  content.innerHTML = `<div class="analytics-page"><div class="analytics-loading">Loading topic...</div></div>`;
-
-  try {
-    const data = await API.get(`/analytics/topic/${encodeURIComponent(slug)}`);
-    content.innerHTML = `
-      <div class="analytics-page">
-        <div class="analytics-header">
-          <h1><a href="#" onclick="navigate(event, '/analytics')" class="back-link">Analytics</a> / ${escapeHtml(data.topic.name)}</h1>
-          <span class="analytics-subtitle">${data.total} quotes in this topic</span>
-        </div>
-        <div class="topic-quotes-list">
-          ${data.quotes.map(q => renderQuoteCard(q)).join('')}
-        </div>
-        ${data.total > data.quotes.length ? `
-          <div class="load-more-container">
-            <button class="btn" onclick="loadMoreTopicQuotes('${escapeAttr(slug)}', 2)">Load more</button>
-          </div>
-        ` : ''}
-      </div>
-    `;
-  } catch (err) {
-    content.innerHTML = `<div class="analytics-page"><p class="error-text">Failed to load topic: ${err.message}</p></div>`;
-  }
-}
-
-async function renderKeywordDetail(id) {
-  const content = document.getElementById('content');
-  content.innerHTML = `<div class="analytics-page"><div class="analytics-loading">Loading keyword...</div></div>`;
-
-  try {
-    const data = await API.get(`/analytics/keyword/${id}`);
-    const typeLabels = { person: 'Person', organization: 'Organization', event: 'Event', legislation: 'Legislation', location: 'Location', concept: 'Concept' };
-    content.innerHTML = `
-      <div class="analytics-page">
-        <div class="analytics-header">
-          <h1><a href="#" onclick="navigate(event, '/analytics')" class="back-link">Analytics</a> / ${escapeHtml(data.keyword.name)}</h1>
-          <span class="analytics-subtitle">${typeLabels[data.keyword.keyword_type] || 'Keyword'} &middot; ${data.total} quotes</span>
-        </div>
-        <div class="topic-quotes-list">
-          ${data.quotes.map(q => renderQuoteCard(q)).join('')}
-        </div>
-        ${data.total > data.quotes.length ? `
-          <div class="load-more-container">
-            <button class="btn" onclick="loadMoreKeywordQuotes(${id}, 2)">Load more</button>
-          </div>
-        ` : ''}
-      </div>
-    `;
-  } catch (err) {
-    content.innerHTML = `<div class="analytics-page"><p class="error-text">Failed to load keyword: ${err.message}</p></div>`;
-  }
+  page.insertAdjacentHTML('beforeend', statsHtml + authorsHtml);
 }
 
 function renderQuoteCard(q) {

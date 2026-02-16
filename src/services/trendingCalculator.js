@@ -87,34 +87,6 @@ function recalculatePersons(db) {
 }
 
 /**
- * Recalculate trending_score for all topics (includes child quote importants).
- */
-function recalculateTopics(db) {
-  const topics = db.prepare(`
-    SELECT t.id, t.importants_count, t.share_count, t.view_count,
-      COALESCE(SUM(q.importants_count), 0) as child_importants
-    FROM topics t
-    LEFT JOIN quote_topics qt ON qt.topic_id = t.id
-    LEFT JOIN quotes q ON q.id = qt.quote_id AND q.is_visible = 1
-    GROUP BY t.id
-  `).all();
-
-  const update = db.prepare('UPDATE topics SET trending_score = ? WHERE id = ?');
-
-  const updateMany = db.transaction((topics) => {
-    for (const t of topics) {
-      const score = t.importants_count * 3.0
-        + t.share_count * 2.0
-        + t.view_count * 0.5
-        + t.child_importants * 1.0;
-      update.run(Math.round(score * 100) / 100, t.id);
-    }
-  });
-
-  updateMany(topics);
-}
-
-/**
  * Recalculate trending scores for all entity types.
  * @param {object} [dbOverride]
  */
@@ -123,7 +95,6 @@ export function recalculateTrendingScores(dbOverride) {
   recalculateQuotes(db);
   recalculateArticles(db);
   recalculatePersons(db);
-  recalculateTopics(db);
 }
 
 /**
@@ -154,14 +125,6 @@ export function recalculateEntityScore(dbOverride, entityType, entityId) {
       recalculateEntityScore(db, 'article', row.article_id);
     }
 
-    // Also recalculate parent topic(s)
-    const topics = db.prepare(
-      'SELECT topic_id FROM quote_topics WHERE quote_id = ?'
-    ).all(entityId);
-    for (const row of topics) {
-      recalculateEntityScore(db, 'topic', row.topic_id);
-    }
-
     // Also recalculate parent person
     const quote = db.prepare('SELECT person_id FROM quotes WHERE id = ?').get(entityId);
     if (quote) {
@@ -189,21 +152,6 @@ export function recalculateEntityScore(dbOverride, entityType, entityId) {
     if (p) {
       const score = p.importants_count * 3.0 + p.share_count * 2.0 + p.view_count * 0.5;
       db.prepare('UPDATE persons SET trending_score = ? WHERE id = ?').run(Math.round(score * 100) / 100, p.id);
-    }
-  } else if (entityType === 'topic') {
-    const t = db.prepare(`
-      SELECT t.id, t.importants_count, t.share_count, t.view_count,
-        COALESCE(SUM(q.importants_count), 0) as child_importants
-      FROM topics t
-      LEFT JOIN quote_topics qt ON qt.topic_id = t.id
-      LEFT JOIN quotes q ON q.id = qt.quote_id AND q.is_visible = 1
-      WHERE t.id = ?
-      GROUP BY t.id
-    `).get(entityId);
-    if (t) {
-      const score = t.importants_count * 3.0 + t.share_count * 2.0 + t.view_count * 0.5
-        + t.child_importants * 1.0;
-      db.prepare('UPDATE topics SET trending_score = ? WHERE id = ?').run(Math.round(score * 100) / 100, t.id);
     }
   }
 }

@@ -5,8 +5,8 @@ import { recalculateEntityScore } from '../services/trendingCalculator.js';
 
 const router = Router();
 
-const VIEW_TABLES = { article: 'articles', person: 'persons', topic: 'topics' };
-const SHARE_TABLES = { quote: 'quotes', article: 'articles', person: 'persons', topic: 'topics' };
+const VIEW_TABLES = { article: 'articles', person: 'persons' };
+const SHARE_TABLES = { quote: 'quotes', article: 'articles', person: 'persons' };
 
 // Pre-built SQL queries per entity type — eliminates all dynamic table name interpolation
 const VIEW_QUERIES = {
@@ -17,10 +17,6 @@ const VIEW_QUERIES = {
   person: {
     exists: 'SELECT id FROM persons WHERE id = ?',
     increment: 'UPDATE persons SET view_count = view_count + 1 WHERE id = ?',
-  },
-  topic: {
-    exists: 'SELECT id FROM topics WHERE id = ?',
-    increment: 'UPDATE topics SET view_count = view_count + 1 WHERE id = ?',
   },
 };
 
@@ -39,11 +35,6 @@ const SHARE_QUERIES = {
     exists: 'SELECT id FROM persons WHERE id = ?',
     increment: 'UPDATE persons SET share_count = share_count + 1 WHERE id = ?',
     getCount: 'SELECT share_count FROM persons WHERE id = ?',
-  },
-  topic: {
-    exists: 'SELECT id FROM topics WHERE id = ?',
-    increment: 'UPDATE topics SET share_count = share_count + 1 WHERE id = ?',
-    getCount: 'SELECT share_count FROM topics WHERE id = ?',
   },
 };
 

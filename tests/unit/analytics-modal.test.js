@@ -29,14 +29,6 @@ describe('Analytics Page', () => {
         period_days: 30,
         total_quotes: 100,
         total_authors: 25,
-        topics: [
-          { id: 1, name: 'U.S. Politics', slug: 'us-politics', quote_count: 50 },
-          { id: 2, name: 'Economy', slug: 'economy', quote_count: 30 },
-        ],
-        keywords: [
-          { id: 1, name: 'Donald Trump', keyword_type: 'person', quote_count: 20 },
-          { id: 2, name: 'Federal Reserve', keyword_type: 'organization', quote_count: 10 },
-        ],
         authors: [
           { id: 1, canonical_name: 'Author A', photo_url: null, category: 'Politician', quote_count: 15 },
         ],
@@ -94,8 +86,6 @@ describe('Analytics Page', () => {
     mod.renderAnalyticsData({
       total_quotes: 100,
       total_authors: 25,
-      topics: [{ id: 1, name: 'U.S. Politics', slug: 'us-politics', quote_count: 50 }],
-      keywords: [{ id: 1, name: 'GDP Growth', keyword_type: 'concept', quote_count: 10 }],
       authors: [{ id: 1, canonical_name: 'Author A', photo_url: null, category: 'Politician', quote_count: 15 }],
     });
 
@@ -103,60 +93,7 @@ describe('Analytics Page', () => {
     const html = page.insertAdjacentHTML.mock.calls[0][1];
     expect(html).toContain('100');
     expect(html).toContain('25');
-    expect(html).toContain('U.S. Politics');
-    expect(html).toContain('GDP Growth');
     expect(html).toContain('Author A');
-  });
-
-  it('renderAnalyticsData renders topic cloud', () => {
-    const page = {
-      querySelector: vi.fn(() => ({ remove: vi.fn() })),
-      querySelectorAll: vi.fn(() => []),
-      insertAdjacentHTML: vi.fn(),
-    };
-    global.document.querySelector = vi.fn(() => page);
-
-    mod.renderAnalyticsData({
-      total_quotes: 10,
-      total_authors: 2,
-      topics: [
-        { id: 1, name: 'Economy', slug: 'economy', quote_count: 5 },
-        { id: 2, name: 'Trade', slug: 'trade', quote_count: 3 },
-      ],
-      keywords: [],
-      authors: [],
-    });
-
-    const html = page.insertAdjacentHTML.mock.calls[0][1];
-    expect(html).toContain('Trending Topics');
-    expect(html).toContain('topics-cloud');
-    expect(html).toContain('Economy');
-    expect(html).toContain('Trade');
-  });
-
-  it('renderAnalyticsData renders keyword groups by type', () => {
-    const page = {
-      querySelector: vi.fn(() => ({ remove: vi.fn() })),
-      querySelectorAll: vi.fn(() => []),
-      insertAdjacentHTML: vi.fn(),
-    };
-    global.document.querySelector = vi.fn(() => page);
-
-    mod.renderAnalyticsData({
-      total_quotes: 10,
-      total_authors: 2,
-      topics: [],
-      keywords: [
-        { id: 1, name: 'Donald Trump', keyword_type: 'person', quote_count: 10 },
-        { id: 2, name: 'Federal Reserve', keyword_type: 'organization', quote_count: 5 },
-      ],
-      authors: [],
-    });
-
-    const html = page.insertAdjacentHTML.mock.calls[0][1];
-    expect(html).toContain('Trending Keywords');
-    expect(html).toContain('keyword-type-person');
-    expect(html).toContain('keyword-type-organization');
   });
 
   it('formatDateShort formats dates correctly', () => {

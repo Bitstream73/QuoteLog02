@@ -26,8 +26,6 @@ async function renderQuote(id) {
       source_name: (data.articles && data.articles[0]) ? (data.articles[0].source_name || '') : '',
       is_visible: q.isVisible,
     };
-    const mainQuoteTopics = q.topics || [];
-
     // Author block
     const heroPersonName = q.personName || '';
     const heroPhotoUrl = q.photoUrl || '';
@@ -233,8 +231,7 @@ function buildSmartRelatedQuoteBlock(item) {
     source_domain: item.source_domain || '',
     source_name: item.source_name || item.sourceName || '',
   };
-  const topics = item.topics || [];
-  return buildQuoteBlockHtml(quoteData, topics, false, { variant: 'compact', showAvatar: false, showSummary: false });
+  return buildQuoteBlockHtml(quoteData, false, { variant: 'compact', showAvatar: false, showSummary: false });
 }
 
 /**
@@ -447,8 +444,6 @@ async function runFactCheck(quoteId, force) {
   const contextText = heroSummary?.textContent?.trim() || '';
   const sourceEl = document.querySelector('.quote-primary-source');
   const sourceName = sourceEl?.textContent?.trim() || '';
-  const tagEls = document.querySelectorAll('.quote-block__topic-tag') || [];
-  const tags = [...tagEls].map(t => t.textContent.trim());
   const dateEl = document.querySelector('.quote-date-inline');
   const sourceDate = dateEl?.textContent?.trim() || new Date().toISOString().split('T')[0];
 
@@ -461,7 +456,6 @@ async function runFactCheck(quoteId, force) {
       context: contextText,
       sourceName,
       sourceDate,
-      tags,
     });
 
     // Cache result

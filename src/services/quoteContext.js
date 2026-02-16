@@ -101,31 +101,6 @@ Rules:
       logger.warn('quote_context', 'pinecone_search_failed', { quoteId, claim: claim.claim, error: err.message });
     }
 
-    // SQLite: quotes sharing same topics
-    try {
-      const topicQuotes = db.prepare(`
-        SELECT DISTINCT q.id, q.text, q.context, q.created_at, q.quote_datetime,
-               p.canonical_name, p.disambiguation,
-               a.url AS article_url, a.title AS article_title,
-               s.name AS source_name, s.domain AS source_domain
-        FROM quotes q
-        JOIN persons p ON q.person_id = p.id
-        LEFT JOIN quote_articles qa ON qa.quote_id = q.id
-        LEFT JOIN articles a ON qa.article_id = a.id
-        LEFT JOIN sources s ON a.source_id = s.id
-        JOIN quote_topics qt1 ON qt1.quote_id = q.id
-        JOIN quote_topics qt2 ON qt2.topic_id = qt1.topic_id
-        WHERE qt2.quote_id = ? AND q.id != ? AND q.is_visible = 1 AND q.canonical_quote_id IS NULL
-        LIMIT 10
-      `).all(quoteId, quoteId);
-      for (const eq of topicQuotes) {
-        if (!evidenceQuotes.has(eq.id)) {
-          evidenceQuotes.set(eq.id, eq);
-        }
-      }
-    } catch (err) {
-      logger.warn('quote_context', 'topic_search_failed', { quoteId, error: err.message });
-    }
   }
 
   // Cap at 15 evidence quotes
@@ -486,13 +461,6 @@ function formatSmartRelated(db, rows, fromCache) {
 
     if (!rq) continue;
 
-    // Fetch topics for this related quote
-    const topicRows = db.prepare(`
-      SELECT t.id, t.name, t.slug FROM topics t
-      JOIN quote_topics qt ON qt.topic_id = t.id
-      WHERE qt.quote_id = ?
-    `).all(rq.id);
-
     const item = {
       id: rq.id,
       text: rq.text,
@@ -512,7 +480,6 @@ function formatSmartRelated(db, rows, fromCache) {
       article_title: rq.article_title || null,
       source_domain: rq.source_domain || null,
       source_name: rq.source_name || null,
-      topics: topicRows,
     };
 
     if (row.related_type === 'contradiction') contradictions.push(item);

@@ -171,21 +171,7 @@ describe('Visual Tests', () => {
       await page.close();
     }, 20000);
 
-    it('10. Topic headers use uppercase', async () => {
-      const page = await getPage(1280, 800);
-      await page.goto(baseUrl, { waitUntil: 'networkidle2', timeout: 15000 });
-      await page.waitForSelector('.topic-card__name, .empty-state', { timeout: 10000 }).catch(() => {});
-      const hasTopicName = await page.$('.topic-card__name');
-      if (hasTopicName) {
-        const textTransform = await page.evaluate(() => {
-          return getComputedStyle(document.querySelector('.topic-card__name')).textTransform;
-        });
-        expect(textTransform).toBe('uppercase');
-      }
-      await page.close();
-    }, 20000);
-
-    it('11. Content max-width is 780px', async () => {
+    it('10. Content max-width is 780px', async () => {
       const page = await getPage(1280, 800);
       await page.goto(baseUrl, { waitUntil: 'networkidle2', timeout: 15000 });
       const maxWidth = await page.evaluate(() => {

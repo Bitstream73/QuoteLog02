@@ -165,22 +165,17 @@ describe('Frontend JS files', () => {
     });
   });
 
-  describe('home.js 4-tab system tabs', () => {
+  describe('home.js tab system tabs', () => {
     const homeJs = fs.readFileSync(path.join(process.cwd(), 'public/js/home.js'), 'utf-8');
 
     it('should default active tab to trending-quotes', () => {
       expect(homeJs).toContain("let _activeTab = 'trending-quotes'");
     });
 
-    it('should include all 4 tab keys', () => {
-      expect(homeJs).toContain("'trending-topics'");
+    it('should include tab keys', () => {
       expect(homeJs).toContain("'trending-sources'");
       expect(homeJs).toContain("'trending-quotes'");
       expect(homeJs).toContain("key: 'trending-authors'");
-    });
-
-    it('should have renderTrendingTopicsTab function', () => {
-      expect(homeJs).toContain('async function renderTrendingTopicsTab');
     });
 
     it('should have renderTrendingAuthorsTab function', () => {
@@ -472,10 +467,6 @@ describe('Frontend JS files', () => {
       expect(homeJs).toContain('homepage-tabs');
     });
 
-    it('should have trending-topics tab', () => {
-      expect(homeJs).toContain('trending-topics');
-    });
-
     it('should have trending-sources tab', () => {
       expect(homeJs).toContain('trending-sources');
     });
@@ -506,10 +497,6 @@ describe('Frontend JS files', () => {
 
     it('should use IntersectionObserver for view tracking', () => {
       expect(homeJs).toContain('IntersectionObserver');
-    });
-
-    it('should have topic-card class for topic tab', () => {
-      expect(homeJs).toContain('topic-card');
     });
 
     it('should have quote-block class in buildQuoteBlockHtml', () => {
@@ -547,9 +534,6 @@ describe('Frontend JS files', () => {
       expect(appJs).not.toContain('initVoteSocket');
     });
 
-    it('should have /topic/:slug route', () => {
-      expect(appJs).toContain('/topic/');
-    });
   });
 
   // Phase 6: CSS for important button, tabs, quote block
@@ -576,98 +560,8 @@ describe('Frontend JS files', () => {
       expect(css).toContain('.quote-block');
     });
 
-    it('should have topic-card styles', () => {
-      expect(css).toContain('.topic-card');
-    });
-
     it('should have share-buttons styles', () => {
       expect(css).toContain('.share-buttons');
-    });
-  });
-
-  // Admin autocomplete for topics/keywords
-  describe('home.js admin autocomplete', () => {
-    const homeJs = fs.readFileSync(path.join(process.cwd(), 'public/js/home.js'), 'utf-8');
-
-    it('should define openAdminAutocomplete function', () => {
-      expect(homeJs).toContain('function openAdminAutocomplete');
-    });
-
-    it('should define closeAdminAutocomplete function', () => {
-      expect(homeJs).toContain('function closeAdminAutocomplete');
-    });
-
-    it('should define _ensureTopicsCache function', () => {
-      expect(homeJs).toContain('async function _ensureTopicsCache');
-    });
-
-    it('should define _ensureKeywordsCache function', () => {
-      expect(homeJs).toContain('async function _ensureKeywordsCache');
-    });
-
-    it('should define selectAutocompleteOption function', () => {
-      expect(homeJs).toContain('async function selectAutocompleteOption');
-    });
-
-    it('should define selectAutocompleteCreate function', () => {
-      expect(homeJs).toContain('async function selectAutocompleteCreate');
-    });
-
-    it('should use "Add Topic" label instead of "Create Topic"', () => {
-      expect(homeJs).toContain('>Add Topic</button>');
-      expect(homeJs).not.toContain('>Create Topic</button>');
-    });
-
-    it('should use "Add Keyword" label in admin quote block', () => {
-      expect(homeJs).toContain('>Add Keyword</button>');
-      // The admin-keywords-section in quote blocks should use autocomplete
-      const quoteBlockSection = homeJs.substring(
-        homeJs.indexOf('admin-keywords-section'),
-        homeJs.indexOf('admin-topics-section')
-      );
-      expect(quoteBlockSection).toContain('Add Keyword');
-      expect(quoteBlockSection).toContain('openAdminAutocomplete');
-    });
-
-    it('should have _topicsCacheAll variable', () => {
-      expect(homeJs).toContain('let _topicsCacheAll');
-    });
-
-    it('should have _keywordsCacheAll variable', () => {
-      expect(homeJs).toContain('let _keywordsCacheAll');
-    });
-  });
-
-  describe('styles.css admin autocomplete styles', () => {
-    const css = fs.readFileSync(path.join(process.cwd(), 'public/css/styles.css'), 'utf-8');
-
-    it('should have admin-autocomplete styles', () => {
-      expect(css).toContain('.admin-autocomplete');
-    });
-
-    it('should have admin-ac-input styles', () => {
-      expect(css).toContain('.admin-ac-input');
-    });
-
-    it('should have admin-ac-dropdown styles', () => {
-      expect(css).toContain('.admin-ac-dropdown');
-    });
-
-    it('should have admin-ac-option styles', () => {
-      expect(css).toContain('.admin-ac-option');
-    });
-
-    it('should have admin-ac-create styles', () => {
-      expect(css).toContain('.admin-ac-create');
-    });
-  });
-
-  // Phase 7: Topic page rendering
-  describe('home.js topic page rendering', () => {
-    const homeJs = fs.readFileSync(path.join(process.cwd(), 'public/js/home.js'), 'utf-8');
-
-    it('should define renderTopicPage function', () => {
-      expect(homeJs).toContain('async function renderTopicPage');
     });
   });
 

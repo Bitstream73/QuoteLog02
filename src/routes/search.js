@@ -17,7 +17,7 @@ function isAdminRequest(req) {
 }
 
 // GET /api/search/unified?q=...&limit=20
-// Searches across quotes, persons, topics, articles
+// Searches across quotes, persons, articles
 router.get('/unified', (req, res) => {
   try {
     const db = getDb();
@@ -53,15 +53,6 @@ router.get('/unified', (req, res) => {
       LIMIT ?
     `).all(searchTerm, limit);
 
-    // Search topics (enabled only)
-    const topics = db.prepare(`
-      SELECT t.id, t.name, t.slug, t.description, t.trending_score
-      FROM topics t
-      WHERE t.enabled = 1 AND t.name LIKE ?
-      ORDER BY t.trending_score DESC
-      LIMIT ?
-    `).all(searchTerm, limit);
-
     // Search articles
     const articles = db.prepare(`
       SELECT a.id, a.url, a.title, a.published_at,
@@ -73,7 +64,7 @@ router.get('/unified', (req, res) => {
       LIMIT ?
     `).all(searchTerm, limit);
 
-    res.json({ quotes, persons, topics, articles });
+    res.json({ quotes, persons, articles });
   } catch (err) {
     res.status(500).json({ error: 'Search failed' });
   }
@@ -103,26 +94,6 @@ router.get('/autocomplete', (req, res) => {
     `).all(searchTerm, limit);
     suggestions.push(...persons);
 
-    // Topic names (enabled only)
-    const topics = db.prepare(`
-      SELECT name as label, 'topic' as type, slug as id
-      FROM topics
-      WHERE enabled = 1 AND name LIKE ?
-      ORDER BY trending_score DESC
-      LIMIT ?
-    `).all(searchTerm, limit);
-    suggestions.push(...topics);
-
-    // Keyword names (enabled only)
-    const keywords = db.prepare(`
-      SELECT name as label, 'keyword' as type, id
-      FROM keywords
-      WHERE enabled = 1 AND name LIKE ?
-      ORDER BY name
-      LIMIT ?
-    `).all(searchTerm, limit);
-    suggestions.push(...keywords);
-
     // Trim to overall limit
     res.json({ suggestions: suggestions.slice(0, limit) });
   } catch (err) {
@@ -141,7 +112,6 @@ router.get('/noteworthy', (req, res) => {
         CASE
           WHEN n.entity_type = 'quote' THEN (SELECT q.text FROM quotes q WHERE q.id = n.entity_id)
           WHEN n.entity_type = 'article' THEN (SELECT a.title FROM articles a WHERE a.id = n.entity_id)
-          WHEN n.entity_type = 'topic' THEN (SELECT t.name FROM topics t WHERE t.id = n.entity_id)
         END as entity_label,
         CASE
           WHEN n.entity_type = 'quote' THEN (SELECT p2.canonical_name FROM quotes q2 JOIN persons p2 ON p2.id = q2.person_id WHERE q2.id = n.entity_id)

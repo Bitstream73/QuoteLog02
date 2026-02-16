@@ -26,177 +26,11 @@ function tieredImportanceOrder(dateCol, importantsCol) {
   `;
 }
 
-/**
- * Enrich an array of quotes with their top 2 topics
- */
-function enrichQuotesWithTopics(db, quotes) {
-  if (!quotes || quotes.length === 0) return quotes;
-  const quoteIds = quotes.map(q => q.id);
-  const placeholders = quoteIds.map(() => '?').join(',');
-  const rows = db.prepare(`
-    SELECT qt.quote_id, t.name, t.slug
-    FROM quote_topics qt
-    JOIN topics t ON t.id = qt.topic_id
-    WHERE qt.quote_id IN (${placeholders})
-  `).all(...quoteIds);
-
-  const topicMap = {};
-  for (const row of rows) {
-    if (!topicMap[row.quote_id]) topicMap[row.quote_id] = [];
-    if (topicMap[row.quote_id].length < 2) {
-      topicMap[row.quote_id].push({ name: row.name, slug: row.slug });
-    }
-  }
-
-  return quotes.map(q => ({ ...q, topics: topicMap[q.id] || [] }));
-}
-
-// GET /api/analytics/trending-topics - Topics sorted by trending_score, each with top 3 quotes
-router.get('/trending-topics', (req, res) => {
-  try {
-    const db = getDb();
-    const limit = Math.min(parseInt(req.query.limit) || 20, 50);
-
-    const sortMode = req.query.sort;
-    let topicOrder;
-    if (sortMode === 'importance') {
-      // For topics, use most recent quote date for tiering
-      topicOrder = `
-        CASE
-          WHEN t.importants_count > 0 AND (SELECT MAX(COALESCE(q2.quote_datetime, q2.created_at)) FROM quote_topics qt3 JOIN quotes q2 ON q2.id = qt3.quote_id WHERE qt3.topic_id = t.id AND q2.is_visible = 1) >= datetime('now', '-1 day') THEN 1
-          WHEN t.importants_count > 0 AND (SELECT MAX(COALESCE(q2.quote_datetime, q2.created_at)) FROM quote_topics qt3 JOIN quotes q2 ON q2.id = qt3.quote_id WHERE qt3.topic_id = t.id AND q2.is_visible = 1) >= datetime('now', '-7 days') THEN 2
-          WHEN t.importants_count > 0 AND (SELECT MAX(COALESCE(q2.quote_datetime, q2.created_at)) FROM quote_topics qt3 JOIN quotes q2 ON q2.id = qt3.quote_id WHERE qt3.topic_id = t.id AND q2.is_visible = 1) >= datetime('now', '-30 days') THEN 3
-          WHEN t.importants_count > 0 THEN 4
-          ELSE 5
-        END ASC,
-        t.importants_count DESC,
-        t.trending_score DESC
-      `;
-    } else {
-      topicOrder = 't.trending_score DESC';
-    }
-
-    const topics = db.prepare(`
-      SELECT t.id, t.name, t.slug, t.description, t.context,
-        t.importants_count, t.trending_score,
-        (SELECT COUNT(*) FROM quote_topics qt2 JOIN quotes q ON q.id = qt2.quote_id AND q.is_visible = 1 WHERE qt2.topic_id = t.id) as quote_count
-      FROM topics t
-      WHERE t.enabled = 1
-      GROUP BY t.id
-      HAVING quote_count > 0
-      ORDER BY ${topicOrder}
-      LIMIT ?
-    `).all(limit);
-
-    // For each topic, get top 3 quotes
-    const getTopQuotes = db.prepare(`
-      SELECT q.id, q.text, q.context, q.quote_datetime, q.importants_count, q.share_count,
-        q.created_at,
-        p.id as person_id, p.canonical_name as person_name, p.photo_url,
-        p.category_context, a.id as article_id, a.title as article_title,
-        a.url as article_url, s.domain as source_domain, s.name as source_name
-      FROM quotes q
-      JOIN quote_topics qt ON qt.quote_id = q.id AND qt.topic_id = ?
-      JOIN persons p ON p.id = q.person_id
-      LEFT JOIN quote_articles qa ON qa.quote_id = q.id
-      LEFT JOIN articles a ON a.id = qa.article_id
-      LEFT JOIN sources s ON s.id = a.source_id
-      WHERE q.is_visible = 1
-      GROUP BY q.id
-      ORDER BY COALESCE(q.quote_datetime, q.created_at) DESC
-      LIMIT 3
-    `);
-
-    // Fetch keywords for all topics in one query
-    const topicIds = topics.map(t => t.id);
-    const topicKeywordsMap = {};
-    if (topicIds.length > 0) {
-      const tkPlaceholders = topicIds.map(() => '?').join(',');
-      const tkRows = db.prepare(`
-        SELECT tk.topic_id, k.id, k.name, k.keyword_type
-        FROM topic_keywords tk
-        JOIN keywords k ON k.id = tk.keyword_id
-        WHERE tk.topic_id IN (${tkPlaceholders})
-      `).all(...topicIds);
-      for (const row of tkRows) {
-        if (!topicKeywordsMap[row.topic_id]) topicKeywordsMap[row.topic_id] = [];
-        topicKeywordsMap[row.topic_id].push({ id: row.id, name: row.name, keyword_type: row.keyword_type });
-      }
-    }
-
-    const topicsWithQuotes = topics.map(t => ({
-      ...t,
-      keywords: topicKeywordsMap[t.id] || [],
-      quotes: enrichQuotesWithTopics(db, getTopQuotes.all(t.id)),
-    }));
-
-    res.json({ topics: topicsWithQuotes });
-  } catch (err) {
-    console.error('Trending topics error:', err);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// GET /api/analytics/trending-keywords - Top keywords by quote count
-router.get('/trending-keywords', (req, res) => {
-  const db = getDb();
-  const limit = Math.min(parseInt(req.query.limit) || 30, 100);
-  const days = parseInt(req.query.days) || 30;
-  const type = req.query.type || null; // optional filter by keyword_type
-
-  let query = `
-    SELECT k.id, k.name, k.keyword_type, COUNT(qk.quote_id) AS quote_count
-    FROM keywords k
-    JOIN quote_keywords qk ON qk.keyword_id = k.id
-    JOIN quotes q ON q.id = qk.quote_id AND q.is_visible = 1
-    WHERE k.enabled = 1 AND q.created_at >= datetime('now', ?)
-  `;
-  const params = [`-${days} days`];
-
-  if (type) {
-    query += ` AND k.keyword_type = ?`;
-    params.push(type);
-  }
-
-  query += `
-    GROUP BY k.id
-    ORDER BY quote_count DESC
-    LIMIT ?
-  `;
-  params.push(limit);
-
-  const keywords = db.prepare(query).all(...params);
-
-  res.json({ keywords, period_days: days });
-});
-
 // GET /api/analytics/overview - Combined analytics overview
 router.get('/overview', (req, res) => {
   const db = getDb();
   const days = parseInt(req.query.days) || 30;
   const dateFilter = `-${days} days`;
-
-  const topTopics = db.prepare(`
-    SELECT t.id, t.name, t.slug, COUNT(qt.quote_id) AS quote_count
-    FROM topics t
-    JOIN quote_topics qt ON qt.topic_id = t.id
-    JOIN quotes q ON q.id = qt.quote_id AND q.is_visible = 1
-    WHERE t.enabled = 1 AND q.created_at >= datetime('now', ?)
-    GROUP BY t.id
-    ORDER BY quote_count DESC
-    LIMIT 15
-  `).all(dateFilter);
-
-  const topKeywords = db.prepare(`
-    SELECT k.id, k.name, k.keyword_type, COUNT(qk.quote_id) AS quote_count
-    FROM keywords k
-    JOIN quote_keywords qk ON qk.keyword_id = k.id
-    JOIN quotes q ON q.id = qk.quote_id AND q.is_visible = 1
-    WHERE k.enabled = 1 AND q.created_at >= datetime('now', ?)
-    GROUP BY k.id
-    ORDER BY quote_count DESC
-    LIMIT 20
-  `).all(dateFilter);
 
   const topAuthors = db.prepare(`
     SELECT p.id, p.canonical_name, p.photo_url, p.category, p.category_context,
@@ -223,76 +57,8 @@ router.get('/overview', (req, res) => {
     period_days: days,
     total_quotes: totalQuotes,
     total_authors: totalAuthors,
-    topics: topTopics,
-    keywords: topKeywords,
     authors: topAuthors,
   });
-});
-
-// GET /api/analytics/topic/:slug - Quotes for a specific topic
-router.get('/topic/:slug', (req, res) => {
-  const db = getDb();
-  const { slug } = req.params;
-  const page = parseInt(req.query.page) || 1;
-  const limit = Math.min(parseInt(req.query.limit) || 20, 50);
-  const offset = (page - 1) * limit;
-
-  const topic = db.prepare('SELECT * FROM topics WHERE slug = ?').get(slug);
-  if (!topic) {
-    return res.status(404).json({ error: 'Topic not found' });
-  }
-
-  const total = db.prepare(`
-    SELECT COUNT(*) AS count FROM quote_topics qt
-    JOIN quotes q ON q.id = qt.quote_id AND q.is_visible = 1
-    WHERE qt.topic_id = ?
-  `).get(topic.id).count;
-
-  const quotes = db.prepare(`
-    SELECT q.id, q.text, q.context, q.created_at, q.quote_datetime,
-           p.id AS person_id, p.canonical_name, p.photo_url, p.category
-    FROM quote_topics qt
-    JOIN quotes q ON q.id = qt.quote_id AND q.is_visible = 1
-    JOIN persons p ON p.id = q.person_id
-    WHERE qt.topic_id = ?
-    ORDER BY COALESCE(q.quote_datetime, q.created_at) DESC
-    LIMIT ? OFFSET ?
-  `).all(topic.id, limit, offset);
-
-  res.json({ topic, quotes, total, page, limit });
-});
-
-// GET /api/analytics/keyword/:id - Quotes for a specific keyword
-router.get('/keyword/:id', (req, res) => {
-  const db = getDb();
-  const keywordId = parseInt(req.params.id);
-  const page = parseInt(req.query.page) || 1;
-  const limit = Math.min(parseInt(req.query.limit) || 20, 50);
-  const offset = (page - 1) * limit;
-
-  const keyword = db.prepare('SELECT * FROM keywords WHERE id = ?').get(keywordId);
-  if (!keyword) {
-    return res.status(404).json({ error: 'Keyword not found' });
-  }
-
-  const total = db.prepare(`
-    SELECT COUNT(*) AS count FROM quote_keywords qk
-    JOIN quotes q ON q.id = qk.quote_id AND q.is_visible = 1
-    WHERE qk.keyword_id = ?
-  `).get(keyword.id).count;
-
-  const quotes = db.prepare(`
-    SELECT q.id, q.text, q.context, q.created_at, q.quote_datetime,
-           p.id AS person_id, p.canonical_name, p.photo_url, p.category
-    FROM quote_keywords qk
-    JOIN quotes q ON q.id = qk.quote_id AND q.is_visible = 1
-    JOIN persons p ON p.id = q.person_id
-    WHERE qk.keyword_id = ?
-    ORDER BY COALESCE(q.quote_datetime, q.created_at) DESC
-    LIMIT ? OFFSET ?
-  `).all(keyword.id, limit, offset);
-
-  res.json({ keyword, quotes, total, page, limit });
 });
 
 // GET /api/analytics/trending-sources - Articles sorted by trending_score, each with top 3 quotes
@@ -338,14 +104,14 @@ router.get('/trending-sources', (req, res) => {
 
     const articlesWithQuotes = articles.map(a => ({
       ...a,
-      quotes: enrichQuotesWithTopics(db, getTopQuotes.all(a.id).map(q => ({
+      quotes: getTopQuotes.all(a.id).map(q => ({
         ...q,
         article_id: a.id,
         article_title: a.title,
         article_url: a.url,
         source_domain: a.source_domain,
         source_name: a.source_name,
-      }))),
+      })),
     }));
 
     res.json({ articles: articlesWithQuotes });
@@ -404,17 +170,11 @@ router.get('/trending-quotes', (req, res) => {
       'SELECT COUNT(*) as count FROM quotes WHERE is_visible = 1 AND canonical_quote_id IS NULL'
     ).get().count;
 
-    // Enrich all quotes with topics
-    const allQuotes = [quoteOfDay, quoteOfWeek, quoteOfMonth, ...recentQuotes].filter(Boolean);
-    const enriched = enrichQuotesWithTopics(db, allQuotes);
-    const enrichedMap = {};
-    for (const q of enriched) enrichedMap[q.id] = q;
-
     res.json({
-      quote_of_day: quoteOfDay ? enrichedMap[quoteOfDay.id] || quoteOfDay : null,
-      quote_of_week: quoteOfWeek ? enrichedMap[quoteOfWeek.id] || quoteOfWeek : null,
-      quote_of_month: quoteOfMonth ? enrichedMap[quoteOfMonth.id] || quoteOfMonth : null,
-      recent_quotes: recentQuotes.map(q => enrichedMap[q.id] || q),
+      quote_of_day: quoteOfDay || null,
+      quote_of_week: quoteOfWeek || null,
+      quote_of_month: quoteOfMonth || null,
+      recent_quotes: recentQuotes,
       total,
       page,
       limit,
@@ -478,14 +238,14 @@ router.get('/all-sources', (req, res) => {
 
     const articlesWithQuotes = articles.map(a => ({
       ...a,
-      quotes: enrichQuotesWithTopics(db, getTopQuotes.all(a.id).map(q => ({
+      quotes: getTopQuotes.all(a.id).map(q => ({
         ...q,
         article_id: a.id,
         article_title: a.title,
         article_url: a.url,
         source_domain: a.source_domain,
         source_name: a.source_name,
-      }))),
+      })),
     }));
 
     res.json({ articles: articlesWithQuotes, total, page, limit });
@@ -512,20 +272,7 @@ router.get('/trends/article/:id', (req, res) => {
       ORDER BY quote_count DESC
     `).all(articleId);
 
-    // Topics (via keywords) for quotes in this article
-    const topics = db.prepare(`
-      SELECT t.name as keyword, COUNT(DISTINCT q.id) as count
-      FROM quotes q
-      JOIN quote_articles qa ON qa.quote_id = q.id AND qa.article_id = ?
-      JOIN quote_topics qt ON qt.quote_id = q.id
-      JOIN topics t ON t.id = qt.topic_id
-      WHERE q.is_visible = 1
-      GROUP BY t.id
-      ORDER BY count DESC
-      LIMIT 8
-    `).all(articleId);
-
-    res.json({ authors, topics });
+    res.json({ authors });
   } catch (err) {
     console.error('Article trends error:', err);
     res.status(500).json({ error: 'Internal server error' });
@@ -554,45 +301,7 @@ router.get('/trends/author/:id', (req, res) => {
       ORDER BY bucket
     `).all(authorId, `-${period} days`);
 
-    // Topics for this author
-    const topics = db.prepare(`
-      SELECT t.name as keyword, COUNT(DISTINCT q.id) as count
-      FROM quotes q
-      JOIN quote_topics qt ON qt.quote_id = q.id
-      JOIN topics t ON t.id = qt.topic_id
-      WHERE q.person_id = ? AND q.is_visible = 1
-      GROUP BY t.id
-      ORDER BY count DESC
-      LIMIT 8
-    `).all(authorId);
-
-    // Peer comparison: top 3 authors in similar topics
-    const peerIds = db.prepare(`
-      SELECT p.id, p.canonical_name as name, COUNT(DISTINCT q2.id) as overlap
-      FROM quotes q1
-      JOIN quote_topics qt1 ON qt1.quote_id = q1.id
-      JOIN quote_topics qt2 ON qt2.topic_id = qt1.topic_id AND qt2.quote_id != q1.id
-      JOIN quotes q2 ON q2.id = qt2.quote_id AND q2.is_visible = 1
-      JOIN persons p ON p.id = q2.person_id AND p.id != ?
-      WHERE q1.person_id = ? AND q1.is_visible = 1
-      GROUP BY p.id
-      ORDER BY overlap DESC
-      LIMIT 3
-    `).all(authorId, authorId);
-
-    const peers = peerIds.map(peer => {
-      const buckets = db.prepare(`
-        SELECT date(q.created_at) as bucket, COUNT(*) as count
-        FROM quotes q
-        WHERE q.person_id = ? AND q.is_visible = 1
-          AND q.created_at >= datetime('now', ?)
-        GROUP BY bucket
-        ORDER BY bucket
-      `).all(peer.id, `-${period} days`);
-      return { name: peer.name, buckets };
-    });
-
-    res.json({ author, timeline, topics, peers });
+    res.json({ author, timeline });
   } catch (err) {
     console.error('Author trends error:', err);
     res.status(500).json({ error: 'Internal server error' });
@@ -654,51 +363,12 @@ router.get('/trending-authors', (req, res) => {
 
     const authorsWithQuotes = authors.map(a => ({
       ...a,
-      quotes: enrichQuotesWithTopics(db, getTopQuotes.all(a.id)),
+      quotes: getTopQuotes.all(a.id),
     }));
 
     res.json({ authors: authorsWithQuotes });
   } catch (err) {
     console.error('Trending authors error:', err);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// GET /api/analytics/trends/topic/:id - Chart data for a topic
-router.get('/trends/topic/:id', (req, res) => {
-  try {
-    const db = getDb();
-    const topicId = parseInt(req.params.id);
-
-    // Authors who were quoted in this topic
-    const authors = db.prepare(`
-      SELECT p.canonical_name as name, COUNT(q.id) as quote_count
-      FROM quotes q
-      JOIN quote_topics qt ON qt.quote_id = q.id AND qt.topic_id = ?
-      JOIN persons p ON p.id = q.person_id
-      WHERE q.is_visible = 1
-      GROUP BY p.id
-      ORDER BY quote_count DESC
-      LIMIT 10
-    `).all(topicId);
-
-    // Sources for quotes in this topic
-    const sources = db.prepare(`
-      SELECT s.name as source_name, COUNT(DISTINCT a.id) as article_count
-      FROM quotes q
-      JOIN quote_topics qt ON qt.quote_id = q.id AND qt.topic_id = ?
-      JOIN quote_articles qa ON qa.quote_id = q.id
-      JOIN articles a ON a.id = qa.article_id
-      JOIN sources s ON s.id = a.source_id
-      WHERE q.is_visible = 1
-      GROUP BY s.id
-      ORDER BY article_count DESC
-      LIMIT 8
-    `).all(topicId);
-
-    res.json({ authors, sources });
-  } catch (err) {
-    console.error('Topic trends error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

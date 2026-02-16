@@ -11,7 +11,6 @@ describe('View & Share Tracking API', () => {
   let testQuoteId;
   let testArticleId;
   let testPersonId;
-  let testTopicId;
 
   beforeAll(async () => {
     const { createApp } = await import('../../src/index.js');
@@ -28,9 +27,6 @@ describe('View & Share Tracking API', () => {
 
     const articleResult = db.prepare("INSERT INTO articles (url, title, status) VALUES (?, ?, 'completed')").run('https://example.com/tracking-test', 'Tracking Test Article');
     testArticleId = Number(articleResult.lastInsertRowid);
-
-    const topicResult = db.prepare("INSERT INTO topics (name, slug) VALUES (?, ?)").run('Tracking Topic', 'tracking-topic');
-    testTopicId = Number(topicResult.lastInsertRowid);
   }, 30000);
 
   afterAll(async () => {
@@ -58,16 +54,6 @@ describe('View & Share Tracking API', () => {
         .post('/api/tracking/view')
         .send({ entity_type: 'person', entity_id: testPersonId })
         .set('User-Agent', 'ViewTracker2');
-
-      expect(res.status).toBe(200);
-      expect(res.body.success).toBe(true);
-    });
-
-    it('increments view_count for topic', async () => {
-      const res = await request(app)
-        .post('/api/tracking/view')
-        .send({ entity_type: 'topic', entity_id: testTopicId })
-        .set('User-Agent', 'ViewTracker3');
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
@@ -146,17 +132,6 @@ describe('View & Share Tracking API', () => {
         .post('/api/tracking/share')
         .send({ entity_type: 'person', entity_id: testPersonId })
         .set('User-Agent', 'ShareTracker3');
-
-      expect(res.status).toBe(200);
-      expect(res.body.success).toBe(true);
-      expect(res.body.share_count).toBe(1);
-    });
-
-    it('increments share_count for topic', async () => {
-      const res = await request(app)
-        .post('/api/tracking/share')
-        .send({ entity_type: 'topic', entity_id: testTopicId })
-        .set('User-Agent', 'ShareTracker4');
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);

@@ -1,4 +1,4 @@
-// Homepage - 4-Tab System (Trending Topics, Trending Sources, Trending Quotes, All)
+// Homepage - Tab System (Trending Quotes, Trending Authors, Trending Sources)
 
 // Store full quote texts for show more/less toggle
 const _quoteTexts = {};
@@ -14,10 +14,6 @@ let _pendingNewQuotes = 0;
 
 // Important status cache (entity_type:entity_id -> boolean)
 let _importantStatuses = {};
-
-// Autocomplete caches for topics/keywords
-let _topicsCacheAll = null;
-let _keywordsCacheAll = null;
 
 /**
  * Format a timestamp as mm/dd/yyyy - hh:mm:ss
@@ -178,10 +174,10 @@ function initViewTracking() {
 /**
  * Build HTML for a single quote block (new layout)
  */
-function buildQuoteBlockHtml(q, topics, isImportant, options = {}) {
+function buildQuoteBlockHtml(q, isImportant, options = {}) {
   // Admin mode: use expanded admin quote block
   if (typeof isAdmin !== 'undefined' && isAdmin) {
-    return buildAdminQuoteBlockHtml(q, topics, isImportant);
+    return buildAdminQuoteBlockHtml(q, isImportant);
   }
 
   const variant = options.variant || 'default';  // 'default'|'compact'|'hero'|'featured'
@@ -223,11 +219,6 @@ function buildQuoteBlockHtml(q, topics, isImportant, options = {}) {
     ? `<img src="${escapeHtml(photoUrl)}" alt="${escapeHtml(personName)}" class="quote-block__headshot" onerror="this.outerHTML='<div class=\\'quote-headshot-placeholder\\'>${initial}</div>'" loading="lazy">`
     : `<div class="quote-headshot-placeholder">${initial}</div>`;
 
-  // Topic tags
-  const topicTags = (topics || []).slice(0, 2).map(t =>
-    `<a class="quote-block__topic-tag" onclick="navigateTo('/topic/${t.slug}')">${escapeHtml(t.name)}</a>`
-  ).join('');
-
   // Share buttons + important
   const shareButtons = buildShareButtonsHtml('quote', q.id, q.text, personName);
   const importantButton = renderImportantButton('quote', q.id, importantsCount, isImportant);
@@ -255,7 +246,6 @@ function buildQuoteBlockHtml(q, topics, isImportant, options = {}) {
           ${quoteDateTime ? `<span class="quote-block__time">${formatRelativeTime(quoteDateTime)}</span>` : ''}
         </div>
         <div class="quote-block__footer-hover">
-          ${topicTags}
           ${shareButtons}
           ${shareCount > 0 ? `<span class="quote-block__share-count">${shareCount}</span>` : ''}
           ${importantButton}
@@ -272,7 +262,7 @@ function buildQuoteBlockHtml(q, topics, isImportant, options = {}) {
 /**
  * Build HTML for an admin quote block — expanded layout with inline editing
  */
-function buildAdminQuoteBlockHtml(q, topics, isImportant) {
+function buildAdminQuoteBlockHtml(q, isImportant) {
   // Store text and metadata
   if (q.text) _quoteTexts[q.id] = q.text;
   _quoteMeta[q.id] = {
@@ -327,9 +317,6 @@ function buildAdminQuoteBlockHtml(q, topics, isImportant) {
 
       <div class="quote-block__links">
         ${articleId ? `<a class="quote-block__source-link" onclick="navigateTo('/article/${articleId}')">${escapeHtml(sourceName || sourceDomain || 'Source')}</a>` : ''}
-        ${(topics || []).slice(0, 2).map(t =>
-          `<a class="quote-block__topic-tag" onclick="navigateTo('/topic/${t.slug}')">${escapeHtml(t.name)}</a>`
-        ).join('')}
       </div>
 
       <div class="quote-block__share">
@@ -346,42 +333,15 @@ function buildAdminQuoteBlockHtml(q, topics, isImportant) {
       <div class="admin-edit-buttons">
         <button onclick="adminEditQuoteText(${q.id}, _quoteTexts[${q.id}] || '')">Quote</button>
         <button onclick="adminEditContext(${q.id}, _quoteMeta[${q.id}]?.context || '')">Context</button>
-        <button onclick="openAdminAutocomplete('topic', ${q.id})">Topics</button>
         <button onclick="navigateTo('/article/${articleId}')">Sources</button>
         <button onclick="adminEditAuthorFromQuote(${q.person_id || q.personId})">Author</button>
         <button onclick="adminChangeHeadshotFromQuote(${q.person_id || q.personId})">Photo</button>
-      </div>
-
-      <div class="admin-keywords-section" id="admin-keywords-${q.id}">
-        <span class="admin-section-label">Keywords</span>
-        <button class="admin-inline-btn" onclick="openAdminAutocomplete('keyword', ${q.id})">Add Keyword</button>
-        <span>:</span>
-        <div class="admin-chips" id="keyword-chips-${q.id}"></div>
-      </div>
-
-      <div class="admin-topics-section" id="admin-topics-${q.id}">
-        <span class="admin-section-label">Topics</span>
-        <button class="admin-inline-btn" onclick="openAdminAutocomplete('topic', ${q.id})">Add Topic</button>
-        <span>:</span>
-        <div class="admin-chips" id="topic-chips-${q.id}"></div>
       </div>
     </div>
   `;
 }
 
 // ======= Admin Quote Edit Functions =======
-
-async function adminEditQuoteTopics(quoteId) {
-  const name = prompt('Enter topic name to add to this quote:');
-  if (name === null || name.trim() === '') return;
-  try {
-    await API.post(`/admin/quotes/${quoteId}/topics`, { name: name.trim() });
-    showToast('Topic linked', 'success');
-    loadQuoteKeywordsTopics(quoteId);
-  } catch (err) {
-    showToast('Error: ' + err.message, 'error');
-  }
-}
 
 async function adminEditAuthorFromQuote(personId) {
   const newName = prompt('Edit author name:');
@@ -405,333 +365,6 @@ async function adminChangeHeadshotFromQuote(personId) {
   }
 }
 
-async function adminCreateKeyword(quoteId) {
-  const name = prompt('Keyword name:');
-  if (name === null || name.trim() === '') return;
-  try {
-    await API.post(`/admin/quotes/${quoteId}/keywords`, { name: name.trim() });
-    showToast('Keyword created and linked', 'success');
-    loadQuoteKeywordsTopics(quoteId);
-  } catch (err) {
-    showToast('Error: ' + err.message, 'error');
-  }
-}
-
-async function adminCreateTopicForQuote(quoteId) {
-  const name = prompt('Topic name:');
-  if (name === null || name.trim() === '') return;
-  try {
-    await API.post(`/admin/quotes/${quoteId}/topics`, { name: name.trim() });
-    showToast('Topic created and linked', 'success');
-    loadQuoteKeywordsTopics(quoteId);
-  } catch (err) {
-    showToast('Error: ' + err.message, 'error');
-  }
-}
-
-async function adminRemoveQuoteKeyword(quoteId, keywordId) {
-  try {
-    await API.delete(`/admin/quotes/${quoteId}/keywords/${keywordId}`);
-    const chip = document.querySelector(`#keyword-chips-${quoteId} [data-keyword-id="${keywordId}"]`);
-    if (chip) chip.remove();
-    showToast('Keyword unlinked', 'success');
-  } catch (err) {
-    showToast('Error: ' + err.message, 'error');
-  }
-}
-
-async function adminRemoveQuoteTopic(quoteId, topicId) {
-  try {
-    await API.delete(`/admin/quotes/${quoteId}/topics/${topicId}`);
-    const chip = document.querySelector(`#topic-chips-${quoteId} [data-topic-id="${topicId}"]`);
-    if (chip) chip.remove();
-    showToast('Topic unlinked', 'success');
-  } catch (err) {
-    showToast('Error: ' + err.message, 'error');
-  }
-}
-
-// ======= Admin Topic/Source Edit Functions =======
-
-async function adminEditTopic(topicId, currentName) {
-  const newName = prompt('Edit topic name:', currentName || '');
-  if (newName === null || newName.trim() === '' || newName.trim() === currentName) return;
-  try {
-    await API.put(`/admin/topics/${topicId}`, { name: newName.trim() });
-    showToast('Topic updated', 'success');
-  } catch (err) {
-    showToast('Error: ' + err.message, 'error');
-  }
-}
-
-async function adminCreateTopicKeyword(topicId) {
-  const name = prompt('Keyword name to add to this topic:');
-  if (name === null || name.trim() === '') return;
-  try {
-    // Create keyword if needed, then link via topic_keywords
-    const res = await API.post('/admin/keywords', { name: name.trim(), keyword_type: 'concept' });
-    const keywordId = res.keyword?.id;
-    if (keywordId) {
-      // Link keyword to topic — use a generic approach
-      await API.post(`/admin/topics/${topicId}/keywords`, { keyword_id: keywordId });
-    }
-    showToast('Keyword added to topic', 'success');
-  } catch (err) {
-    // If keyword already exists (409), try to find and link it
-    if (err.message && err.message.includes('409')) {
-      showToast('Keyword already exists', 'info');
-    } else {
-      showToast('Error: ' + err.message, 'error');
-    }
-  }
-}
-
-async function adminRemoveTopicKeyword(topicId, keywordId, btnEl) {
-  try {
-    await API.delete(`/admin/topics/${topicId}/keywords/${keywordId}`);
-    const chip = btnEl.closest('.keyword-chip');
-    if (chip) chip.remove();
-    showToast('Keyword removed from topic', 'success');
-  } catch (err) {
-    showToast('Error: ' + err.message, 'error');
-  }
-}
-
-// ======= Admin Autocomplete for Topics/Keywords =======
-
-async function _ensureTopicsCache() {
-  if (_topicsCacheAll) return _topicsCacheAll;
-  try {
-    const data = await API.get('/topics?limit=100');
-    _topicsCacheAll = (data.topics || []).map(t => ({ id: t.id, name: t.name, slug: t.slug }));
-  } catch (err) {
-    _topicsCacheAll = [];
-  }
-  return _topicsCacheAll;
-}
-
-async function _ensureKeywordsCache() {
-  if (_keywordsCacheAll) return _keywordsCacheAll;
-  try {
-    const data = await API.get('/admin/keywords');
-    _keywordsCacheAll = (data.keywords || []).map(k => ({ id: k.id, name: k.name }));
-  } catch (err) {
-    _keywordsCacheAll = [];
-  }
-  return _keywordsCacheAll;
-}
-
-function openAdminAutocomplete(type, quoteId) {
-  // Close any existing autocomplete first
-  document.querySelectorAll('.admin-autocomplete').forEach(el => el.remove());
-
-  // Find and hide the button
-  const sectionId = type === 'topic' ? `admin-topics-${quoteId}` : `admin-keywords-${quoteId}`;
-  const section = document.getElementById(sectionId);
-  if (!section) return;
-  const btn = section.querySelector('.admin-inline-btn');
-  if (btn) btn.style.display = 'none';
-
-  // Create autocomplete widget
-  const wrapper = document.createElement('span');
-  wrapper.className = 'admin-autocomplete';
-  wrapper.dataset.type = type;
-  wrapper.dataset.quoteId = quoteId;
-
-  const input = document.createElement('input');
-  input.type = 'text';
-  input.className = 'admin-ac-input';
-  input.placeholder = type === 'topic' ? 'Search topics...' : 'Search keywords...';
-
-  const dropdown = document.createElement('div');
-  dropdown.className = 'admin-ac-dropdown';
-  dropdown.style.display = 'none';
-
-  wrapper.appendChild(input);
-  wrapper.appendChild(dropdown);
-
-  // Insert after the button
-  if (btn && btn.nextSibling) {
-    section.insertBefore(wrapper, btn.nextSibling);
-  } else {
-    section.insertBefore(wrapper, section.querySelector('.admin-chips'));
-  }
-
-  input.focus();
-
-  // Load cache and show initial options
-  const loadItems = type === 'topic' ? _ensureTopicsCache : _ensureKeywordsCache;
-  loadItems().then(items => {
-    _renderAcDropdown(dropdown, items.slice(0, 8), type, quoteId, '');
-    dropdown.style.display = '';
-  });
-
-  // Input handler for filtering
-  input.addEventListener('input', async () => {
-    const query = input.value.trim().toLowerCase();
-    const items = type === 'topic' ? _topicsCacheAll : _keywordsCacheAll;
-    if (!items) return;
-    const filtered = query
-      ? items.filter(it => it.name.toLowerCase().includes(query)).slice(0, 8)
-      : items.slice(0, 8);
-    _renderAcDropdown(dropdown, filtered, type, quoteId, query);
-    dropdown.style.display = '';
-  });
-
-  // Keyboard navigation
-  input.addEventListener('keydown', (e) => {
-    const options = dropdown.querySelectorAll('.admin-ac-option, .admin-ac-create');
-    const current = dropdown.querySelector('.highlighted');
-    let idx = Array.from(options).indexOf(current);
-
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      idx = Math.min(idx + 1, options.length - 1);
-      options.forEach(o => o.classList.remove('highlighted'));
-      if (options[idx]) options[idx].classList.add('highlighted');
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      idx = Math.max(idx - 1, 0);
-      options.forEach(o => o.classList.remove('highlighted'));
-      if (options[idx]) options[idx].classList.add('highlighted');
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      if (current) {
-        current.click();
-      }
-    } else if (e.key === 'Escape') {
-      closeAdminAutocomplete(type, quoteId);
-    }
-  });
-
-  // Click-outside handler
-  const outsideHandler = (e) => {
-    if (!wrapper.contains(e.target)) {
-      document.removeEventListener('mousedown', outsideHandler);
-      closeAdminAutocomplete(type, quoteId);
-    }
-  };
-  setTimeout(() => document.addEventListener('mousedown', outsideHandler), 0);
-}
-
-function _renderAcDropdown(dropdown, items, type, quoteId, query) {
-  let html = '';
-  for (const item of items) {
-    html += `<div class="admin-ac-option" data-id="${item.id}" data-name="${escapeHtml(item.name)}" onclick="selectAutocompleteOption('${type}', ${quoteId}, ${item.id}, '${escapeHtml(item.name.replace(/'/g, "\\'"))}')">${escapeHtml(item.name)}</div>`;
-  }
-  // Show "Create: ..." option if query has text and no exact match
-  if (query) {
-    const exactMatch = items.some(it => it.name.toLowerCase() === query);
-    if (!exactMatch) {
-      html += `<div class="admin-ac-create" onclick="selectAutocompleteCreate('${type}', ${quoteId}, '${escapeHtml(query.replace(/'/g, "\\'"))}')">Create: ${escapeHtml(query)}</div>`;
-    }
-  }
-  if (!html) {
-    html = `<div class="admin-ac-create" onclick="event.stopPropagation()">Type to search or create...</div>`;
-  }
-  dropdown.innerHTML = html;
-}
-
-function closeAdminAutocomplete(type, quoteId) {
-  const sectionId = type === 'topic' ? `admin-topics-${quoteId}` : `admin-keywords-${quoteId}`;
-  const section = document.getElementById(sectionId);
-  if (!section) return;
-  const widget = section.querySelector('.admin-autocomplete');
-  if (widget) widget.remove();
-  const btn = section.querySelector('.admin-inline-btn');
-  if (btn) btn.style.display = '';
-}
-
-async function selectAutocompleteOption(type, quoteId, itemId, itemName) {
-  closeAdminAutocomplete(type, quoteId);
-  try {
-    if (type === 'topic') {
-      await API.post(`/admin/quotes/${quoteId}/topics`, { topic_id: itemId });
-      showToast('Topic linked', 'success');
-    } else {
-      await API.post(`/admin/quotes/${quoteId}/keywords`, { keyword_id: itemId });
-      showToast('Keyword linked', 'success');
-    }
-    loadQuoteKeywordsTopics(quoteId);
-  } catch (err) {
-    showToast('Error: ' + err.message, 'error');
-  }
-}
-
-async function selectAutocompleteCreate(type, quoteId, name) {
-  closeAdminAutocomplete(type, quoteId);
-  try {
-    if (type === 'topic') {
-      await API.post(`/admin/quotes/${quoteId}/topics`, { name: name.trim() });
-      showToast('Topic created and linked', 'success');
-      // Invalidate cache so new topic appears next time
-      _topicsCacheAll = null;
-    } else {
-      await API.post(`/admin/quotes/${quoteId}/keywords`, { name: name.trim() });
-      showToast('Keyword created and linked', 'success');
-      _keywordsCacheAll = null;
-    }
-    loadQuoteKeywordsTopics(quoteId);
-  } catch (err) {
-    showToast('Error: ' + err.message, 'error');
-  }
-}
-
-function highlightAcOption(el) {
-  const dropdown = el.closest('.admin-ac-dropdown');
-  if (dropdown) {
-    dropdown.querySelectorAll('.admin-ac-option, .admin-ac-create').forEach(o => o.classList.remove('highlighted'));
-  }
-  el.classList.add('highlighted');
-}
-
-// ======= Keyword/Topic Lazy Loading =======
-
-async function loadQuoteKeywordsTopics(quoteId) {
-  try {
-    const data = await API.get(`/quotes/${quoteId}/keywords-topics`);
-    renderKeywordChips(quoteId, data.keywords || []);
-    renderTopicChips(quoteId, data.topics || []);
-  } catch (err) {
-    // Non-blocking
-  }
-}
-
-function renderKeywordChips(quoteId, keywords) {
-  const container = document.getElementById(`keyword-chips-${quoteId}`);
-  if (!container) return;
-  container.innerHTML = keywords.map(kw =>
-    `<span class="keyword-chip" data-keyword-id="${kw.id}">
-      ${escapeHtml(kw.name)}
-      <button class="chip-remove" onclick="event.stopPropagation(); adminRemoveQuoteKeyword(${quoteId}, ${kw.id})">x</button>
-    </span>`
-  ).join('');
-}
-
-function renderTopicChips(quoteId, topics) {
-  const container = document.getElementById(`topic-chips-${quoteId}`);
-  if (!container) return;
-  container.innerHTML = topics.map(t =>
-    `<span class="topic-chip" data-topic-id="${t.id}" onclick="navigateTo('/topic/${escapeHtml(t.slug)}')">
-      ${escapeHtml(t.name)}
-      <button class="chip-remove" onclick="event.stopPropagation(); adminRemoveQuoteTopic(${quoteId}, ${t.id})">x</button>
-    </span>`
-  ).join('');
-}
-
-/**
- * Trigger lazy loading of keywords/topics for all admin quote blocks on the page
- */
-function initAdminQuoteBlocks() {
-  document.querySelectorAll('.admin-quote-block').forEach(block => {
-    const quoteId = block.dataset.quoteId;
-    if (quoteId && !block.dataset.adminLoaded) {
-      block.dataset.adminLoaded = 'true';
-      setTimeout(() => loadQuoteKeywordsTopics(parseInt(quoteId)), 0);
-    }
-  });
-}
-
 // ======= Navigation Helper =======
 
 function navigateTo(path) {
@@ -751,7 +384,6 @@ function buildTabBarHtml(activeTab) {
   const tabs = [
     { key: 'trending-quotes', label: 'Trending Quotes' },
     { key: 'trending-authors', label: 'Trending Authors' },
-    { key: 'trending-topics', label: 'Trending Topics' },
     { key: 'trending-sources', label: 'Trending Sources' },
   ];
 
@@ -792,19 +424,12 @@ async function renderTabContent(tabKey) {
       case 'trending-authors':
         await renderTrendingAuthorsTab(container);
         break;
-      case 'trending-topics':
-        await renderTrendingTopicsTab(container);
-        break;
       case 'trending-sources':
         await renderTrendingSourcesTab(container);
         break;
     }
     // Initialize view tracking for newly rendered content
     initViewTracking();
-    // Lazy-load keywords/topics for admin quote blocks
-    if (typeof isAdmin !== 'undefined' && isAdmin) {
-      initAdminQuoteBlocks();
-    }
   } catch (err) {
     container.innerHTML = `<div class="empty-state"><h3>Error loading content</h3><p>${escapeHtml(err.message)}</p></div>`;
   }
@@ -863,7 +488,7 @@ function buildAuthorCardHtml(author) {
 
   const quotesHtml = quotes.slice(0, 4).map((q, i) => {
     const isQImp = _importantStatuses[`quote:${q.id}`] || false;
-    return buildQuoteBlockHtml(q, q.topics || [], isQImp, { showAvatar: false });
+    return buildQuoteBlockHtml(q, isQImp, { showAvatar: false });
   }).join('');
 
   const isPersonImp = _importantStatuses[`person:${author.id}`] || false;
@@ -882,113 +507,6 @@ function buildAuthorCardHtml(author) {
         ${quotesHtml}
       </div>
       ${quotes.length > 0 ? `<a class="topic-card__see-all" onclick="navigateTo('/author/${author.id}')">See all ${author.quote_count} quotes by ${escapeHtml(author.canonical_name)} &rarr;</a>` : ''}
-    </div>
-  `;
-}
-
-// ======= Trending Topics Tab =======
-
-let _topicsSortBy = 'date';
-
-async function renderTrendingTopicsTab(container, sortBy) {
-  _topicsSortBy = sortBy || 'date';
-  const sortParam = _topicsSortBy === 'importance' ? '?sort=importance' : '';
-  const data = await API.get('/analytics/trending-topics' + sortParam);
-  const topics = data.topics || [];
-
-  if (topics.length === 0) {
-    container.innerHTML = `<div class="empty-state"><h3>No trending topics yet</h3><p>Topics will appear as quotes are extracted and categorized.</p></div>`;
-    return;
-  }
-
-  // Filter out topics with no quotes
-  const visibleTopics = topics.filter(t => (t.quotes || []).length > 0);
-
-  if (visibleTopics.length === 0) {
-    container.innerHTML = `<div class="empty-state"><h3>No trending topics yet</h3><p>Topics will appear as quotes are extracted and categorized.</p></div>`;
-    return;
-  }
-
-  // Fetch important statuses for all topics
-  await fetchImportantStatuses(visibleTopics.map(t => `topic:${t.id}`));
-
-  let html = `<div class="tab-sort-controls">
-    Sort: <a class="sort-toggle-text ${_topicsSortBy === 'date' ? 'active' : ''}" onclick="switchTopicsSort('date')">Date</a>
-    <span class="sort-toggle-divider">|</span>
-    <a class="sort-toggle-text ${_topicsSortBy === 'importance' ? 'active' : ''}" onclick="switchTopicsSort('importance')">Importance</a>
-  </div>`;
-  for (const topic of visibleTopics) {
-    const isImp = _importantStatuses[`topic:${topic.id}`] || false;
-    html += buildTopicCardHtml(topic, isImp);
-  }
-
-  container.innerHTML = html;
-}
-
-function switchTopicsSort(sortBy) {
-  const container = document.getElementById('homepage-tab-content');
-  if (container) renderTrendingTopicsTab(container, sortBy);
-}
-
-function buildTopicCardHtml(topic, isImportant) {
-  const quotes = topic.quotes || [];
-  const _isAdm = typeof isAdmin !== 'undefined' && isAdmin;
-  const maxVisible = 4;
-
-  // Build quotes with variant options
-  const quotesHtml = quotes.slice(0, maxVisible).map((q, i) => {
-    const isQImp = _importantStatuses[`quote:${q.id}`] || false;
-    const opts = i === 0
-      ? { variant: 'featured', showAvatar: true }
-      : { showAvatar: false };
-    return buildQuoteBlockHtml(q, q.topics || [], isQImp, opts);
-  }).join('');
-
-  // Admin: stats row and edit button
-  const adminStatsHtml = _isAdm ? `
-    <div class="admin-stats-row">
-      <span>${topic.importants_count || 0} importants</span>
-      <span>${topic.quote_count || 0} quotes</span>
-    </div>
-    <div class="admin-edit-buttons">
-      <button onclick="adminEditTopic(${topic.id}, '${escapeHtml((topic.name || '').replace(/'/g, "\\'"))}')">${escapeHtml('Topic')}</button>
-    </div>` : '';
-
-  // Admin: keyword chips
-  const keywords = topic.keywords || [];
-  const adminKeywordsHtml = _isAdm ? `
-    <div class="admin-keywords-section">
-      <span class="admin-section-label">Keywords</span>
-      <button class="admin-inline-btn" onclick="adminCreateTopicKeyword(${topic.id})">Create Keyword</button>
-      <span>:</span>
-      <div class="admin-chips">
-        ${keywords.map(kw =>
-          `<span class="keyword-chip" data-keyword-id="${kw.id}">
-            ${escapeHtml(kw.name)}
-            <button class="chip-remove" onclick="event.stopPropagation(); adminRemoveTopicKeyword(${topic.id}, ${kw.id}, this)">x</button>
-          </span>`
-        ).join('')}
-      </div>
-    </div>` : '';
-
-  const seeAllLink = quotes.length > maxVisible
-    ? `<a class="topic-card__see-all" onclick="navigateTo('/topic/${escapeHtml(topic.slug)}')">See all ${topic.quote_count || quotes.length} quotes in ${escapeHtml(topic.name)} &rarr;</a>`
-    : '';
-
-  return `
-    <div class="topic-card" data-track-type="topic" data-track-id="${topic.id}">
-      <div class="topic-section-header">
-        <hr class="topic-section-rule">
-        <h2 class="topic-card__name" onclick="navigateTo('/topic/${escapeHtml(topic.slug)}')">${escapeHtml(topic.name)}</h2>
-        <hr class="topic-section-rule">
-      </div>
-      ${topic.context ? `<p class="topic-card__context">${escapeHtml(topic.context)}</p>` : ''}
-      <div class="card-quotes-container" id="card-quotes-topic-${topic.id}">
-        ${quotesHtml}
-      </div>
-      ${seeAllLink}
-      ${adminStatsHtml}
-      ${adminKeywordsHtml}
     </div>
   `;
 }
@@ -1060,7 +578,7 @@ function buildSourceCardHtml(article, isImportant) {
 
   // First quote expanded, rest collapsed
   const firstQuoteHtml = quotes.length > 0
-    ? buildQuoteBlockHtml(quotes[0], quotes[0].topics || [], _importantStatuses[`quote:${quotes[0].id}`] || false)
+    ? buildQuoteBlockHtml(quotes[0], _importantStatuses[`quote:${quotes[0].id}`] || false)
     : '';
 
   const extraCount = quotes.length - 1;
@@ -1091,7 +609,7 @@ function buildSourceCardHtml(article, isImportant) {
       <div class="source-card__extra-quotes" id="extra-quotes-source-${article.id}" style="display:none">
         ${quotes.slice(1).map(q => {
           const isQImp = _importantStatuses[`quote:${q.id}`] || false;
-          return buildQuoteBlockHtml(q, q.topics || [], isQImp, { showAvatar: false });
+          return buildQuoteBlockHtml(q, isQImp, { showAvatar: false });
         }).join('')}
       </div>
       ${adminStatsHtml}
@@ -1125,19 +643,19 @@ async function renderTrendingQuotesTab(container) {
   // Quote of the Day
   if (data.quote_of_day) {
     html += `<div class="trending-section-header"><hr class="topic-section-rule"><h2 class="trending-section-heading">QUOTE OF THE DAY</h2><hr class="topic-section-rule"></div>`;
-    html += buildQuoteBlockHtml(data.quote_of_day, data.quote_of_day.topics || [], _importantStatuses[`quote:${data.quote_of_day.id}`] || false, { variant: 'hero' });
+    html += buildQuoteBlockHtml(data.quote_of_day, _importantStatuses[`quote:${data.quote_of_day.id}`] || false, { variant: 'hero' });
   }
 
   // Quote of the Week
   if (data.quote_of_week) {
     html += `<div class="trending-section-header"><hr class="topic-section-rule"><h2 class="trending-section-heading">QUOTE OF THE WEEK</h2><hr class="topic-section-rule"></div>`;
-    html += buildQuoteBlockHtml(data.quote_of_week, data.quote_of_week.topics || [], _importantStatuses[`quote:${data.quote_of_week.id}`] || false, { variant: 'featured' });
+    html += buildQuoteBlockHtml(data.quote_of_week, _importantStatuses[`quote:${data.quote_of_week.id}`] || false, { variant: 'featured' });
   }
 
   // Quote of the Month
   if (data.quote_of_month) {
     html += `<div class="trending-section-header"><hr class="topic-section-rule"><h2 class="trending-section-heading">QUOTE OF THE MONTH</h2><hr class="topic-section-rule"></div>`;
-    html += buildQuoteBlockHtml(data.quote_of_month, data.quote_of_month.topics || [], _importantStatuses[`quote:${data.quote_of_month.id}`] || false, { variant: 'featured' });
+    html += buildQuoteBlockHtml(data.quote_of_month, _importantStatuses[`quote:${data.quote_of_month.id}`] || false, { variant: 'featured' });
   }
 
   html += `<p class="trending-disclaimer"><em>*Trending quotes change over time as views and shares change</em></p>`;
@@ -1152,7 +670,7 @@ async function renderTrendingQuotesTab(container) {
     </div>`;
     html += `<div id="recent-quotes-list" class="quotes-grid">`;
     for (const q of recentQuotes) {
-      html += buildQuoteBlockHtml(q, q.topics || [], _importantStatuses[`quote:${q.id}`] || false);
+      html += buildQuoteBlockHtml(q, _importantStatuses[`quote:${q.id}`] || false);
     }
     html += `</div>`;
   }
@@ -1178,11 +696,10 @@ async function sortRecentQuotes(sortBy) {
 
   let html = '';
   for (const q of recentQuotes) {
-    html += buildQuoteBlockHtml(q, q.topics || [], _importantStatuses[`quote:${q.id}`] || false);
+    html += buildQuoteBlockHtml(q, _importantStatuses[`quote:${q.id}`] || false);
   }
   listEl.innerHTML = html;
   initViewTracking();
-  if (typeof isAdmin !== 'undefined' && isAdmin) initAdminQuoteBlocks();
 }
 
 // ======= All Tab =======
@@ -1379,7 +896,7 @@ function buildNoteworthySectionHtml(items) {
           source_domain: '',
           source_name: '',
         };
-        cardsHtml += `<div class="noteworthy-card">${buildQuoteBlockHtml(quoteData, [], false, { variant: 'compact', showAvatar: true, showSummary: false })}</div>`;
+        cardsHtml += `<div class="noteworthy-card">${buildQuoteBlockHtml(quoteData, false, { variant: 'compact', showAvatar: true, showSummary: false })}</div>`;
       } else {
         cardsHtml += `<div class="noteworthy-card noteworthy-card--quote" onclick="navigateTo('/quote/${item.entity_id}')">
           <p class="noteworthy-card__text">${escapeHtml((item.entity_label || '').substring(0, 120))}${(item.entity_label || '').length > 120 ? '...' : ''}</p>
@@ -1390,11 +907,6 @@ function buildNoteworthySectionHtml(items) {
       cardsHtml += `<div class="noteworthy-card noteworthy-card--article" onclick="navigateTo('/article/${item.entity_id}')">
         <span class="noteworthy-card__type">Source</span>
         <p class="noteworthy-card__title">${escapeHtml(item.entity_label || 'Untitled')}</p>
-      </div>`;
-    } else if (item.entity_type === 'topic') {
-      cardsHtml += `<div class="noteworthy-card noteworthy-card--topic" onclick="navigateTo('/topic/${item.entity_id}')">
-        <span class="noteworthy-card__type">Topic</span>
-        <p class="noteworthy-card__title">${escapeHtml(item.entity_label || 'Unknown Topic')}</p>
       </div>`;
     } else if (item.entity_type === 'person') {
       cardsHtml += `<div class="noteworthy-card noteworthy-card--person" onclick="navigateTo('/author/${item.entity_id}')">
@@ -1459,7 +971,7 @@ async function renderHome() {
 /**
  * Render search results (preserves existing search functionality)
  */
-let _searchActiveTab = 'topics';
+let _searchActiveTab = 'persons';
 
 async function renderSearchResults(content, searchQuery) {
   content.innerHTML = buildSkeletonHtml(6);
@@ -1472,9 +984,8 @@ async function renderSearchResults(content, searchQuery) {
 
     const quotesCount = (data.quotes || []).length;
     const personsCount = (data.persons || []).length;
-    const topicsCount = (data.topics || []).length;
     const articlesCount = (data.articles || []).length;
-    const totalCount = quotesCount + personsCount + topicsCount + articlesCount;
+    const totalCount = quotesCount + personsCount + articlesCount;
 
     let html = `<div class="search-results-header">
       <h2>Search results for "${escapeHtml(searchQuery)}"</h2>
@@ -1486,25 +997,10 @@ async function renderSearchResults(content, searchQuery) {
     } else {
       // Tab bar
       html += `<div class="search-results-tabs">
-        <button class="search-tab ${_searchActiveTab === 'topics' ? 'active' : ''}" onclick="switchSearchTab('topics')">Topics <span class="tab-count">${topicsCount}</span></button>
         <button class="search-tab ${_searchActiveTab === 'persons' ? 'active' : ''}" onclick="switchSearchTab('persons')">Authors <span class="tab-count">${personsCount}</span></button>
         <button class="search-tab ${_searchActiveTab === 'quotes' ? 'active' : ''}" onclick="switchSearchTab('quotes')">Quotes <span class="tab-count">${quotesCount}</span></button>
         <button class="search-tab ${_searchActiveTab === 'articles' ? 'active' : ''}" onclick="switchSearchTab('articles')">Sources <span class="tab-count">${articlesCount}</span></button>
       </div>`;
-
-      // Topics tab content
-      html += `<div class="search-tab-content" id="search-tab-topics" style="display:${_searchActiveTab === 'topics' ? '' : 'none'}">`;
-      if (topicsCount === 0) {
-        html += `<p class="empty-message">No topics match your search.</p>`;
-      } else {
-        for (const t of data.topics) {
-          html += `<div class="search-topic-row" onclick="navigateTo('/topic/${escapeHtml(t.slug)}')">
-            <span class="search-topic__name">${escapeHtml(t.name)}</span>
-            ${t.description ? `<span class="search-topic__desc">${escapeHtml(t.description)}</span>` : ''}
-          </div>`;
-        }
-      }
-      html += `</div>`;
 
       // Authors tab content
       html += `<div class="search-tab-content" id="search-tab-persons" style="display:${_searchActiveTab === 'persons' ? '' : 'none'}">`;
@@ -1534,7 +1030,7 @@ async function renderSearchResults(content, searchQuery) {
         html += `<p class="empty-message">No quotes match your search.</p>`;
       } else {
         for (const q of data.quotes) {
-          html += buildQuoteBlockHtml(q, q.topics || [], false);
+          html += buildQuoteBlockHtml(q, false);
         }
       }
       html += `</div>`;
@@ -1555,7 +1051,6 @@ async function renderSearchResults(content, searchQuery) {
     }
 
     content.innerHTML = html;
-    if (typeof isAdmin !== 'undefined' && isAdmin) initAdminQuoteBlocks();
   } catch (err) {
     content.innerHTML = `<div class="empty-state"><h3>Error searching</h3><p>${escapeHtml(err.message)}</p></div>`;
   }
@@ -1622,133 +1117,6 @@ function loadNewQuotes() {
   if (banner) banner.remove();
   _importantStatuses = {}; // Clear cache on refresh
   renderHome();
-}
-
-// ======= Topic Page =======
-
-/**
- * Render a full topic page at /topic/:slug
- */
-async function renderTopicPage(slug) {
-  const content = document.getElementById('content');
-  content.innerHTML = buildSkeletonHtml(4);
-
-  try {
-    const data = await API.get(`/topics/${slug}`);
-    if (!data.topic) {
-      content.innerHTML = '<div class="empty-state"><h3>Topic not found</h3><p><a href="/" onclick="navigate(event, \'/\')" style="color:var(--accent)">Back to home</a></p></div>';
-      return;
-    }
-
-    const topic = data.topic;
-    const quotes = data.quotes || [];
-
-    // Fetch important statuses
-    const entityKeys = [`topic:${topic.id}`, ...quotes.map(q => `quote:${q.id}`)];
-    await fetchImportantStatuses(entityKeys);
-
-    const isTopicImportant = _importantStatuses[`topic:${topic.id}`] || false;
-
-    let html = `
-      <div class="topic-page">
-        <p style="margin-bottom:1rem;font-family:var(--font-ui);font-size:0.85rem">
-          <a href="/" onclick="navigate(event, '/')" style="color:var(--accent);text-decoration:none">&larr; Back to home</a>
-        </p>
-        <h1>${escapeHtml(topic.name)}</h1>
-        ${topic.description ? `<p class="topic-page__description">${escapeHtml(topic.description)}</p>` : ''}
-        ${topic.context ? `<p class="topic-page__description">${escapeHtml(topic.context)}</p>` : ''}
-        <div class="topic-page__actions" style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;margin:1rem 0">
-          ${buildShareButtonsHtml('topic', topic.id, topic.name, '')}
-          ${renderImportantButton('topic', topic.id, topic.importants_count || 0, isTopicImportant)}
-        </div>
-    `;
-
-    if (quotes.length === 0) {
-      html += '<div class="empty-state"><h3>No quotes in this topic yet</h3></div>';
-    } else {
-      html += `<p class="quote-count">${data.total || quotes.length} quotes</p>`;
-      for (const q of quotes) {
-        const isQImp = _importantStatuses[`quote:${q.id}`] || false;
-        html += buildQuoteBlockHtml(q, q.topics || [], isQImp);
-      }
-
-      // Pagination
-      const total = data.total || quotes.length;
-      const limit = data.limit || 20;
-      const page = data.page || 1;
-      const totalPages = Math.ceil(total / limit);
-      if (totalPages > 1) {
-        html += '<div class="pagination">';
-        for (let i = 1; i <= Math.min(totalPages, 10); i++) {
-          html += `<button class="page-btn ${i === page ? 'active' : ''}" onclick="loadTopicPage('${escapeHtml(slug)}', ${i})">${i}</button>`;
-        }
-        html += '</div>';
-      }
-    }
-
-    // Analytics charts section (only if 2+ quotes)
-    if (quotes.length >= 2) {
-      html += `
-        <div class="article-charts-section" id="topic-charts">
-          <div class="chart-row">
-            <div class="chart-panel">
-              <h3>Quotes by Author</h3>
-              <div class="chart-container" style="height:200px"><canvas id="chart-topic-authors"></canvas></div>
-            </div>
-            <div class="chart-panel">
-              <h3>Source Distribution</h3>
-              <div class="chart-container" style="height:200px"><canvas id="chart-topic-sources"></canvas></div>
-            </div>
-          </div>
-        </div>
-      `;
-    }
-
-    html += '</div>';
-    content.innerHTML = html;
-    initViewTracking();
-    if (typeof isAdmin !== 'undefined' && isAdmin) initAdminQuoteBlocks();
-
-    // Load charts after DOM is set
-    if (quotes.length >= 2) {
-      loadTopicCharts(topic.id);
-    }
-  } catch (err) {
-    content.innerHTML = `<div class="empty-state"><h3>Error</h3><p>${escapeHtml(err.message)}</p></div>`;
-  }
-}
-
-async function loadTopicCharts(topicId) {
-  if (typeof initChartDefaults === 'function') initChartDefaults();
-  try {
-    const data = await API.get(`/analytics/trends/topic/${topicId}`);
-
-    if (data.authors && data.authors.length >= 2 && typeof createBarChart === 'function') {
-      const authorLabels = data.authors.map(a => a.name);
-      const authorValues = data.authors.map(a => a.quote_count);
-      createBarChart('chart-topic-authors', authorLabels, authorValues);
-    }
-
-    if (data.sources && data.sources.length >= 2 && typeof createDoughnutChart === 'function') {
-      const sourceLabels = data.sources.map(s => s.source_name);
-      const sourceValues = data.sources.map(s => s.article_count);
-      createDoughnutChart('chart-topic-sources', sourceLabels, sourceValues);
-    }
-  } catch (err) {
-    console.error('Failed to load topic charts:', err);
-  }
-}
-
-async function loadTopicPage(slug, page) {
-  const content = document.getElementById('content');
-  content.innerHTML = buildSkeletonHtml(4);
-  try {
-    const data = await API.get(`/topics/${slug}?page=${page}`);
-    // Re-render the full page
-    renderTopicPage(slug);
-  } catch (err) {
-    content.innerHTML = `<div class="empty-state"><h3>Error</h3><p>${escapeHtml(err.message)}</p></div>`;
-  }
 }
 
 /**

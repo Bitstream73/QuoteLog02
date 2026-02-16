@@ -164,7 +164,17 @@ async function extractWithReadability(url) {
 export async function processArticle(article, db, io) {
   db.prepare("UPDATE articles SET status = 'processing' WHERE id = ?").run(article.id);
 
-  const limiter = getLimiter(article.domain);
+  // Domain fallback: extract from URL when source_id is NULL (backprop articles)
+  if (!article.domain && article.url) {
+    try {
+      const urlObj = new URL(article.url);
+      article.domain = urlObj.hostname.toLowerCase().replace(/^www\./, '');
+    } catch {
+      article.domain = 'unknown';
+    }
+  }
+
+  const limiter = getLimiter(article.domain || 'unknown');
 
   return limiter(async () => {
     await respectRateLimit(article.domain);

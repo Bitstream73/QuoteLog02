@@ -6,8 +6,8 @@ import { requireAdmin } from '../middleware/auth.js';
 
 const router = Router();
 
-const VALID_TYPES = ['quote', 'article', 'person', 'topic'];
-const TABLE_MAP = { quote: 'quotes', article: 'articles', person: 'persons', topic: 'topics' };
+const VALID_TYPES = ['quote', 'article', 'person'];
+const TABLE_MAP = { quote: 'quotes', article: 'articles', person: 'persons' };
 
 // Pre-built SQL queries per entity type — eliminates all dynamic table name interpolation
 const QUERIES = {
@@ -31,13 +31,6 @@ const QUERIES = {
     increment: 'UPDATE persons SET importants_count = importants_count + 1 WHERE id = ?',
     getCount: 'SELECT importants_count FROM persons WHERE id = ?',
     superIncrement: 'UPDATE persons SET importants_count = importants_count + 100 WHERE id = ?',
-  },
-  topic: {
-    exists: 'SELECT id FROM topics WHERE id = ?',
-    decrement: 'UPDATE topics SET importants_count = MAX(importants_count - 1, 0) WHERE id = ?',
-    increment: 'UPDATE topics SET importants_count = importants_count + 1 WHERE id = ?',
-    getCount: 'SELECT importants_count FROM topics WHERE id = ?',
-    superIncrement: 'UPDATE topics SET importants_count = importants_count + 100 WHERE id = ?',
   },
 };
 

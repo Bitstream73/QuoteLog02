@@ -149,19 +149,6 @@ function route() {
     renderAuthor(id);
   } else if (path === '/analytics') {
     renderAnalytics();
-  } else if (path.startsWith('/topic/')) {
-    const slug = path.split('/topic/')[1];
-    if (typeof renderTopicPage === 'function') {
-      renderTopicPage(slug);
-    } else if (typeof renderTopicDetail === 'function') {
-      renderTopicDetail(slug);
-    }
-  } else if (path.startsWith('/analytics/topic/')) {
-    const slug = path.split('/analytics/topic/')[1];
-    renderTopicDetail(slug);
-  } else if (path.startsWith('/analytics/keyword/')) {
-    const id = path.split('/analytics/keyword/')[1];
-    renderKeywordDetail(id);
   } else if (path === '/admin') {
     if (isAdmin) { navigate(null, '/settings'); return; }
     renderLogin();
@@ -194,13 +181,9 @@ function route() {
 async function updateReviewBadgeAsync() {
   if (!isAdmin) return;
   try {
-    const [stats, tkrStats] = await Promise.all([
-      API.get('/review/stats'),
-      API.get('/review/topics-keywords/stats').catch(() => ({ pending: 0 })),
-    ]);
-    const totalPending = (stats.pending || 0) + (tkrStats.pending || 0);
+    const stats = await API.get('/review/stats');
     if (typeof updateReviewBadge === 'function') {
-      updateReviewBadge(totalPending);
+      updateReviewBadge(stats.pending || 0);
     }
   } catch {
     // Ignore errors
@@ -216,7 +199,7 @@ function updateAdVisibility(path) {
   if (!adContainer) return;
 
   const isPublicPage = path === '/' || path === '' ||
-    path.startsWith('/quote/') || path.startsWith('/author/') || path.startsWith('/article/') || path.startsWith('/analytics') || path.startsWith('/topic/');
+    path.startsWith('/quote/') || path.startsWith('/author/') || path.startsWith('/article/') || path.startsWith('/analytics');
 
   if (isPublicPage && !isStandalone) {
     adContainer.style.display = '';

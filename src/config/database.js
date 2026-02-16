@@ -423,79 +423,13 @@ function initializeTables(db) {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_importants_entity ON importants(entity_type, entity_id)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_importants_voter ON importants(voter_hash)`);
 
-  // Topics - Broad subject categories (semi-closed vocabulary)
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS topics (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL UNIQUE,
-      slug TEXT NOT NULL UNIQUE,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )
-  `);
-
-  // Keywords - Specific entities, events, concepts (open vocabulary, multi-word aware)
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS keywords (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL UNIQUE,
-      name_normalized TEXT NOT NULL,
-      keyword_type TEXT NOT NULL DEFAULT 'concept'
-        CHECK(keyword_type IN ('person', 'organization', 'event', 'legislation', 'location', 'concept')),
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )
-  `);
-  db.exec(`CREATE INDEX IF NOT EXISTS idx_keywords_normalized ON keywords(name_normalized)`);
-  db.exec(`CREATE INDEX IF NOT EXISTS idx_keywords_type ON keywords(keyword_type)`);
-
-  // Quote-to-topic mapping (many-to-many)
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS quote_topics (
-      quote_id INTEGER NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,
-      topic_id INTEGER NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
-      PRIMARY KEY (quote_id, topic_id)
-    )
-  `);
-  db.exec(`CREATE INDEX IF NOT EXISTS idx_quote_topics_topic ON quote_topics(topic_id)`);
-
-  // Quote-to-keyword mapping (many-to-many)
-  // Migration: drop old quote_keywords table if it has wrong schema (keyword TEXT instead of keyword_id INTEGER)
-  const qkCols = db.prepare("PRAGMA table_info(quote_keywords)").all().map(c => c.name);
-  if (qkCols.length > 0 && !qkCols.includes('keyword_id')) {
-    db.exec(`DROP TABLE IF EXISTS quote_keywords`);
-  }
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS quote_keywords (
-      quote_id INTEGER NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,
-      keyword_id INTEGER NOT NULL REFERENCES keywords(id) ON DELETE CASCADE,
-      relevance REAL NOT NULL DEFAULT 1.0,
-      PRIMARY KEY (quote_id, keyword_id)
-    )
-  `);
-  db.exec(`CREATE INDEX IF NOT EXISTS idx_quote_keywords_keyword ON quote_keywords(keyword_id)`);
-
-  // Topic-to-keyword mapping (many-to-many) — defines which keywords belong to which topic
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS topic_keywords (
-      topic_id INTEGER NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
-      keyword_id INTEGER NOT NULL REFERENCES keywords(id) ON DELETE CASCADE,
-      PRIMARY KEY (topic_id, keyword_id)
-    )
-  `);
-  db.exec(`CREATE INDEX IF NOT EXISTS idx_topic_keywords_keyword ON topic_keywords(keyword_id)`);
-
-  // Auto-seed topic_keywords: link topics to keywords with matching names (case-insensitive)
-  const tkCount = db.prepare('SELECT COUNT(*) as cnt FROM topic_keywords').get().cnt;
-  if (tkCount === 0) {
-    const seeded = db.prepare(`
-      INSERT OR IGNORE INTO topic_keywords (topic_id, keyword_id)
-      SELECT t.id, k.id
-      FROM topics t
-      JOIN keywords k ON LOWER(k.name) = LOWER(t.name)
-    `).run();
-    if (seeded.changes > 0) {
-      console.log(`[startup] Auto-seeded ${seeded.changes} topic_keywords links`);
-    }
-  }
+  // --- Legacy table cleanup: drop old topic/keyword tables ---
+  db.exec(`DROP TABLE IF EXISTS topic_keyword_review`);
+  db.exec(`DROP TABLE IF EXISTS topic_keywords`);
+  db.exec(`DROP TABLE IF EXISTS quote_keywords`);
+  db.exec(`DROP TABLE IF EXISTS quote_topics`);
+  db.exec(`DROP TABLE IF EXISTS keywords`);
+  db.exec(`DROP TABLE IF EXISTS topics`);
 
   // --- Site Topic Focus migrations: new columns for importants/share/view/trending ---
 
@@ -551,32 +485,11 @@ function initializeTables(db) {
     db.exec(`ALTER TABLE persons ADD COLUMN trending_score REAL NOT NULL DEFAULT 0.0`);
   }
 
-  // topics: description, context, importants_count, share_count, view_count, trending_score
-  const topicsCols = db.prepare("PRAGMA table_info(topics)").all().map(c => c.name);
-  if (!topicsCols.includes('description')) {
-    db.exec(`ALTER TABLE topics ADD COLUMN description TEXT`);
-  }
-  if (!topicsCols.includes('context')) {
-    db.exec(`ALTER TABLE topics ADD COLUMN context TEXT`);
-  }
-  if (!topicsCols.includes('importants_count')) {
-    db.exec(`ALTER TABLE topics ADD COLUMN importants_count INTEGER NOT NULL DEFAULT 0`);
-  }
-  if (!topicsCols.includes('share_count')) {
-    db.exec(`ALTER TABLE topics ADD COLUMN share_count INTEGER NOT NULL DEFAULT 0`);
-  }
-  if (!topicsCols.includes('view_count')) {
-    db.exec(`ALTER TABLE topics ADD COLUMN view_count INTEGER NOT NULL DEFAULT 0`);
-  }
-  if (!topicsCols.includes('trending_score')) {
-    db.exec(`ALTER TABLE topics ADD COLUMN trending_score REAL NOT NULL DEFAULT 0.0`);
-  }
 
   // --- Trending / importants indexes ---
   db.exec(`CREATE INDEX IF NOT EXISTS idx_quotes_trending ON quotes(trending_score DESC) WHERE is_visible = 1`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_articles_trending ON articles(trending_score DESC)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_persons_trending ON persons(trending_score DESC)`);
-  db.exec(`CREATE INDEX IF NOT EXISTS idx_topics_trending ON topics(trending_score DESC)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_quotes_importants ON quotes(importants_count DESC) WHERE is_visible = 1`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_quotes_datetime ON quotes(quote_datetime DESC) WHERE is_visible = 1`);
 
@@ -701,7 +614,7 @@ function initializeTables(db) {
     historical_fetch_enabled: '1',
     historical_articles_per_source_per_cycle: '5',
     min_significance_score: '5',
-    backprop_enabled: '0',
+    backprop_enabled: '1',
     backprop_max_articles_per_cycle: '5',
     fact_check_filter_mode: 'off',
     fact_check_min_score: '0.5',
@@ -724,34 +637,9 @@ function initializeTables(db) {
     insertSetting.run(key, value);
   }
 
-  // One-time cleanup: remove overly broad/vague topics
-  const topicsToRemove = [
-    'Family', 'Politics & Sports News', 'High-Profile Connections',
-    'Global Influence & Societal Futures', 'Energy',
-    'National Security', 'Public Safety & Societal Concerns',
-    'Public figures and current events', 'Economy',
-    'Leadership', 'Politics & Monarchy', 'Labor',
-    'Current Affairs & Personal Insights', 'Public Life & Performance',
-    'Military', 'Innovation',
-  ];
-  const deleteTopic = db.prepare('DELETE FROM topics WHERE name = ?');
-  for (const name of topicsToRemove) {
-    deleteTopic.run(name);
-  }
 
   // --- Phase 2 migrations: enabled columns, new tables, prompt seeds ---
 
-  // Migration: add enabled column to topics
-  const topicsCols2 = db.prepare("PRAGMA table_info(topics)").all().map(c => c.name);
-  if (!topicsCols2.includes('enabled')) {
-    db.exec(`ALTER TABLE topics ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1`);
-  }
-
-  // Migration: add enabled column to keywords
-  const keywordsCols2 = db.prepare("PRAGMA table_info(keywords)").all().map(c => c.name);
-  if (!keywordsCols2.includes('enabled')) {
-    db.exec(`ALTER TABLE keywords ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1`);
-  }
 
   // Gemini prompts table — stores editable AI prompt templates
   db.exec(`
@@ -767,22 +655,6 @@ function initializeTables(db) {
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `);
-
-  // Topic/keyword review queue — tracks AI-generated entities for human review
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS topic_keyword_review (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      entity_type TEXT NOT NULL CHECK(entity_type IN ('topic', 'keyword')),
-      entity_id INTEGER NOT NULL,
-      original_name TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'rejected', 'edited')),
-      source TEXT NOT NULL DEFAULT 'ai' CHECK(source IN ('ai', 'migration')),
-      resolved_at TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )
-  `);
-  db.exec(`CREATE INDEX IF NOT EXISTS idx_tkr_status ON topic_keyword_review(status)`);
-  db.exec(`CREATE INDEX IF NOT EXISTS idx_tkr_entity ON topic_keyword_review(entity_type, entity_id)`);
 
   // Noteworthy items — curated homepage highlights
   db.exec(`
@@ -1180,34 +1052,6 @@ The output should be ONLY the HTML fragment, no explanation.`,
     'fact_check'
   );
 
-  // One-time migration: disable all existing topics/keywords and queue them for review
-  // Guard: only run if topic_keyword_review table is empty (first migration)
-  const tkrCount = db.prepare('SELECT COUNT(*) as cnt FROM topic_keyword_review').get().cnt;
-  if (tkrCount === 0) {
-    // Disable all existing topics and keywords
-    db.exec(`UPDATE topics SET enabled = 0`);
-    db.exec(`UPDATE keywords SET enabled = 0`);
-
-    // Queue all existing topics for review
-    const existingTopics = db.prepare('SELECT id, name FROM topics').all();
-    const insertTkr = db.prepare(`
-      INSERT OR IGNORE INTO topic_keyword_review (entity_type, entity_id, original_name, source)
-      VALUES (?, ?, ?, 'migration')
-    `);
-    for (const t of existingTopics) {
-      insertTkr.run('topic', t.id, t.name);
-    }
-
-    // Queue all existing keywords for review
-    const existingKeywords = db.prepare('SELECT id, name FROM keywords').all();
-    for (const k of existingKeywords) {
-      insertTkr.run('keyword', k.id, k.name);
-    }
-
-    if (existingTopics.length > 0 || existingKeywords.length > 0) {
-      console.log(`[startup] Migration: queued ${existingTopics.length} topics and ${existingKeywords.length} keywords for review`);
-    }
-  }
 }
 
 export function closeDb() {

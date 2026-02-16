@@ -31,7 +31,6 @@ import articlesRouter from './routes/articles.js';
 // import votesRouter from './routes/votes.js';
 import importantsRouter from './routes/importants.js';
 import trackingRouter from './routes/tracking.js';
-import topicsRouter from './routes/topics.js';
 import analyticsRouter from './routes/analytics.js';
 import historicalSourcesRouter from './routes/historicalSources.js';
 import contextRouter from './routes/context.js';
@@ -137,7 +136,6 @@ export function createApp({ skipDbInit = false } = {}) {
   // app.use('/api', votesRouter); // unmounted — replaced by importants
   app.use('/api/importants', importantsRouter);
   app.use('/api/tracking', trackingRouter);
-  app.use('/api/topics', topicsRouter);
   app.use('/api/analytics', analyticsRouter);
   app.use('/api/historical-sources', historicalSourcesRouter);
   app.use('/api/quotes', contextRouter);
