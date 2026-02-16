@@ -17,7 +17,7 @@ describe('Historical Sources API', () => {
     const { createApp } = await import('../../src/index.js');
     app = createApp();
     authCookie = getAuthCookie();
-  }, 30000);
+  });
 
   afterAll(async () => {
     const { closeDb } = await import('../../src/config/database.js');
