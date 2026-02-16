@@ -432,4 +432,172 @@ router.get('/backprop/status', requireAdmin, async (req, res) => {
   }
 });
 
+// --- Categories CRUD ---
+
+function generateSlug(name) {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+
+// GET /api/admin/categories — list all categories with topic count
+router.get('/categories', (req, res) => {
+  try {
+    const db = getDb();
+    const categories = db.prepare(`
+      SELECT c.*,
+        (SELECT COUNT(*) FROM category_topics WHERE category_id = c.id) AS topic_count
+      FROM categories c ORDER BY c.sort_order, c.name
+    `).all();
+    res.json({ categories });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to list categories: ' + err.message });
+  }
+});
+
+// GET /api/admin/categories/:id — get single category with associated topics
+router.get('/categories/:id', (req, res) => {
+  try {
+    const db = getDb();
+    const category = db.prepare('SELECT * FROM categories WHERE id = ?').get(req.params.id);
+    if (!category) {
+      return res.status(404).json({ error: 'Category not found' });
+    }
+    const topics = db.prepare(`
+      SELECT t.* FROM topics t
+      JOIN category_topics ct ON ct.topic_id = t.id
+      WHERE ct.category_id = ?
+      ORDER BY t.name
+    `).all(req.params.id);
+    res.json({ category, topics });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to get category: ' + err.message });
+  }
+});
+
+// POST /api/admin/categories — create category
+router.post('/categories', (req, res) => {
+  try {
+    const db = getDb();
+    const { name } = req.body;
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'name is required' });
+    }
+    const slug = generateSlug(name.trim());
+    const maxOrder = db.prepare('SELECT MAX(sort_order) AS max_order FROM categories').get();
+    const sortOrder = (maxOrder?.max_order ?? -1) + 1;
+    const result = db.prepare(
+      'INSERT INTO categories (name, slug, sort_order) VALUES (?, ?, ?)'
+    ).run(name.trim(), slug, sortOrder);
+    res.status(201).json({ id: Number(result.lastInsertRowid), name: name.trim(), slug, sort_order: sortOrder });
+  } catch (err) {
+    if (err.message?.includes('UNIQUE constraint')) {
+      return res.status(409).json({ error: 'Category with this name already exists' });
+    }
+    res.status(500).json({ error: 'Failed to create category: ' + err.message });
+  }
+});
+
+// PUT /api/admin/categories/:id — update category
+router.put('/categories/:id', (req, res) => {
+  try {
+    const db = getDb();
+    const { id } = req.params;
+    const { name, sort_order } = req.body;
+
+    const existing = db.prepare('SELECT * FROM categories WHERE id = ?').get(id);
+    if (!existing) {
+      return res.status(404).json({ error: 'Category not found' });
+    }
+
+    if (name !== undefined) {
+      if (!name.trim()) {
+        return res.status(400).json({ error: 'name cannot be empty' });
+      }
+      const slug = generateSlug(name.trim());
+      db.prepare('UPDATE categories SET name = ?, slug = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+        .run(name.trim(), slug, id);
+    }
+
+    if (sort_order !== undefined) {
+      db.prepare('UPDATE categories SET sort_order = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+        .run(sort_order, id);
+    }
+
+    const updated = db.prepare('SELECT * FROM categories WHERE id = ?').get(id);
+    res.json({ category: updated });
+  } catch (err) {
+    if (err.message?.includes('UNIQUE constraint')) {
+      return res.status(409).json({ error: 'Category with this name already exists' });
+    }
+    res.status(500).json({ error: 'Failed to update category: ' + err.message });
+  }
+});
+
+// DELETE /api/admin/categories/:id — delete category
+router.delete('/categories/:id', (req, res) => {
+  try {
+    const db = getDb();
+    const result = db.prepare('DELETE FROM categories WHERE id = ?').run(req.params.id);
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'Category not found' });
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete category: ' + err.message });
+  }
+});
+
+// POST /api/admin/categories/:id/topics — link topic to category
+router.post('/categories/:id/topics', (req, res) => {
+  try {
+    const db = getDb();
+    const { id } = req.params;
+    const { topic_id } = req.body;
+
+    if (!topic_id) {
+      return res.status(400).json({ error: 'topic_id is required' });
+    }
+
+    const category = db.prepare('SELECT id FROM categories WHERE id = ?').get(id);
+    if (!category) {
+      return res.status(404).json({ error: 'Category not found' });
+    }
+
+    const topic = db.prepare('SELECT id FROM topics WHERE id = ?').get(topic_id);
+    if (!topic) {
+      return res.status(404).json({ error: 'Topic not found' });
+    }
+
+    const result = db.prepare(
+      'INSERT OR IGNORE INTO category_topics (category_id, topic_id) VALUES (?, ?)'
+    ).run(id, topic_id);
+
+    if (result.changes === 0) {
+      return res.status(409).json({ error: 'Topic already linked to this category' });
+    }
+
+    res.status(201).json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to link topic: ' + err.message });
+  }
+});
+
+// DELETE /api/admin/categories/:id/topics/:topicId — unlink topic from category
+router.delete('/categories/:id/topics/:topicId', (req, res) => {
+  try {
+    const db = getDb();
+    const { id, topicId } = req.params;
+    const result = db.prepare(
+      'DELETE FROM category_topics WHERE category_id = ? AND topic_id = ?'
+    ).run(id, topicId);
+
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'Topic not linked to this category' });
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to unlink topic: ' + err.message });
+  }
+});
+
 export default router;
