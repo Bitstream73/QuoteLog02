@@ -411,6 +411,28 @@ router.post('/topics-keywords/:id/edit', requireAdmin, (req, res) => {
   }
 });
 
+// POST /api/review/topics-keywords/reject-all-keywords — reject all pending keywords at once
+router.post('/topics-keywords/reject-all-keywords', requireAdmin, (req, res) => {
+  try {
+    const db = getDb();
+    const count = db.prepare(
+      "SELECT COUNT(*) as count FROM topic_keyword_review WHERE status = 'pending' AND entity_type = 'keyword'"
+    ).get().count;
+
+    if (count === 0) {
+      return res.json({ success: true, rejected: 0, message: 'No pending keywords to reject' });
+    }
+
+    const result = db.prepare(
+      "UPDATE topic_keyword_review SET status = 'rejected', resolved_at = datetime('now') WHERE status = 'pending' AND entity_type = 'keyword'"
+    ).run();
+
+    res.json({ success: true, rejected: result.changes });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to reject all keywords' });
+  }
+});
+
 // POST /api/review/topics-keywords/batch — batch approve/reject
 router.post('/topics-keywords/batch', requireAdmin, (req, res) => {
   try {
