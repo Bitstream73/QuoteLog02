@@ -989,3 +989,216 @@ async function showSourceErrors(domain, failureCount) {
     modalContent.innerHTML = `<p style="color:var(--error)">Error loading logs: ${escapeHtml(err.message)}</p><div style="text-align:right;margin-top:1rem"><button class="btn btn-secondary" onclick="closeModal()">Close</button></div>`;
   }
 }
+
+// ======= Keywords Section =======
+
+// In-memory cache for keyword list (avoids re-fetch on filter)
+let _keywordsCache = [];
+
+function renderKeywords(keywords) {
+  _keywordsCache = keywords;
+  if (keywords.length === 0) {
+    return '<p class="empty-message">No keywords configured. Add a keyword above.</p>';
+  }
+  return keywords.map(kw => renderKeywordRow(kw)).join('');
+}
+
+function renderKeywordRow(kw) {
+  return `
+    <details class="keyword-card" data-keyword-id="${kw.id}">
+      <summary class="keyword-card__summary">
+        <div class="keyword-card__info">
+          <span class="keyword-card__name" id="keyword-name-${kw.id}">${escapeHtml(kw.name)}</span>
+          <span class="keyword-card__stats">${kw.alias_count || 0} aliases &middot; ${kw.quote_count || 0} quotes</span>
+        </div>
+        <div class="keyword-card__actions" onclick="event.stopPropagation()">
+          <button class="btn btn-secondary btn-sm" onclick="editKeyword(${kw.id})" title="Rename">Edit</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteKeyword(${kw.id})" title="Delete">Delete</button>
+        </div>
+      </summary>
+      <div class="keyword-card__body" id="keyword-body-${kw.id}">
+        <div class="keyword-aliases-loading">Loading aliases...</div>
+      </div>
+    </details>
+  `;
+}
+
+function filterKeywords() {
+  const query = (document.getElementById('keywords-filter')?.value || '').toLowerCase().trim();
+  const list = document.getElementById('keywords-list');
+  if (!list) return;
+  const fullCache = _keywordsCache;
+  const filtered = query
+    ? fullCache.filter(kw => kw.name.toLowerCase().includes(query))
+    : fullCache;
+  list.innerHTML = filtered.length === 0
+    ? '<p class="empty-message">No keywords match filter.</p>'
+    : filtered.map(kw => renderKeywordRow(kw)).join('');
+  // Don't call renderKeywords here to avoid overwriting the full cache
+}
+
+// Lazy-load aliases when keyword card is opened
+document.addEventListener('toggle', async (e) => {
+  const details = e.target.closest?.('.keyword-card');
+  if (!details || !details.open) return;
+  const kwId = details.dataset.keywordId;
+  const body = document.getElementById(`keyword-body-${kwId}`);
+  if (!body || body.dataset.loaded) return;
+  try {
+    const data = await API.get(`/admin/keywords/${kwId}`);
+    const aliases = data.aliases || [];
+    body.dataset.loaded = 'true';
+    body.innerHTML = renderKeywordAliases(kwId, aliases);
+  } catch (err) {
+    body.innerHTML = `<p class="empty-message">Error loading aliases: ${escapeHtml(err.message)}</p>`;
+  }
+}, true);
+
+function renderKeywordAliases(kwId, aliases) {
+  let html = '<div class="keyword-aliases-list">';
+  if (aliases.length === 0) {
+    html += '<p class="empty-message" style="padding:0.5rem 0">No aliases.</p>';
+  } else {
+    html += aliases.map(a => `
+      <span class="keyword-alias-chip" data-alias-id="${a.id}">
+        ${escapeHtml(a.alias)}
+        <button class="keyword-alias-remove" onclick="deleteAlias(${kwId}, ${a.id})" title="Remove alias">&times;</button>
+      </span>
+    `).join('');
+  }
+  html += '</div>';
+  html += `
+    <div class="keyword-alias-add">
+      <input type="text" id="alias-input-${kwId}" placeholder="New alias" class="input-text" style="width:160px"
+             onkeydown="if(event.key==='Enter')addAlias(${kwId})">
+      <button class="btn btn-secondary btn-sm" onclick="addAlias(${kwId})">Add Alias</button>
+    </div>
+  `;
+  return html;
+}
+
+async function addKeyword() {
+  const nameInput = document.getElementById('new-keyword-name');
+  const aliasesInput = document.getElementById('new-keyword-aliases');
+  const name = (nameInput?.value || '').trim();
+  const aliasesRaw = (aliasesInput?.value || '').trim();
+
+  if (!name) {
+    showToast('Please enter a keyword name', 'error');
+    return;
+  }
+
+  const aliases = aliasesRaw
+    ? aliasesRaw.split(',').map(a => a.trim()).filter(a => a.length > 0)
+    : [];
+
+  try {
+    await API.post('/admin/keywords', { name, aliases });
+    showToast('Keyword added', 'success');
+    nameInput.value = '';
+    aliasesInput.value = '';
+    await reloadKeywords();
+  } catch (err) {
+    showToast('Error adding keyword: ' + err.message, 'error', 5000);
+  }
+}
+
+async function editKeyword(id) {
+  const nameEl = document.getElementById(`keyword-name-${id}`);
+  if (!nameEl) return;
+  const currentName = nameEl.textContent;
+  const newName = prompt('Rename keyword:', currentName);
+  if (!newName || newName.trim() === '' || newName.trim() === currentName) return;
+
+  try {
+    await API.put(`/admin/keywords/${id}`, { name: newName.trim() });
+    showToast('Keyword renamed', 'success');
+    await reloadKeywords();
+  } catch (err) {
+    showToast('Error renaming keyword: ' + err.message, 'error', 5000);
+  }
+}
+
+async function deleteKeyword(id) {
+  showConfirmToast('Delete this keyword and all its aliases?', async () => {
+    try {
+      await API.delete(`/admin/keywords/${id}`);
+      showToast('Keyword deleted', 'success');
+      await reloadKeywords();
+    } catch (err) {
+      showToast('Error deleting keyword: ' + err.message, 'error', 5000);
+    }
+  });
+}
+
+async function addAlias(keywordId) {
+  const input = document.getElementById(`alias-input-${keywordId}`);
+  const alias = (input?.value || '').trim();
+  if (!alias) {
+    showToast('Please enter an alias', 'error');
+    return;
+  }
+
+  try {
+    const data = await API.post(`/admin/keywords/${keywordId}/aliases`, { alias });
+    showToast('Alias added', 'success');
+    input.value = '';
+    // Re-render alias list in the open card
+    const body = document.getElementById(`keyword-body-${keywordId}`);
+    if (body) {
+      const kwData = await API.get(`/admin/keywords/${keywordId}`);
+      body.innerHTML = renderKeywordAliases(keywordId, kwData.aliases || []);
+    }
+    // Update alias count in cache and row
+    await reloadKeywords();
+  } catch (err) {
+    showToast('Error adding alias: ' + err.message, 'error', 5000);
+  }
+}
+
+async function deleteAlias(keywordId, aliasId) {
+  try {
+    await API.delete(`/admin/keywords/${keywordId}/aliases/${aliasId}`);
+    showToast('Alias removed', 'success');
+    // Re-render alias list
+    const body = document.getElementById(`keyword-body-${keywordId}`);
+    if (body) {
+      const kwData = await API.get(`/admin/keywords/${keywordId}`);
+      body.innerHTML = renderKeywordAliases(keywordId, kwData.aliases || []);
+    }
+    await reloadKeywords();
+  } catch (err) {
+    showToast('Error removing alias: ' + err.message, 'error', 5000);
+  }
+}
+
+async function reloadKeywords() {
+  try {
+    const data = await API.get('/admin/keywords');
+    const keywords = data.keywords || [];
+    _keywordsCache = keywords;
+    const list = document.getElementById('keywords-list');
+    const filterInput = document.getElementById('keywords-filter');
+    const query = (filterInput?.value || '').toLowerCase().trim();
+    const filtered = query
+      ? keywords.filter(kw => kw.name.toLowerCase().includes(query))
+      : keywords;
+    if (list) {
+      // Preserve which cards are open
+      const openIds = new Set();
+      list.querySelectorAll('.keyword-card[open]').forEach(d => openIds.add(d.dataset.keywordId));
+      list.innerHTML = filtered.length === 0
+        ? '<p class="empty-message">No keywords configured. Add a keyword above.</p>'
+        : filtered.map(kw => renderKeywordRow(kw)).join('');
+      // Re-open previously open cards
+      openIds.forEach(kwId => {
+        const card = list.querySelector(`.keyword-card[data-keyword-id="${kwId}"]`);
+        if (card) card.open = true;
+      });
+    }
+    const title = document.getElementById('keywords-count-title');
+    if (title) title.textContent = `Keywords (${keywords.length})`;
+  } catch (err) {
+    console.error('Failed to reload keywords:', err);
+  }
+}

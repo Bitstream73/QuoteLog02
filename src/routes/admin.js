@@ -1074,4 +1074,34 @@ router.post('/taxonomy/suggestions/:id/reject', (req, res) => {
   }
 });
 
+// --- Taxonomy Evolution ---
+
+// POST /api/admin/taxonomy/evolve — trigger batch taxonomy evolution
+router.post('/taxonomy/evolve', async (req, res) => {
+  try {
+    const { runTaxonomyEvolution } = await import('../services/taxonomyEvolution.js');
+    const days = parseInt(req.body?.days) || 7;
+    const results = runTaxonomyEvolution(days);
+    res.json({ message: 'Taxonomy evolution complete', ...results });
+  } catch (err) {
+    res.status(500).json({ error: 'Taxonomy evolution failed: ' + err.message });
+  }
+});
+
+// GET /api/admin/taxonomy/suggestions/stats — counts by type and status
+router.get('/taxonomy/suggestions/stats', (req, res) => {
+  try {
+    const db = getDb();
+    const stats = db.prepare(`
+      SELECT suggestion_type, status, COUNT(*) as count
+      FROM taxonomy_suggestions
+      GROUP BY suggestion_type, status
+      ORDER BY suggestion_type, status
+    `).all();
+    res.json({ stats });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to get suggestion stats: ' + err.message });
+  }
+});
+
 export default router;

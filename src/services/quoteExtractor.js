@@ -272,8 +272,8 @@ export async function extractQuotesFromArticle(articleText, article, db, io) {
 // Legacy export for compatibility
 const quoteExtractor = {
   async extractFromArticle(articleText, sourceName, sourceUrl) {
-    const rawQuotes = await extractQuotesWithGemini(articleText, { published_at: null, title: null });
-    return rawQuotes.map(q => ({
+    const result = await extractQuotesWithGemini(articleText, { published_at: null, title: null });
+    return result.quotes.map(q => ({
       text: q.quote_text,
       author: q.speaker,
       sourceName,

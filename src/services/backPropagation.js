@@ -121,8 +121,8 @@ export async function runBackPropForDate(targetDate, io) {
 
         if (insertedArticle) {
           try {
-            const quotes = await processArticle(insertedArticle, db, io);
-            totalQuotesExtracted += quotes.length;
+            const result = await processArticle(insertedArticle, db, io);
+            totalQuotesExtracted += result.quotes.length;
           } catch (err) {
             logger.warn('backprop', 'article_process_error', {
               url: article.url,

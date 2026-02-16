@@ -199,7 +199,7 @@ export async function processArticle(article, db, io) {
     if (!extracted || !extracted.text || extracted.text.length < 200) {
       db.prepare("UPDATE articles SET status = 'failed', error = 'Text too short or extraction failed' WHERE id = ?")
         .run(article.id);
-      return [];
+      return { quotes: [], extracted_entities: [] };
     }
 
     // Step 2 & 3: Extract quotes and entities (includes pre-filter and Gemini extraction)

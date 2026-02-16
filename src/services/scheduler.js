@@ -208,9 +208,9 @@ async function runFetchCycle() {
     const newQuotes = [];
     for (const article of pending) {
       try {
-        const quotes = await processArticle(article, db, io);
-        totalNewQuotes += quotes.length;
-        newQuotes.push(...quotes);
+        const result = await processArticle(article, db, io);
+        totalNewQuotes += result.quotes.length;
+        newQuotes.push(...result.quotes);
       } catch (err) {
         logger.error('scheduler', 'article_process_error', {
           url: article.url,
