@@ -97,7 +97,7 @@ router.get('/', (req, res) => {
     LEFT JOIN sources s ON a.source_id = s.id
     WHERE q.canonical_quote_id IS NULL ${visibilityFilter} ${topStoriesFilter} ${categoryFilter} ${subFilterSql} ${searchFilter}
     GROUP BY q.id
-    ORDER BY q.created_at DESC
+    ORDER BY COALESCE(a.published_at, q.created_at) DESC
     LIMIT ? OFFSET ?
   `).all(...params, limit, offset);
 
@@ -426,6 +426,45 @@ router.patch('/:id/visibility', requireAdmin, (req, res) => {
   db.prepare('UPDATE quotes SET is_visible = ? WHERE id = ?').run(isVisible ? 1 : 0, req.params.id);
 
   res.json({ success: true, isVisible });
+});
+
+// Delete a single quote (admin only)
+router.delete('/:id', requireAdmin, (req, res) => {
+  const db = getDb();
+  const quoteId = parseInt(req.params.id);
+
+  const quote = db.prepare('SELECT id, person_id FROM quotes WHERE id = ?').get(quoteId);
+  if (!quote) {
+    return res.status(404).json({ error: 'Quote not found' });
+  }
+
+  const deleteOne = db.transaction(() => {
+    // Unlink variants pointing to this quote
+    db.prepare('UPDATE quotes SET canonical_quote_id = NULL WHERE canonical_quote_id = ?').run(quoteId);
+    // Clean related tables (no FK cascade)
+    db.prepare('DELETE FROM quote_relationships WHERE quote_id_a = ? OR quote_id_b = ?').run(quoteId, quoteId);
+    db.prepare("DELETE FROM importants WHERE entity_type = 'quote' AND entity_id = ?").run(quoteId);
+    db.prepare("DELETE FROM noteworthy_items WHERE entity_type = 'quote' AND entity_id = ?").run(quoteId);
+    db.prepare('UPDATE disambiguation_queue SET quote_id = NULL WHERE quote_id = ?').run(quoteId);
+    db.prepare('DELETE FROM quote_articles WHERE quote_id = ?').run(quoteId);
+    db.prepare('DELETE FROM votes WHERE quote_id = ?').run(quoteId);
+    db.prepare('DELETE FROM quote_topics WHERE quote_id = ?').run(quoteId);
+    db.prepare('DELETE FROM quote_keywords WHERE quote_id = ?').run(quoteId);
+    db.prepare('DELETE FROM quote_context_cache WHERE quote_id = ?').run(quoteId);
+    db.prepare('DELETE FROM quote_smart_related WHERE quote_id = ? OR related_quote_id = ?').run(quoteId, quoteId);
+    // Delete the quote itself
+    db.prepare('DELETE FROM quotes WHERE id = ?').run(quoteId);
+    // Recalculate person quote_count
+    db.prepare(`
+      UPDATE persons SET quote_count = (
+        SELECT COUNT(*) FROM quotes WHERE person_id = ? AND is_visible = 1 AND canonical_quote_id IS NULL
+      ) WHERE id = ?
+    `).run(quote.person_id, quote.person_id);
+  });
+
+  deleteOne();
+
+  res.json({ success: true, deletedId: quoteId });
 });
 
 // Edit quote text (admin only)
