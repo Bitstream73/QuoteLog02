@@ -432,11 +432,267 @@ router.get('/backprop/status', requireAdmin, async (req, res) => {
   }
 });
 
-// --- Categories CRUD ---
+// --- Topics CRUD ---
 
 function generateSlug(name) {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }
+
+// GET /api/admin/topics — list all topics with keyword count, quote count, optional status filter
+router.get('/topics', (req, res) => {
+  try {
+    const db = getDb();
+    const { status } = req.query;
+    let sql = `
+      SELECT t.*,
+        (SELECT COUNT(*) FROM topic_keywords WHERE topic_id = t.id) AS keyword_count,
+        (SELECT COUNT(DISTINCT qt.quote_id) FROM quote_topics qt WHERE qt.topic_id = t.id) AS quote_count
+      FROM topics t
+    `;
+    const params = [];
+    if (status) {
+      sql += ' WHERE t.status = ?';
+      params.push(status);
+    }
+    sql += ' ORDER BY t.name';
+    const topics = db.prepare(sql).all(...params);
+    res.json({ topics });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to list topics: ' + err.message });
+  }
+});
+
+// GET /api/admin/topics/:id — get single topic with keywords and aliases
+router.get('/topics/:id', (req, res) => {
+  try {
+    const db = getDb();
+    const topic = db.prepare('SELECT * FROM topics WHERE id = ?').get(req.params.id);
+    if (!topic) {
+      return res.status(404).json({ error: 'Topic not found' });
+    }
+    const aliases = db.prepare('SELECT * FROM topic_aliases WHERE topic_id = ? ORDER BY alias').all(req.params.id);
+    const keywords = db.prepare(`
+      SELECT k.* FROM keywords k
+      JOIN topic_keywords tk ON tk.keyword_id = k.id
+      WHERE tk.topic_id = ?
+      ORDER BY k.name
+    `).all(req.params.id);
+    res.json({ topic, aliases, keywords });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to get topic: ' + err.message });
+  }
+});
+
+// POST /api/admin/topics — create topic
+router.post('/topics', (req, res) => {
+  try {
+    const db = getDb();
+    const { name, status, start_date, end_date, description, aliases, keyword_ids } = req.body;
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'name is required' });
+    }
+    const slug = generateSlug(name.trim());
+    const result = db.prepare(
+      'INSERT INTO topics (name, slug, status, start_date, end_date, description) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(name.trim(), slug, status || 'active', start_date || null, end_date || null, description || null);
+    const topicId = Number(result.lastInsertRowid);
+
+    // Insert aliases if provided
+    if (aliases && Array.isArray(aliases)) {
+      const insertAlias = db.prepare(
+        'INSERT INTO topic_aliases (topic_id, alias, alias_normalized) VALUES (?, ?, ?)'
+      );
+      for (const alias of aliases) {
+        if (alias && alias.trim()) {
+          insertAlias.run(topicId, alias.trim(), alias.trim().toLowerCase());
+        }
+      }
+    }
+
+    // Link keywords if provided
+    if (keyword_ids && Array.isArray(keyword_ids)) {
+      const linkKeyword = db.prepare(
+        'INSERT OR IGNORE INTO topic_keywords (topic_id, keyword_id) VALUES (?, ?)'
+      );
+      for (const kwId of keyword_ids) {
+        linkKeyword.run(topicId, kwId);
+      }
+    }
+
+    const topic = db.prepare('SELECT * FROM topics WHERE id = ?').get(topicId);
+    res.status(201).json(topic);
+  } catch (err) {
+    if (err.message?.includes('UNIQUE constraint')) {
+      return res.status(409).json({ error: 'Topic with this name already exists' });
+    }
+    res.status(500).json({ error: 'Failed to create topic: ' + err.message });
+  }
+});
+
+// PUT /api/admin/topics/:id — update topic
+router.put('/topics/:id', (req, res) => {
+  try {
+    const db = getDb();
+    const { id } = req.params;
+    const { name, status, start_date, end_date, description } = req.body;
+
+    const existing = db.prepare('SELECT * FROM topics WHERE id = ?').get(id);
+    if (!existing) {
+      return res.status(404).json({ error: 'Topic not found' });
+    }
+
+    if (name !== undefined) {
+      if (!name.trim()) {
+        return res.status(400).json({ error: 'name cannot be empty' });
+      }
+      const slug = generateSlug(name.trim());
+      db.prepare('UPDATE topics SET name = ?, slug = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+        .run(name.trim(), slug, id);
+    }
+    if (status !== undefined) {
+      db.prepare('UPDATE topics SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+        .run(status, id);
+    }
+    if (start_date !== undefined) {
+      db.prepare('UPDATE topics SET start_date = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+        .run(start_date, id);
+    }
+    if (end_date !== undefined) {
+      db.prepare('UPDATE topics SET end_date = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+        .run(end_date, id);
+    }
+    if (description !== undefined) {
+      db.prepare('UPDATE topics SET description = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+        .run(description, id);
+    }
+
+    const updated = db.prepare('SELECT * FROM topics WHERE id = ?').get(id);
+    res.json({ topic: updated });
+  } catch (err) {
+    if (err.message?.includes('UNIQUE constraint')) {
+      return res.status(409).json({ error: 'Topic with this name already exists' });
+    }
+    res.status(500).json({ error: 'Failed to update topic: ' + err.message });
+  }
+});
+
+// DELETE /api/admin/topics/:id — delete topic (CASCADE handles aliases, topic_keywords, quote_topics, category_topics)
+router.delete('/topics/:id', (req, res) => {
+  try {
+    const db = getDb();
+    const result = db.prepare('DELETE FROM topics WHERE id = ?').run(req.params.id);
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'Topic not found' });
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete topic: ' + err.message });
+  }
+});
+
+// POST /api/admin/topics/:id/aliases — add alias to topic
+router.post('/topics/:id/aliases', (req, res) => {
+  try {
+    const db = getDb();
+    const { id } = req.params;
+    const { alias } = req.body;
+
+    if (!alias || !alias.trim()) {
+      return res.status(400).json({ error: 'alias is required' });
+    }
+
+    const topic = db.prepare('SELECT id FROM topics WHERE id = ?').get(id);
+    if (!topic) {
+      return res.status(404).json({ error: 'Topic not found' });
+    }
+
+    const result = db.prepare(
+      'INSERT INTO topic_aliases (topic_id, alias, alias_normalized) VALUES (?, ?, ?)'
+    ).run(id, alias.trim(), alias.trim().toLowerCase());
+
+    res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
+  } catch (err) {
+    if (err.message?.includes('UNIQUE constraint')) {
+      return res.status(409).json({ error: 'Alias already exists for this topic' });
+    }
+    res.status(500).json({ error: 'Failed to add alias: ' + err.message });
+  }
+});
+
+// DELETE /api/admin/topics/:id/aliases/:aliasId — remove alias from topic
+router.delete('/topics/:id/aliases/:aliasId', (req, res) => {
+  try {
+    const db = getDb();
+    const { id, aliasId } = req.params;
+    const result = db.prepare(
+      'DELETE FROM topic_aliases WHERE id = ? AND topic_id = ?'
+    ).run(aliasId, id);
+
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'Alias not found' });
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to remove alias: ' + err.message });
+  }
+});
+
+// POST /api/admin/topics/:id/keywords — link keyword to topic
+router.post('/topics/:id/keywords', (req, res) => {
+  try {
+    const db = getDb();
+    const { id } = req.params;
+    const { keyword_id } = req.body;
+
+    if (!keyword_id) {
+      return res.status(400).json({ error: 'keyword_id is required' });
+    }
+
+    const topic = db.prepare('SELECT id FROM topics WHERE id = ?').get(id);
+    if (!topic) {
+      return res.status(404).json({ error: 'Topic not found' });
+    }
+
+    const keyword = db.prepare('SELECT id FROM keywords WHERE id = ?').get(keyword_id);
+    if (!keyword) {
+      return res.status(404).json({ error: 'Keyword not found' });
+    }
+
+    const result = db.prepare(
+      'INSERT OR IGNORE INTO topic_keywords (topic_id, keyword_id) VALUES (?, ?)'
+    ).run(id, keyword_id);
+
+    if (result.changes === 0) {
+      return res.status(409).json({ error: 'Keyword already linked to this topic' });
+    }
+
+    res.status(201).json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to link keyword: ' + err.message });
+  }
+});
+
+// DELETE /api/admin/topics/:id/keywords/:keywordId — unlink keyword from topic
+router.delete('/topics/:id/keywords/:keywordId', (req, res) => {
+  try {
+    const db = getDb();
+    const { id, keywordId } = req.params;
+    const result = db.prepare(
+      'DELETE FROM topic_keywords WHERE topic_id = ? AND keyword_id = ?'
+    ).run(id, keywordId);
+
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'Keyword not linked to this topic' });
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to unlink keyword: ' + err.message });
+  }
+});
+
+// --- Categories CRUD ---
 
 // GET /api/admin/categories — list all categories with topic count
 router.get('/categories', (req, res) => {
