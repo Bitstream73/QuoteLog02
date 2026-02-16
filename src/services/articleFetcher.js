@@ -202,15 +202,16 @@ export async function processArticle(article, db, io) {
       return [];
     }
 
-    // Step 2 & 3: Extract quotes (includes pre-filter and Gemini extraction)
-    const quotes = await extractQuotesFromArticle(extracted.text, article, db, io);
+    // Step 2 & 3: Extract quotes and entities (includes pre-filter and Gemini extraction)
+    const extractionResult = await extractQuotesFromArticle(extracted.text, article, db, io);
+    const quotes = extractionResult.quotes;
 
     // Step 4: Update article status
     const status = quotes.length > 0 ? 'completed' : 'no_quotes';
     db.prepare(`UPDATE articles SET status = ?, quote_count = ?, processed_at = datetime('now') WHERE id = ?`)
       .run(status, quotes.length, article.id);
 
-    return quotes;
+    return extractionResult;
   });
 }
 

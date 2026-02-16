@@ -5,16 +5,18 @@ async function renderSettings() {
   content.innerHTML = '<div class="loading">Loading settings...</div>';
 
   try {
-    const [settings, sourcesData, promptsData, noteworthyData] = await Promise.all([
+    const [settings, sourcesData, promptsData, noteworthyData, keywordsData] = await Promise.all([
       API.get('/settings'),
       API.get('/sources'),
       API.get('/settings/prompts').catch(() => ({ prompts: [] })),
       API.get('/admin/noteworthy').catch(() => ({ items: [] })),
+      API.get('/admin/keywords').catch(() => ({ keywords: [] })),
     ]);
 
     const sources = sourcesData.sources || [];
     const prompts = promptsData.prompts || [];
     const noteworthyItems = noteworthyData.items || [];
+    const keywords = keywordsData.keywords || [];
 
     let html = `
       <p style="margin-bottom:1rem">
@@ -255,6 +257,31 @@ async function renderSettings() {
           </div>
           <div id="noteworthy-items-list" class="topics-keywords-list">
             ${noteworthyItems.length === 0 ? '<p class="empty-message">No noteworthy items. Add quotes, topics, or articles above.</p>' : noteworthyItems.map(item => renderNoteworthyRow(item)).join('')}
+          </div>
+        </div>
+      </div>
+
+      <!-- Keywords Section -->
+      <div class="settings-section" id="settings-section-keywords">
+        <h2>Keywords</h2>
+        <p class="section-description">Manage keywords used for quote classification. Keywords can have aliases for flexible matching.</p>
+
+        <div class="settings-subsection">
+          <h3 class="subsection-title">Add Keyword</h3>
+          <div class="keyword-add-form">
+            <input type="text" id="new-keyword-name" placeholder="Keyword name" class="input-text">
+            <input type="text" id="new-keyword-aliases" placeholder="Aliases (comma-separated, optional)" class="input-text" style="flex:1">
+            <button class="btn btn-primary" onclick="addKeyword()">Add</button>
+          </div>
+        </div>
+
+        <div class="settings-subsection">
+          <div class="subsection-header">
+            <h3 class="subsection-title" id="keywords-count-title">Keywords (${keywords.length})</h3>
+            <input type="text" id="keywords-filter" placeholder="Filter keywords..." class="input-text" style="width:180px" oninput="filterKeywords()">
+          </div>
+          <div id="keywords-list" class="topics-keywords-list">
+            ${renderKeywords(keywords)}
           </div>
         </div>
       </div>

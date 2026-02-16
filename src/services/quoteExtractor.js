@@ -138,14 +138,16 @@ export async function extractQuotesFromArticle(articleText, article, db, io) {
   // Step 1: Pre-filter - does article likely have quotes?
   if (!likelyHasQuotes(articleText)) {
     logger.debug('extractor', 'no_quotes_detected', { url: article.url });
-    return [];
+    return { quotes: [], extracted_entities: [] };
   }
 
-  // Step 2: Extract quotes with Gemini
-  const rawQuotes = await extractQuotesWithGemini(articleText, article);
+  // Step 2: Extract quotes and entities with Gemini
+  const extractionResult = await extractQuotesWithGemini(articleText, article);
+  const rawQuotes = extractionResult.quotes;
+  const extractedEntities = extractionResult.extracted_entities;
 
   if (rawQuotes.length === 0) {
-    return [];
+    return { quotes: [], extracted_entities: extractedEntities };
   }
 
   // Step 3: Verify and filter quotes (direct only)
@@ -264,7 +266,7 @@ export async function extractQuotesFromArticle(articleText, article, db, io) {
     io.emit('new_quotes', { quotes: insertedQuotes });
   }
 
-  return insertedQuotes;
+  return { quotes: insertedQuotes, extracted_entities: extractedEntities };
 }
 
 // Legacy export for compatibility

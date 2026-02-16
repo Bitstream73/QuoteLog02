@@ -7,6 +7,7 @@ import vectorDb, { embedQuote } from '../services/vectorDb.js';
 import { getDb } from '../config/database.js';
 import config from '../config/index.js';
 import logger from '../services/logger.js';
+import { getSuggestions, approveSuggestion, rejectSuggestion } from '../services/unmatchedEntityHandler.js';
 
 const router = Router();
 
@@ -1026,6 +1027,50 @@ router.delete('/categories/:id/topics/:topicId', (req, res) => {
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'Failed to unlink topic: ' + err.message });
+  }
+});
+
+// --- Taxonomy Suggestions ---
+
+// GET /api/admin/taxonomy/suggestions — list suggestions with filtering
+router.get('/taxonomy/suggestions', (req, res) => {
+  try {
+    const { type, status, limit, offset } = req.query;
+    const suggestions = getSuggestions({
+      type: type || undefined,
+      status: status || 'pending',
+      limit: limit ? parseInt(limit) : 50,
+      offset: offset ? parseInt(offset) : 0,
+    });
+    res.json({ suggestions });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to list suggestions: ' + err.message });
+  }
+});
+
+// POST /api/admin/taxonomy/suggestions/:id/approve — approve (optionally with edited data)
+router.post('/taxonomy/suggestions/:id/approve', (req, res) => {
+  try {
+    const { id } = req.params;
+    const editedData = req.body?.edited_data || null;
+    approveSuggestion(parseInt(id), editedData);
+    res.json({ success: true });
+  } catch (err) {
+    if (err.message === 'Suggestion not found') {
+      return res.status(404).json({ error: err.message });
+    }
+    res.status(500).json({ error: 'Failed to approve suggestion: ' + err.message });
+  }
+});
+
+// POST /api/admin/taxonomy/suggestions/:id/reject — reject
+router.post('/taxonomy/suggestions/:id/reject', (req, res) => {
+  try {
+    const { id } = req.params;
+    rejectSuggestion(parseInt(id));
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to reject suggestion: ' + err.message });
   }
 });
 
