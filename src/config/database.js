@@ -513,6 +513,13 @@ function initializeTables(db) {
   if (!quoteCols2.includes('trending_score')) {
     db.exec(`ALTER TABLE quotes ADD COLUMN trending_score REAL NOT NULL DEFAULT 0.0`);
   }
+  if (!quoteCols2.includes('fact_check_category')) {
+    db.exec(`ALTER TABLE quotes ADD COLUMN fact_check_category TEXT CHECK(fact_check_category IN ('A', 'B', 'C'))`);
+  }
+  if (!quoteCols2.includes('fact_check_confidence')) {
+    db.exec(`ALTER TABLE quotes ADD COLUMN fact_check_confidence REAL`);
+  }
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quotes_fact_check ON quotes(fact_check_category) WHERE fact_check_category IS NOT NULL`);
 
   // articles: importants_count, share_count, view_count, trending_score
   const articleCols2 = db.prepare("PRAGMA table_info(articles)").all().map(c => c.name);

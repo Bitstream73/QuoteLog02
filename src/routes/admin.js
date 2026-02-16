@@ -4,7 +4,7 @@ import { requireAdmin } from '../middleware/auth.js';
 import { createBackup, listBackups, exportDatabaseJson, importDatabaseJson } from '../services/backup.js';
 import { backfillHeadshots } from '../services/personPhoto.js';
 import { storeTopicsAndKeywords } from '../services/quoteDeduplicator.js';
-import { embedQuote } from '../services/vectorDb.js';
+import vectorDb, { embedQuote } from '../services/vectorDb.js';
 import { materializeSingleTopic } from '../services/topicMaterializer.js';
 import { getDb } from '../config/database.js';
 import config from '../config/index.js';
@@ -228,6 +228,185 @@ router.post('/backfill-pinecone', async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ error: 'Backfill failed: ' + err.message });
+  }
+});
+
+// --- Quote Quality Purge ---
+
+async function classifyQuoteBatch(quotes) {
+  const items = quotes.map((q, i) => `[${i + 1}] "${q.text}" — ${q.canonical_name}${q.context ? ` (context: ${q.context})` : ''}`).join('\n');
+  const prompt = `Classify each quote into exactly one category:
+A = Verifiable factual claim (contains statistics, dates, quantities, specific events that can be checked)
+B = Opinion, value judgment, prediction, or editorial (substantive but not fact-checkable)
+C = Platitude, fluff, fragment, or rhetorical statement (no substance, cliché, or incomplete)
+
+Quotes:
+${items}
+
+Return JSON: {"classifications":[{"index":1,"category":"A","confidence":0.9},...]}
+Every quote MUST have exactly one classification. The "index" matches the number in brackets.`;
+
+  const result = await gemini.generateJSON(prompt, { temperature: 0.1 });
+  return (result.classifications || []).map(c => ({
+    quoteId: quotes[c.index - 1]?.id,
+    category: c.category,
+    confidence: c.confidence,
+  })).filter(c => c.quoteId && ['A', 'B', 'C'].includes(c.category));
+}
+
+function deleteQuotesBatch(db, quoteIds) {
+  if (quoteIds.length === 0) return;
+  const CHUNK = 500;
+  const deleteChunked = db.transaction((ids) => {
+    for (let i = 0; i < ids.length; i += CHUNK) {
+      const chunk = ids.slice(i, i + CHUNK);
+      const placeholders = chunk.map(() => '?').join(',');
+
+      // Unlink variants pointing to deleted quotes
+      db.prepare(`UPDATE quotes SET canonical_quote_id = NULL WHERE canonical_quote_id IN (${placeholders})`).run(...chunk);
+      // Clean quote_relationships (no cascade)
+      db.prepare(`DELETE FROM quote_relationships WHERE quote_id_a IN (${placeholders}) OR quote_id_b IN (${placeholders})`).run(...chunk, ...chunk);
+      // Clean importants (polymorphic)
+      db.prepare(`DELETE FROM importants WHERE entity_type = 'quote' AND entity_id IN (${placeholders})`).run(...chunk);
+      // Clean noteworthy_items (polymorphic)
+      db.prepare(`DELETE FROM noteworthy_items WHERE entity_type = 'quote' AND entity_id IN (${placeholders})`).run(...chunk);
+      // Null out disambiguation_queue refs
+      db.prepare(`UPDATE disambiguation_queue SET quote_id = NULL WHERE quote_id IN (${placeholders})`).run(...chunk);
+      // Delete from tables with FK to quotes (cascade not enforced)
+      db.prepare(`DELETE FROM quote_articles WHERE quote_id IN (${placeholders})`).run(...chunk);
+      db.prepare(`DELETE FROM votes WHERE quote_id IN (${placeholders})`).run(...chunk);
+      db.prepare(`DELETE FROM quote_topics WHERE quote_id IN (${placeholders})`).run(...chunk);
+      db.prepare(`DELETE FROM quote_keywords WHERE quote_id IN (${placeholders})`).run(...chunk);
+      db.prepare(`DELETE FROM quote_context_cache WHERE quote_id IN (${placeholders})`).run(...chunk);
+      db.prepare(`DELETE FROM quote_smart_related WHERE quote_id IN (${placeholders}) OR related_quote_id IN (${placeholders})`).run(...chunk, ...chunk);
+      // Delete the quotes themselves
+      db.prepare(`DELETE FROM quotes WHERE id IN (${placeholders})`).run(...chunk);
+    }
+  });
+  deleteChunked(quoteIds);
+
+  // Recalculate person quote_count for affected persons
+  db.prepare(`
+    UPDATE persons SET quote_count = (
+      SELECT COUNT(*) FROM quotes WHERE person_id = persons.id AND is_visible = 1 AND canonical_quote_id IS NULL
+    )
+  `).run();
+}
+
+router.post('/purge-quality', async (req, res) => {
+  const dryRun = req.body?.dry_run !== false;
+  const batchSize = Math.min(Math.max(parseInt(req.body?.batch_size) || 10, 1), 20);
+
+  try {
+    const db = getDb();
+    const result = { dry_run: dryRun, phase1: {}, phase2: {}, pinecone_deleted: 0 };
+    const allDeletedIds = [];
+
+    // Phase 1: Delete invisible quotes
+    const invisibleQuotes = db.prepare(`
+      SELECT id FROM quotes WHERE is_visible = 0 AND canonical_quote_id IS NULL
+    `).all();
+    result.phase1.invisible_found = invisibleQuotes.length;
+
+    if (!dryRun && invisibleQuotes.length > 0) {
+      const ids = invisibleQuotes.map(q => q.id);
+      deleteQuotesBatch(db, ids);
+      allDeletedIds.push(...ids);
+      result.phase1.deleted = ids.length;
+    } else {
+      result.phase1.deleted = 0;
+    }
+
+    // Phase 2: Classify unclassified visible quotes
+    const unclassifiedTotal = db.prepare(`
+      SELECT COUNT(*) as count FROM quotes
+      WHERE is_visible = 1 AND canonical_quote_id IS NULL AND fact_check_category IS NULL
+    `).get().count;
+
+    let classified = 0;
+    let classifyErrors = 0;
+    const breakdown = { category_A: 0, category_B: 0, category_C: 0 };
+
+    if (config.geminiApiKey && unclassifiedTotal > 0) {
+      let remaining = true;
+      while (remaining) {
+        const batch = db.prepare(`
+          SELECT q.id, q.text, q.context, p.canonical_name
+          FROM quotes q
+          JOIN persons p ON p.id = q.person_id
+          WHERE q.is_visible = 1 AND q.canonical_quote_id IS NULL AND q.fact_check_category IS NULL
+          LIMIT ?
+        `).all(batchSize);
+
+        if (batch.length === 0) { remaining = false; break; }
+
+        try {
+          const classifications = await classifyQuoteBatch(batch);
+          const updateStmt = db.prepare(`UPDATE quotes SET fact_check_category = ?, fact_check_confidence = ? WHERE id = ?`);
+          const applyClassifications = db.transaction((cls) => {
+            for (const c of cls) {
+              updateStmt.run(c.category, c.confidence, c.quoteId);
+              breakdown[`category_${c.category}`]++;
+            }
+          });
+          applyClassifications(classifications);
+          classified += classifications.length;
+          if (classifications.length === 0) break; // No progress — avoid infinite loop
+        } catch (err) {
+          if (err.message?.includes('429') || err.message?.includes('rate')) {
+            logger.warn('admin', 'purge_quality_rate_limit', { error: err.message });
+            break;
+          }
+          classifyErrors++;
+          logger.error('admin', 'purge_quality_classify_error', { error: err.message });
+        }
+
+        await new Promise(r => setTimeout(r, 200));
+      }
+    }
+
+    const remainingUnclassified = db.prepare(`
+      SELECT COUNT(*) as count FROM quotes
+      WHERE is_visible = 1 AND canonical_quote_id IS NULL AND fact_check_category IS NULL
+    `).get().count;
+
+    // Phase 3: Delete B and C quotes
+    const bcQuotes = db.prepare(`
+      SELECT id FROM quotes WHERE fact_check_category IN ('B', 'C')
+    `).all();
+
+    result.phase2 = {
+      classified,
+      classify_errors: classifyErrors,
+      remaining_unclassified: remainingUnclassified,
+      pending_deletion: bcQuotes.length,
+      deleted: 0,
+      breakdown,
+    };
+
+    if (!dryRun && bcQuotes.length > 0) {
+      const ids = bcQuotes.map(q => q.id);
+      deleteQuotesBatch(db, ids);
+      allDeletedIds.push(...ids);
+      result.phase2.deleted = ids.length;
+    }
+
+    // Pinecone cleanup
+    if (!dryRun && allDeletedIds.length > 0) {
+      try {
+        const pineconeIds = allDeletedIds.map(id => `quote-${id}`);
+        await vectorDb.deleteManyByIds(pineconeIds);
+        result.pinecone_deleted = pineconeIds.length;
+      } catch (err) {
+        logger.error('admin', 'purge_quality_pinecone_error', { error: err.message });
+        result.pinecone_error = err.message;
+      }
+    }
+
+    res.json(result);
+  } catch (err) {
+    logger.error('admin', 'purge_quality_error', { error: err.message });
+    res.status(500).json({ error: 'Purge failed: ' + err.message });
   }
 });
 

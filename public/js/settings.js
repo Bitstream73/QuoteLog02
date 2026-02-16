@@ -219,6 +219,17 @@ async function renderSettings() {
             <button class="btn btn-secondary" id="backfill-headshots-btn" onclick="backfillHeadshots()">Backfill Headshots</button>
           </div>
         </div>
+
+        <!-- Quote Quality Purge Subsection -->
+        <div class="settings-subsection">
+          <h3 class="subsection-title">Quote Quality Purge</h3>
+          <p class="setting-description" style="margin-bottom:12px">Classify existing quotes using AI and permanently delete opinions (B) and platitudes (C), keeping only verifiable facts (A). Hidden quotes are deleted immediately. Multiple runs may be needed for large databases.</p>
+          <div class="setting-row" style="align-items:center; gap:8px">
+            <button class="btn btn-secondary" id="purge-preview-btn" onclick="runPurgeQuality(true)">Preview</button>
+            <button class="btn btn-danger" id="purge-execute-btn" onclick="runPurgeQuality(false)">Purge Now</button>
+          </div>
+          <div id="purge-quality-results" style="display:none; margin-top:12px; padding:12px; background:var(--bg-secondary); border-radius:8px; font-size:0.9rem"></div>
+        </div>
       </div>
 
       <!-- Topics & Keywords Section -->
@@ -579,6 +590,43 @@ async function backfillHeadshots() {
   } finally {
     btn.disabled = false;
     btn.textContent = 'Backfill Headshots';
+  }
+}
+
+async function runPurgeQuality(dryRun) {
+  if (!dryRun) {
+    showConfirmToast('This will permanently delete all non-factual quotes. Continue?', () => executePurge(false));
+    return;
+  }
+  await executePurge(true);
+}
+
+async function executePurge(dryRun) {
+  const btn = document.getElementById(dryRun ? 'purge-preview-btn' : 'purge-execute-btn');
+  const resultsDiv = document.getElementById('purge-quality-results');
+  btn.disabled = true;
+  btn.textContent = dryRun ? 'Previewing...' : 'Purging...';
+
+  try {
+    const result = await API.post('/admin/purge-quality', { dry_run: dryRun, batch_size: 10 });
+    resultsDiv.style.display = 'block';
+    const p1 = result.phase1 || {};
+    const p2 = result.phase2 || {};
+    resultsDiv.innerHTML = `
+      <strong>${dryRun ? 'Preview' : 'Purge Complete'}</strong><br>
+      <strong>Phase 1 — Hidden quotes:</strong> ${p1.invisible_found || 0} found, ${p1.deleted || 0} deleted<br>
+      <strong>Phase 2 — AI Classification:</strong> ${p2.classified || 0} classified (A: ${p2.breakdown?.category_A || 0}, B: ${p2.breakdown?.category_B || 0}, C: ${p2.breakdown?.category_C || 0})<br>
+      B+C pending deletion: ${p2.pending_deletion || 0}, deleted: ${p2.deleted || 0}<br>
+      ${p2.remaining_unclassified > 0 ? `<em>${p2.remaining_unclassified} quotes still unclassified — run again to continue</em><br>` : ''}
+      ${!dryRun ? `Pinecone cleaned: ${result.pinecone_deleted || 0}` : ''}
+      ${result.pinecone_error ? `<br><span style="color:var(--danger)">Pinecone error: ${escapeHtml(result.pinecone_error)}</span>` : ''}
+    `;
+    showToast(dryRun ? 'Preview complete' : `Purge complete: ${(p1.deleted || 0) + (p2.deleted || 0)} quotes deleted`, dryRun ? 'info' : 'success', 5000);
+  } catch (err) {
+    showToast('Purge failed: ' + err.message, 'error', 5000);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = dryRun ? 'Preview' : 'Purge Now';
   }
 }
 
