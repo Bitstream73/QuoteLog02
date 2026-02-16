@@ -248,14 +248,14 @@ function mergeQuotes(canonicalId, variantIds, db) {
  * Main deduplication and insert function
  */
 export async function insertAndDeduplicateQuote(quoteData, personId, article, db) {
-  const { text, quoteType, context, sourceUrl, rssMetadata, topics, keywords, quoteDate, isVisible } = quoteData;
+  const { text, quoteType, context, sourceUrl, rssMetadata, topics, keywords, quoteDate, isVisible, factCheckCategory, factCheckConfidence } = quoteData;
 
   // Find duplicate candidates
   const candidates = await findDuplicateCandidates(text, personId, db);
 
   if (candidates.length === 0) {
     // No duplicates - insert new quote
-    return insertNewQuote(text, quoteType, context, sourceUrl, personId, article.id, db, rssMetadata, topics, keywords, quoteDate, isVisible);
+    return insertNewQuote(text, quoteType, context, sourceUrl, personId, article.id, db, rssMetadata, topics, keywords, quoteDate, isVisible, factCheckCategory, factCheckConfidence);
   }
 
   // Check each candidate
@@ -342,7 +342,7 @@ export async function insertAndDeduplicateQuote(quoteData, personId, article, db
   }
 
   // No strong duplicate found - insert as new
-  return insertNewQuote(text, quoteType, context, sourceUrl, personId, article.id, db, rssMetadata, topics, keywords, quoteDate, isVisible);
+  return insertNewQuote(text, quoteType, context, sourceUrl, personId, article.id, db, rssMetadata, topics, keywords, quoteDate, isVisible, factCheckCategory, factCheckConfidence);
 }
 
 /**
@@ -421,13 +421,13 @@ function inferKeywordType(keyword) {
 /**
  * Insert a new quote
  */
-function insertNewQuote(text, quoteType, context, sourceUrl, personId, articleId, db, rssMetadata, topics, keywords, quoteDate, isVisible) {
+function insertNewQuote(text, quoteType, context, sourceUrl, personId, articleId, db, rssMetadata, topics, keywords, quoteDate, isVisible, factCheckCategory, factCheckConfidence) {
   const sourceUrls = JSON.stringify([sourceUrl]);
 
   const result = db.prepare(`INSERT INTO quotes
-    (person_id, text, quote_type, context, source_urls, rss_metadata, quote_datetime, is_visible)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run(personId, text, quoteType || 'direct', context, sourceUrls, rssMetadata || null, quoteDate || null, isVisible !== undefined ? isVisible : 1);
+    (person_id, text, quote_type, context, source_urls, rss_metadata, quote_datetime, is_visible, fact_check_category, fact_check_confidence)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(personId, text, quoteType || 'direct', context, sourceUrls, rssMetadata || null, quoteDate || null, isVisible !== undefined ? isVisible : 1, factCheckCategory || null, factCheckConfidence != null ? factCheckConfidence : null);
 
   const quoteId = result.lastInsertRowid;
 
