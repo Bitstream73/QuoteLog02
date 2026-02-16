@@ -656,11 +656,25 @@ function initializeTables(db) {
     )
   `);
 
-  // Seed admin user (upsert to ensure password hash is always current)
-  const adminHash = bcryptjs.hashSync('Ferret@00', 12);
-  db.prepare(`INSERT INTO admin_users (email, password_hash) VALUES (?, ?)
-    ON CONFLICT(email) DO UPDATE SET password_hash = excluded.password_hash, updated_at = datetime('now')`)
-    .run('jakob@karlsmark.com', adminHash);
+  // Migration: add password_changed_at column for session invalidation
+  const adminCols = db.prepare("PRAGMA table_info(admin_users)").all().map(c => c.name);
+  if (!adminCols.includes('password_changed_at')) {
+    db.exec(`ALTER TABLE admin_users ADD COLUMN password_changed_at TEXT`);
+  }
+
+  // Seed admin user only if no admin users exist yet
+  const adminCount = db.prepare('SELECT COUNT(*) as count FROM admin_users').get().count;
+  if (adminCount === 0) {
+    const adminEmail = config.adminEmail;
+    const adminPassword = config.initialAdminPassword;
+    if (adminEmail && adminPassword) {
+      const adminHash = bcryptjs.hashSync(adminPassword, 12);
+      db.prepare('INSERT INTO admin_users (email, password_hash) VALUES (?, ?)')
+        .run(adminEmail, adminHash);
+    } else {
+      console.warn('[WARN] No admin users exist and INITIAL_ADMIN_EMAIL/INITIAL_ADMIN_PASSWORD env vars not set. No admin user seeded.');
+    }
+  }
 
   // Insert default settings (seed from file if available, else use hardcoded defaults)
   const settingsSeedPath = [
@@ -682,6 +696,8 @@ function initializeTables(db) {
     min_significance_score: '5',
     backprop_enabled: '0',
     backprop_max_articles_per_cycle: '5',
+    fact_check_filter_mode: 'off',
+    fact_check_min_score: '0.5',
   };
 
   let seedSettings = defaultSettings;
@@ -868,6 +884,13 @@ For each quote, return:
 
   HIGH: makes a specific claim, sets a goal, predicts, reveals information, accuses, is funny/memorable, provides genuine insight
   LOW: "We need to do better" (platitude), "It was a nice event" (descriptive), "The meeting begins at noon" (procedural), fragments without assertion
+
+- fact_check_category: Classify this quote's verifiability:
+  "A" - Contains SPECIFIC, VERIFIABLE factual claims (statistics, dates, quantities, named events, measurable outcomes)
+  "B" - Expresses opinion, value judgment, policy position, or prediction — substantive but not verifiable by data lookup
+  "C" - Vague platitude, procedural statement, meaningless fragment, or purely rhetorical with no substance
+  Examples: "Unemployment is at 3.5%" = A, "This policy is a disaster for working families" = B, "We need to do better" = C
+- fact_check_score: Float 0.0-1.0 confidence in the fact_check_category assignment (1.0 = certain, 0.5 = borderline)
 
 Rules:
 - ONLY extract verbatim quotes that appear inside quotation marks.
