@@ -4,6 +4,7 @@ import { Server as SocketServer } from 'socket.io';
 import helmet from 'helmet';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
+import jwt from 'jsonwebtoken';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -15,6 +16,7 @@ import { errorHandler } from './middleware/errorHandler.js';
 import { createRateLimiter } from './middleware/rateLimiter.js';
 import { requestLogger } from './middleware/requestLogger.js';
 import { logContext } from './middleware/logContext.js';
+import { csrfProtection } from './middleware/csrfProtection.js';
 
 import authRouter from './routes/auth.js';
 import quotesRouter from './routes/quotes.js';
@@ -48,11 +50,23 @@ export function createApp({ skipDbInit = false } = {}) {
   }
 
   // Security middleware
+  const corsOptions = config.corsOrigins.includes('*')
+    ? { credentials: true }
+    : { origin: config.corsOrigins, credentials: true };
   app.use(helmet({
-    contentSecurityPolicy: false,
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'"],
+        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+        fontSrc: ["'self'", "https://fonts.gstatic.com"],
+        imgSrc: ["'self'", "data:", "https:"],
+        connectSrc: ["'self'", "wss:", "ws:"],
+      },
+    },
     crossOriginEmbedderPolicy: false,
   }));
-  app.use(cors());
+  app.use(cors(corsOptions));
 
   // Body parsing
   app.use(express.json({ limit: '50mb' }));
@@ -67,6 +81,12 @@ export function createApp({ skipDbInit = false } = {}) {
 
   // Rate limiting
   app.use('/api/', createRateLimiter({ windowMs: 15 * 60 * 1000, max: 200 }));
+
+  // CSRF protection for state-changing API requests (skip login endpoint)
+  app.use('/api/', (req, res, next) => {
+    if (req.path === '/auth/login') return next();
+    csrfProtection(req, res, next);
+  });
 
   // Service worker — must never be cached by browser so updates are detected
   app.get('/sw.js', (req, res) => {
@@ -197,12 +217,38 @@ if (isMainModule || (!process.argv[1] && process.env.NODE_ENV !== 'test')) {
   // In production, skip synchronous DB init — use async retry for volume mount race condition
   const app = createApp({ skipDbInit: isProduction });
   const httpServer = createServer(app);
+  const socketCorsOptions = config.corsOrigins.includes('*')
+    ? { origin: true, credentials: true }
+    : { origin: config.corsOrigins, credentials: true };
   const io = new SocketServer(httpServer, {
-    cors: { origin: '*' },
+    cors: socketCorsOptions,
+  });
+
+  // Socket.IO authentication middleware — tag authenticated connections
+  io.use((socket, next) => {
+    const cookieHeader = socket.handshake.headers.cookie;
+    if (cookieHeader) {
+      const match = cookieHeader.match(/(?:^|;\s*)auth_token=([^;]*)/);
+      if (match) {
+        try {
+          const decoded = jwt.verify(match[1], config.jwtSecret);
+          socket.data.authenticated = true;
+          socket.data.admin = decoded;
+        } catch {
+          socket.data.authenticated = false;
+        }
+      } else {
+        socket.data.authenticated = false;
+      }
+    } else {
+      socket.data.authenticated = false;
+    }
+    // Allow all connections (public news app) but tag auth status
+    next();
   });
 
   io.on('connection', (socket) => {
-    logger.debug('system', 'socket_connected', { socketId: socket.id });
+    logger.debug('system', 'socket_connected', { socketId: socket.id, authenticated: socket.data.authenticated });
     socket.on('disconnect', () => {
       logger.debug('system', 'socket_disconnected', { socketId: socket.id });
     });

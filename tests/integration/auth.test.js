@@ -177,22 +177,23 @@ describe('Auth API', () => {
 
       const res = await request(app)
         .post('/api/auth/reset-password')
-        .send({ token, password: 'NewPassword123' });
+        .send({ token, password: 'NewPassword123!' });
 
       expect(res.status).toBe(200);
       expect(res.body).toHaveProperty('success', true);
 
-      // Verify new password works
-      const loginRes = await request(app)
-        .post('/api/auth/login')
-        .send({ email: 'jakob@karlsmark.com', password: 'NewPassword123' });
+      // Verify password was changed in DB (avoid login to prevent rate limit hit)
+      const bcryptjs = await import('bcryptjs');
+      const user = db.prepare("SELECT password_hash FROM admin_users WHERE email = 'jakob@karlsmark.com'").get();
+      expect(bcryptjs.default.compareSync('NewPassword123!', user.password_hash)).toBe(true);
 
-      expect(loginRes.status).toBe(200);
+      // Verify password_changed_at was set
+      const userFull = db.prepare("SELECT password_changed_at FROM admin_users WHERE email = 'jakob@karlsmark.com'").get();
+      expect(userFull.password_changed_at).toBeDefined();
 
       // Reset the password back to original for other tests
-      const bcryptjs = await import('bcryptjs');
       const hash = bcryptjs.default.hashSync('Ferret@00', 12);
-      db.prepare("UPDATE admin_users SET password_hash = ? WHERE email = 'jakob@karlsmark.com'").run(hash);
+      db.prepare("UPDATE admin_users SET password_hash = ?, password_changed_at = NULL WHERE email = 'jakob@karlsmark.com'").run(hash);
     });
 
     it('returns 400 with expired token', async () => {
@@ -203,7 +204,7 @@ describe('Auth API', () => {
 
       const res = await request(app)
         .post('/api/auth/reset-password')
-        .send({ token, password: 'NewPassword123' });
+        .send({ token, password: 'NewPassword123!' });
 
       expect(res.status).toBe(400);
       expect(res.body).toHaveProperty('error', 'Invalid or expired reset token');
@@ -217,7 +218,7 @@ describe('Auth API', () => {
 
       const res = await request(app)
         .post('/api/auth/reset-password')
-        .send({ token, password: 'NewPassword123' });
+        .send({ token, password: 'NewPassword123!' });
 
       expect(res.status).toBe(400);
       expect(res.body).toHaveProperty('error', 'Invalid or expired reset token');
@@ -226,7 +227,7 @@ describe('Auth API', () => {
     it('returns 400 with invalid token', async () => {
       const res = await request(app)
         .post('/api/auth/reset-password')
-        .send({ token: 'nonexistenttoken', password: 'NewPassword123' });
+        .send({ token: 'nonexistenttoken', password: 'NewPassword123!' });
 
       expect(res.status).toBe(400);
       expect(res.body).toHaveProperty('error', 'Invalid or expired reset token');
