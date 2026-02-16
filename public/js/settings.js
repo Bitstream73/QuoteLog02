@@ -1286,6 +1286,368 @@ async function reloadKeywords() {
   }
 }
 
+// ======= Topics Section =======
+
+let _topicsCache = [];
+
+function renderTopics(topics) {
+  _topicsCache = topics;
+  if (topics.length === 0) {
+    return '<p class="empty-message">No topics configured. Add a topic above.</p>';
+  }
+  return topics.map(t => renderTopicRow(t)).join('');
+}
+
+function topicStatusBadge(status) {
+  const colors = {
+    active: 'color:var(--success)',
+    archived: 'color:var(--text-muted)',
+    draft: 'color:var(--warning)',
+  };
+  const style = colors[status] || 'color:var(--text-muted)';
+  return `<span class="tk-row__type" style="${style}">${escapeHtml(status)}</span>`;
+}
+
+function renderTopicRow(topic) {
+  const dateRange = (topic.start_date || topic.end_date)
+    ? `${topic.start_date || '...'} - ${topic.end_date || '...'}`
+    : '';
+  return `
+    <details class="keyword-card" data-topic-id="${topic.id}">
+      <summary class="keyword-card__summary">
+        <div class="keyword-card__info">
+          ${topicStatusBadge(topic.status || 'active')}
+          <span class="keyword-card__name" id="topic-name-${topic.id}">${escapeHtml(topic.name)}</span>
+          <span class="keyword-card__stats">${topic.keyword_count || 0} keywords &middot; ${topic.quote_count || 0} quotes${dateRange ? ' &middot; ' + escapeHtml(dateRange) : ''}</span>
+        </div>
+        <div class="keyword-card__actions" onclick="event.stopPropagation()">
+          <button class="btn btn-secondary btn-sm" onclick="editTopic(${topic.id})" title="Edit">Edit</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteTopic(${topic.id})" title="Delete">Delete</button>
+        </div>
+      </summary>
+      <div class="keyword-card__body" id="topic-body-${topic.id}">
+        <div class="keyword-aliases-loading">Loading details...</div>
+      </div>
+    </details>
+  `;
+}
+
+function filterTopics() {
+  const query = (document.getElementById('topics-filter')?.value || '').toLowerCase().trim();
+  const statusFilter = (document.getElementById('topics-status-filter')?.value || '');
+  const list = document.getElementById('topics-list');
+  if (!list) return;
+  let filtered = _topicsCache;
+  if (statusFilter) {
+    filtered = filtered.filter(t => t.status === statusFilter);
+  }
+  if (query) {
+    filtered = filtered.filter(t => t.name.toLowerCase().includes(query));
+  }
+  list.innerHTML = filtered.length === 0
+    ? '<p class="empty-message">No topics match filter.</p>'
+    : filtered.map(t => renderTopicRow(t)).join('');
+}
+
+// Lazy-load topic details when card is opened
+document.addEventListener('toggle', async (e) => {
+  const details = e.target.closest?.('.keyword-card[data-topic-id]');
+  if (!details || !details.open) return;
+  const topicId = details.dataset.topicId;
+  if (!topicId) return;
+  const body = document.getElementById(`topic-body-${topicId}`);
+  if (!body || body.dataset.loaded) return;
+  try {
+    const data = await API.get(`/admin/topics/${topicId}`);
+    const aliases = data.aliases || [];
+    const keywords = data.keywords || [];
+    const topic = data.topic || {};
+    body.dataset.loaded = 'true';
+    body.innerHTML = renderTopicDetails(topicId, topic, aliases, keywords);
+  } catch (err) {
+    body.innerHTML = `<p class="empty-message">Error loading topic: ${escapeHtml(err.message)}</p>`;
+  }
+}, true);
+
+function renderTopicDetails(topicId, topic, aliases, keywords) {
+  let html = '';
+
+  // Inline edit fields
+  html += `<div style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.75rem;align-items:flex-end">
+    <div style="min-width:120px">
+      <label style="font-size:0.7rem;color:var(--text-muted);display:block;margin-bottom:2px">Status</label>
+      <select id="topic-status-${topicId}" class="input-select" style="width:auto" onchange="updateTopicField(${topicId}, 'status', this.value)">
+        <option value="active" ${topic.status === 'active' ? 'selected' : ''}>Active</option>
+        <option value="draft" ${topic.status === 'draft' ? 'selected' : ''}>Draft</option>
+        <option value="archived" ${topic.status === 'archived' ? 'selected' : ''}>Archived</option>
+      </select>
+    </div>
+    <div style="min-width:130px">
+      <label style="font-size:0.7rem;color:var(--text-muted);display:block;margin-bottom:2px">Start Date</label>
+      <input type="date" id="topic-start-${topicId}" class="input-text" value="${topic.start_date || ''}"
+             onchange="updateTopicField(${topicId}, 'start_date', this.value)">
+    </div>
+    <div style="min-width:130px">
+      <label style="font-size:0.7rem;color:var(--text-muted);display:block;margin-bottom:2px">End Date</label>
+      <input type="date" id="topic-end-${topicId}" class="input-text" value="${topic.end_date || ''}"
+             onchange="updateTopicField(${topicId}, 'end_date', this.value)">
+    </div>
+    <div style="flex:1;min-width:180px">
+      <label style="font-size:0.7rem;color:var(--text-muted);display:block;margin-bottom:2px">Description</label>
+      <input type="text" id="topic-desc-${topicId}" class="input-text" value="${escapeHtml(topic.description || '')}"
+             placeholder="Optional description"
+             onchange="updateTopicField(${topicId}, 'description', this.value)">
+    </div>
+  </div>`;
+
+  // Aliases section
+  html += '<div style="margin-bottom:0.75rem"><strong style="font-size:0.8rem">Aliases</strong></div>';
+  html += '<div class="keyword-aliases-list">';
+  if (aliases.length === 0) {
+    html += '<p class="empty-message" style="padding:0.25rem 0;font-size:0.85rem">No aliases.</p>';
+  } else {
+    html += aliases.map(a => `
+      <span class="keyword-alias-chip" data-alias-id="${a.id}">
+        ${escapeHtml(a.alias)}
+        <button class="keyword-alias-remove" onclick="deleteTopicAlias(${topicId}, ${a.id})" title="Remove alias">&times;</button>
+      </span>
+    `).join('');
+  }
+  html += '</div>';
+  html += `
+    <div class="keyword-alias-add">
+      <input type="text" id="topic-alias-input-${topicId}" placeholder="New alias" class="input-text" style="width:160px"
+             onkeydown="if(event.key==='Enter')addTopicAlias(${topicId})">
+      <button class="btn btn-secondary btn-sm" onclick="addTopicAlias(${topicId})">Add Alias</button>
+    </div>
+  `;
+
+  // Keywords section
+  html += '<div style="margin-top:0.75rem;margin-bottom:0.5rem"><strong style="font-size:0.8rem">Linked Keywords</strong></div>';
+  html += '<div class="keyword-aliases-list">';
+  if (keywords.length === 0) {
+    html += '<p class="empty-message" style="padding:0.25rem 0;font-size:0.85rem">No keywords linked.</p>';
+  } else {
+    html += keywords.map(kw => `
+      <span class="keyword-alias-chip" data-keyword-id="${kw.id}">
+        ${escapeHtml(kw.name)}
+        <button class="keyword-alias-remove" onclick="unlinkTopicKeyword(${topicId}, ${kw.id})" title="Unlink keyword">&times;</button>
+      </span>
+    `).join('');
+  }
+  html += '</div>';
+  html += `
+    <div class="keyword-alias-add">
+      <select id="topic-keyword-select-${topicId}" class="input-select" style="width:200px">
+        <option value="">Select a keyword...</option>
+      </select>
+      <button class="btn btn-secondary btn-sm" onclick="linkTopicKeyword(${topicId})">Link Keyword</button>
+    </div>
+  `;
+
+  // Populate keyword dropdown asynchronously
+  loadTopicKeywordOptions(topicId, keywords.map(kw => kw.id));
+
+  return html;
+}
+
+async function loadTopicKeywordOptions(topicId, linkedKeywordIds) {
+  try {
+    const data = await API.get('/admin/keywords');
+    const allKeywords = data.keywords || [];
+    const select = document.getElementById(`topic-keyword-select-${topicId}`);
+    if (!select) return;
+    const linkedSet = new Set(linkedKeywordIds);
+    const available = allKeywords.filter(kw => !linkedSet.has(kw.id));
+    select.innerHTML = '<option value="">Select a keyword...</option>' +
+      available.map(kw => `<option value="${kw.id}">${escapeHtml(kw.name)}</option>`).join('');
+  } catch (err) {
+    console.error('Failed to load keywords for dropdown:', err);
+  }
+}
+
+async function addTopic() {
+  const nameInput = document.getElementById('new-topic-name');
+  const statusInput = document.getElementById('new-topic-status');
+  const startInput = document.getElementById('new-topic-start-date');
+  const endInput = document.getElementById('new-topic-end-date');
+  const descInput = document.getElementById('new-topic-description');
+
+  const name = (nameInput?.value || '').trim();
+  if (!name) {
+    showToast('Please enter a topic name', 'error');
+    return;
+  }
+
+  const payload = { name };
+  const status = statusInput?.value;
+  if (status) payload.status = status;
+  const startDate = startInput?.value;
+  if (startDate) payload.start_date = startDate;
+  const endDate = endInput?.value;
+  if (endDate) payload.end_date = endDate;
+  const description = (descInput?.value || '').trim();
+  if (description) payload.description = description;
+
+  try {
+    await API.post('/admin/topics', payload);
+    showToast('Topic added', 'success');
+    nameInput.value = '';
+    if (statusInput) statusInput.value = 'active';
+    if (startInput) startInput.value = '';
+    if (endInput) endInput.value = '';
+    if (descInput) descInput.value = '';
+    await reloadTopics();
+  } catch (err) {
+    showToast('Error adding topic: ' + err.message, 'error', 5000);
+  }
+}
+
+async function editTopic(id) {
+  const nameEl = document.getElementById(`topic-name-${id}`);
+  if (!nameEl) return;
+  const currentName = nameEl.textContent;
+  const newName = prompt('Rename topic:', currentName);
+  if (!newName || newName.trim() === '' || newName.trim() === currentName) return;
+
+  try {
+    await API.put(`/admin/topics/${id}`, { name: newName.trim() });
+    showToast('Topic renamed', 'success');
+    await reloadTopics();
+  } catch (err) {
+    showToast('Error renaming topic: ' + err.message, 'error', 5000);
+  }
+}
+
+async function updateTopicField(id, field, value) {
+  try {
+    await API.put(`/admin/topics/${id}`, { [field]: value || null });
+    showToast('Topic updated', 'success');
+    await reloadTopics();
+  } catch (err) {
+    showToast('Error updating topic: ' + err.message, 'error', 5000);
+  }
+}
+
+async function deleteTopic(id) {
+  showConfirmToast('Delete this topic and all its aliases?', async () => {
+    try {
+      await API.delete(`/admin/topics/${id}`);
+      showToast('Topic deleted', 'success');
+      await reloadTopics();
+    } catch (err) {
+      showToast('Error deleting topic: ' + err.message, 'error', 5000);
+    }
+  });
+}
+
+async function addTopicAlias(topicId) {
+  const input = document.getElementById(`topic-alias-input-${topicId}`);
+  const alias = (input?.value || '').trim();
+  if (!alias) {
+    showToast('Please enter an alias', 'error');
+    return;
+  }
+
+  try {
+    await API.post(`/admin/topics/${topicId}/aliases`, { alias });
+    showToast('Alias added', 'success');
+    input.value = '';
+    await refreshTopicBody(topicId);
+    await reloadTopics();
+  } catch (err) {
+    showToast('Error adding alias: ' + err.message, 'error', 5000);
+  }
+}
+
+async function deleteTopicAlias(topicId, aliasId) {
+  try {
+    await API.delete(`/admin/topics/${topicId}/aliases/${aliasId}`);
+    showToast('Alias removed', 'success');
+    await refreshTopicBody(topicId);
+    await reloadTopics();
+  } catch (err) {
+    showToast('Error removing alias: ' + err.message, 'error', 5000);
+  }
+}
+
+async function linkTopicKeyword(topicId) {
+  const select = document.getElementById(`topic-keyword-select-${topicId}`);
+  const keywordId = select?.value;
+  if (!keywordId) {
+    showToast('Please select a keyword', 'error');
+    return;
+  }
+
+  try {
+    await API.post(`/admin/topics/${topicId}/keywords`, { keyword_id: parseInt(keywordId) });
+    showToast('Keyword linked', 'success');
+    await refreshTopicBody(topicId);
+    await reloadTopics();
+  } catch (err) {
+    showToast('Error linking keyword: ' + err.message, 'error', 5000);
+  }
+}
+
+async function unlinkTopicKeyword(topicId, keywordId) {
+  try {
+    await API.delete(`/admin/topics/${topicId}/keywords/${keywordId}`);
+    showToast('Keyword unlinked', 'success');
+    await refreshTopicBody(topicId);
+    await reloadTopics();
+  } catch (err) {
+    showToast('Error unlinking keyword: ' + err.message, 'error', 5000);
+  }
+}
+
+async function refreshTopicBody(topicId) {
+  const body = document.getElementById(`topic-body-${topicId}`);
+  if (!body) return;
+  try {
+    const data = await API.get(`/admin/topics/${topicId}`);
+    body.innerHTML = renderTopicDetails(topicId, data.topic || {}, data.aliases || [], data.keywords || []);
+  } catch (err) {
+    console.error('Failed to refresh topic body:', err);
+  }
+}
+
+async function reloadTopics() {
+  try {
+    const data = await API.get('/admin/topics');
+    const topics = data.topics || [];
+    _topicsCache = topics;
+    const list = document.getElementById('topics-list');
+    const filterInput = document.getElementById('topics-filter');
+    const statusFilter = document.getElementById('topics-status-filter');
+    const query = (filterInput?.value || '').toLowerCase().trim();
+    const statusVal = statusFilter?.value || '';
+    let filtered = topics;
+    if (statusVal) {
+      filtered = filtered.filter(t => t.status === statusVal);
+    }
+    if (query) {
+      filtered = filtered.filter(t => t.name.toLowerCase().includes(query));
+    }
+    if (list) {
+      // Preserve which cards are open
+      const openIds = new Set();
+      list.querySelectorAll('.keyword-card[data-topic-id][open]').forEach(d => openIds.add(d.dataset.topicId));
+      list.innerHTML = filtered.length === 0
+        ? '<p class="empty-message">No topics configured. Add a topic above.</p>'
+        : filtered.map(t => renderTopicRow(t)).join('');
+      // Re-open previously open cards
+      openIds.forEach(tId => {
+        const card = list.querySelector(`.keyword-card[data-topic-id="${tId}"]`);
+        if (card) card.open = true;
+      });
+    }
+    const title = document.getElementById('topics-count-title');
+    if (title) title.textContent = `Topics (${topics.length})`;
+  } catch (err) {
+    console.error('Failed to reload topics:', err);
+  }
+}
+
 // ======= Categories Section =======
 
 let _categoriesCache = [];

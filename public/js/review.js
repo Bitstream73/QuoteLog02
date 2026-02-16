@@ -471,3 +471,381 @@ function updateDisambigTabBadge(count) {
     badge.style.display = 'none';
   }
 }
+
+// ===================================
+// Taxonomy Review Tab
+// ===================================
+
+async function loadTaxonomyBadgeCount() {
+  try {
+    const data = await API.get('/admin/taxonomy/suggestions/stats');
+    const pending = (data.stats || [])
+      .filter(s => s.status === 'pending')
+      .reduce((sum, s) => sum + s.count, 0);
+    updateTaxonomyTabBadge(pending);
+  } catch (_) { /* ignore */ }
+}
+
+function updateTaxonomyTabBadge(count) {
+  const badge = document.getElementById('taxonomy-tab-badge');
+  if (!badge) return;
+  if (count > 0) {
+    badge.textContent = count > 99 ? '99+' : count;
+    badge.style.display = '';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+const _taxonomyTypeLabels = {
+  new_keyword: 'New Keyword',
+  new_topic: 'New Topic',
+  keyword_alias: 'Keyword Alias',
+  topic_keyword: 'Topic Keyword',
+  topic_alias: 'Topic Alias',
+};
+
+const _taxonomySourceLabels = {
+  ai_extraction: 'AI Extraction',
+  batch_evolution: 'Batch Evolution',
+  confidence_review: 'Confidence Review',
+};
+
+const _taxonomyTypeBgColors = {
+  new_keyword: '#2563eb',
+  new_topic: '#7c3aed',
+  keyword_alias: '#0891b2',
+  topic_keyword: '#059669',
+  topic_alias: '#d97706',
+};
+
+const _taxonomySourceBgColors = {
+  ai_extraction: '#6366f1',
+  batch_evolution: '#ea580c',
+  confidence_review: '#0d9488',
+};
+
+async function renderTaxonomyTab() {
+  const container = document.getElementById('review-tab-content');
+  if (!container) return;
+
+  try {
+    const [suggestionsData, statsData] = await Promise.all([
+      API.get(`/admin/taxonomy/suggestions?status=pending${_taxonomyTypeFilter ? '&type=' + encodeURIComponent(_taxonomyTypeFilter) : ''}&limit=50`),
+      API.get('/admin/taxonomy/suggestions/stats'),
+    ]);
+
+    const suggestions = suggestionsData.suggestions || [];
+    const stats = statsData.stats || [];
+
+    const pendingTotal = stats.filter(s => s.status === 'pending').reduce((sum, s) => sum + s.count, 0);
+    updateTaxonomyTabBadge(pendingTotal);
+
+    // Stats summary
+    const pendingByType = {};
+    for (const s of stats) {
+      if (s.status === 'pending') {
+        pendingByType[s.suggestion_type] = (pendingByType[s.suggestion_type] || 0) + s.count;
+      }
+    }
+
+    let html = `
+      <p class="page-subtitle">Review AI-suggested taxonomy changes: new keywords, topics, aliases, and associations.</p>
+      <div class="review-stats">
+        <span class="stat"><strong>${pendingTotal}</strong> pending suggestions</span>
+      </div>
+      <div class="tax-controls">
+        <div class="tax-filters">
+          <select id="tax-type-filter" onchange="filterTaxonomySuggestions()" class="input-text" style="width:auto">
+            <option value="">All Types</option>
+            ${Object.entries(_taxonomyTypeLabels).map(([k, v]) => {
+              const cnt = pendingByType[k] || 0;
+              return `<option value="${k}" ${_taxonomyTypeFilter === k ? 'selected' : ''}>${escapeHtml(v)} (${cnt})</option>`;
+            }).join('')}
+          </select>
+        </div>
+        <div class="tax-actions-bar">
+          <button class="btn btn-secondary btn-sm" onclick="toggleTaxonomySelectAll()">Select All</button>
+          <button class="btn btn-success btn-sm" onclick="batchApproveSuggestions()">Approve Selected</button>
+          <button class="btn btn-danger btn-sm" onclick="batchRejectSuggestions()">Reject Selected</button>
+          <button class="btn btn-primary btn-sm" onclick="triggerEvolution()" style="margin-left:auto">Run Evolution</button>
+        </div>
+      </div>
+    `;
+
+    if (suggestions.length === 0) {
+      html += `
+        <div class="empty-state">
+          <h3>No pending suggestions</h3>
+          <p>All taxonomy suggestions have been reviewed.</p>
+        </div>
+      `;
+    } else {
+      html += '<div id="tax-suggestions-list">';
+      for (const s of suggestions) {
+        html += renderSuggestionCard(s);
+      }
+      html += '</div>';
+    }
+
+    container.innerHTML = html;
+  } catch (err) {
+    container.innerHTML = `<div class="empty-state"><h3>Error</h3><p>${escapeHtml(err.message)}</p></div>`;
+  }
+}
+
+function renderSuggestionCard(suggestion) {
+  let data = {};
+  try { data = JSON.parse(suggestion.suggested_data); } catch (_) {}
+
+  const typeBg = _taxonomyTypeBgColors[suggestion.suggestion_type] || '#6b7280';
+  const srcBg = _taxonomySourceBgColors[suggestion.source] || '#6b7280';
+  const typeLabel = _taxonomyTypeLabels[suggestion.suggestion_type] || suggestion.suggestion_type;
+  const srcLabel = _taxonomySourceLabels[suggestion.source] || suggestion.source;
+
+  const createdStr = suggestion.created_at
+    ? new Date(suggestion.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+    : '';
+
+  // Build data display based on content
+  let dataHtml = '';
+  if (data.name) {
+    dataHtml += `<div class="tax-card-field"><strong>Name:</strong> ${escapeHtml(data.name)}</div>`;
+  }
+  if (data.type) {
+    dataHtml += `<div class="tax-card-field"><strong>Entity Type:</strong> ${escapeHtml(data.type)}</div>`;
+  }
+  if (data.closest_match) {
+    const matchScore = data.closest_match.score ? Math.round(data.closest_match.score * 100) + '%' : 'N/A';
+    dataHtml += `<div class="tax-card-field"><strong>Closest Match:</strong> ${escapeHtml(data.closest_match.keyword_name || 'none')} (${matchScore})</div>`;
+  }
+  if (data.suggested_aliases && data.suggested_aliases.length > 0) {
+    dataHtml += `<div class="tax-card-field"><strong>Aliases:</strong> ${data.suggested_aliases.map(a => escapeHtml(a)).join(', ')}</div>`;
+  }
+  if (data.keyword_name) {
+    dataHtml += `<div class="tax-card-field"><strong>Keyword:</strong> ${escapeHtml(data.keyword_name)}</div>`;
+  }
+  if (data.topic_name) {
+    dataHtml += `<div class="tax-card-field"><strong>Topic:</strong> ${escapeHtml(data.topic_name)}</div>`;
+  }
+  if (data.alias) {
+    dataHtml += `<div class="tax-card-field"><strong>Alias:</strong> ${escapeHtml(data.alias)}</div>`;
+  }
+  if (data.occurrence_count) {
+    dataHtml += `<div class="tax-card-field"><strong>Occurrences:</strong> ${data.occurrence_count}</div>`;
+  }
+  if (data.confidence) {
+    dataHtml += `<div class="tax-card-field"><strong>Confidence:</strong> ${Math.round(data.confidence * 100)}%</div>`;
+  }
+
+  // Escape the suggestion data for use in onclick attributes
+  const escapedDataAttr = escapeHtml(suggestion.suggested_data).replace(/'/g, '&#39;');
+
+  return `
+    <div class="tax-card" data-id="${suggestion.id}">
+      <div class="tax-card-header">
+        <label class="tax-card-select">
+          <input type="checkbox" class="tax-select-cb" value="${suggestion.id}">
+        </label>
+        <span class="tax-badge" style="background:${typeBg}">${escapeHtml(typeLabel)}</span>
+        <span class="tax-badge" style="background:${srcBg}">${escapeHtml(srcLabel)}</span>
+        ${createdStr ? `<span class="tax-card-date">${createdStr}</span>` : ''}
+      </div>
+      <div class="tax-card-body">
+        ${dataHtml}
+      </div>
+      <div class="tax-card-actions">
+        <button class="btn btn-success btn-sm" onclick="approveSuggestion(${suggestion.id})">Approve</button>
+        <button class="btn btn-primary btn-sm" onclick="editAndApproveSuggestion(${suggestion.id}, '${escapedDataAttr}')">Edit & Approve</button>
+        <button class="btn btn-danger btn-sm" onclick="rejectSuggestion(${suggestion.id})">Reject</button>
+      </div>
+    </div>
+  `;
+}
+
+function filterTaxonomySuggestions() {
+  const sel = document.getElementById('tax-type-filter');
+  _taxonomyTypeFilter = sel ? sel.value : '';
+  renderTaxonomyTab();
+}
+
+async function approveSuggestion(id) {
+  const card = document.querySelector(`.tax-card[data-id="${id}"]`);
+  if (card) card.classList.add('processing');
+
+  try {
+    await API.post(`/admin/taxonomy/suggestions/${id}/approve`);
+    showToast('Suggestion approved', 'success');
+    if (card) {
+      card.classList.add('resolved');
+      setTimeout(() => card.remove(), 400);
+    }
+    loadTaxonomyBadgeCount();
+  } catch (err) {
+    if (card) card.classList.remove('processing');
+    showToast('Error: ' + err.message, 'error', 5000);
+  }
+}
+
+async function editAndApproveSuggestion(id, rawData) {
+  const card = document.querySelector(`.tax-card[data-id="${id}"]`);
+  if (!card) return;
+
+  // Parse existing data
+  let data = {};
+  try {
+    // rawData is HTML-escaped, decode it
+    const tmp = document.createElement('textarea');
+    tmp.innerHTML = rawData;
+    data = JSON.parse(tmp.value);
+  } catch (_) {}
+
+  // Check if already showing edit form
+  if (card.querySelector('.tax-edit-form')) return;
+
+  const actionsEl = card.querySelector('.tax-card-actions');
+  if (!actionsEl) return;
+
+  const nameVal = data.name || '';
+  const aliasesVal = (data.suggested_aliases || []).join(', ');
+
+  actionsEl.innerHTML = `
+    <div class="tax-edit-form">
+      <div style="margin-bottom:0.5rem">
+        <label style="font-size:0.8rem;font-weight:600">Name</label>
+        <input type="text" id="tax-edit-name-${id}" class="input-text" value="${escapeHtml(nameVal)}" style="width:100%">
+      </div>
+      <div style="margin-bottom:0.5rem">
+        <label style="font-size:0.8rem;font-weight:600">Aliases (comma-separated)</label>
+        <input type="text" id="tax-edit-aliases-${id}" class="input-text" value="${escapeHtml(aliasesVal)}" style="width:100%">
+      </div>
+      <div style="display:flex;gap:0.5rem">
+        <button class="btn btn-success btn-sm" onclick="submitEditedSuggestion(${id})">Save & Approve</button>
+        <button class="btn btn-secondary btn-sm" onclick="renderTaxonomyTab()">Cancel</button>
+      </div>
+    </div>
+  `;
+}
+
+async function submitEditedSuggestion(id) {
+  const nameInput = document.getElementById(`tax-edit-name-${id}`);
+  const aliasesInput = document.getElementById(`tax-edit-aliases-${id}`);
+
+  if (!nameInput || !nameInput.value.trim()) {
+    showToast('Name is required', 'error');
+    return;
+  }
+
+  const editedData = {
+    name: nameInput.value.trim(),
+    suggested_aliases: aliasesInput
+      ? aliasesInput.value.split(',').map(a => a.trim()).filter(Boolean)
+      : [],
+  };
+
+  const card = document.querySelector(`.tax-card[data-id="${id}"]`);
+  if (card) card.classList.add('processing');
+
+  try {
+    await API.post(`/admin/taxonomy/suggestions/${id}/approve`, { edited_data: editedData });
+    showToast('Suggestion edited and approved', 'success');
+    if (card) {
+      card.classList.add('resolved');
+      setTimeout(() => card.remove(), 400);
+    }
+    loadTaxonomyBadgeCount();
+  } catch (err) {
+    if (card) card.classList.remove('processing');
+    showToast('Error: ' + err.message, 'error', 5000);
+  }
+}
+
+async function rejectSuggestion(id) {
+  const card = document.querySelector(`.tax-card[data-id="${id}"]`);
+  if (card) card.classList.add('processing');
+
+  try {
+    await API.post(`/admin/taxonomy/suggestions/${id}/reject`);
+    showToast('Suggestion rejected', 'info');
+    if (card) {
+      card.classList.add('resolved');
+      setTimeout(() => card.remove(), 400);
+    }
+    loadTaxonomyBadgeCount();
+  } catch (err) {
+    if (card) card.classList.remove('processing');
+    showToast('Error: ' + err.message, 'error', 5000);
+  }
+}
+
+function toggleTaxonomySelectAll() {
+  const checkboxes = document.querySelectorAll('.tax-select-cb');
+  if (checkboxes.length === 0) return;
+  const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+  checkboxes.forEach(cb => cb.checked = !allChecked);
+}
+
+async function batchApproveSuggestions() {
+  const checked = document.querySelectorAll('.tax-select-cb:checked');
+  const ids = Array.from(checked).map(cb => parseInt(cb.value));
+
+  if (ids.length === 0) {
+    showToast('Select at least one suggestion', 'error');
+    return;
+  }
+
+  showConfirmToast(`Approve ${ids.length} suggestion(s)?`, async () => {
+    let success = 0;
+    let errors = 0;
+    for (const id of ids) {
+      try {
+        await API.post(`/admin/taxonomy/suggestions/${id}/approve`);
+        success++;
+        const card = document.querySelector(`.tax-card[data-id="${id}"]`);
+        if (card) card.remove();
+      } catch (_) { errors++; }
+    }
+    showToast(`Approved ${success}, errors ${errors}`, success > 0 ? 'success' : 'error');
+    loadTaxonomyBadgeCount();
+  });
+}
+
+async function batchRejectSuggestions() {
+  const checked = document.querySelectorAll('.tax-select-cb:checked');
+  const ids = Array.from(checked).map(cb => parseInt(cb.value));
+
+  if (ids.length === 0) {
+    showToast('Select at least one suggestion', 'error');
+    return;
+  }
+
+  showConfirmToast(`Reject ${ids.length} suggestion(s)?`, async () => {
+    let success = 0;
+    let errors = 0;
+    for (const id of ids) {
+      try {
+        await API.post(`/admin/taxonomy/suggestions/${id}/reject`);
+        success++;
+        const card = document.querySelector(`.tax-card[data-id="${id}"]`);
+        if (card) card.remove();
+      } catch (_) { errors++; }
+    }
+    showToast(`Rejected ${success}, errors ${errors}`, success > 0 ? 'info' : 'error');
+    loadTaxonomyBadgeCount();
+  });
+}
+
+async function triggerEvolution() {
+  showConfirmToast('Run taxonomy evolution? This analyzes recent quotes for new patterns.', async () => {
+    try {
+      showToast('Running taxonomy evolution...', 'info', 5000);
+      const result = await API.post('/admin/taxonomy/evolve');
+      const msg = result.message || 'Evolution complete';
+      showToast(msg, 'success', 5000);
+      // Refresh the tab to show any new suggestions
+      renderTaxonomyTab();
+    } catch (err) {
+      showToast('Error: ' + err.message, 'error', 5000);
+    }
+  });
+}
