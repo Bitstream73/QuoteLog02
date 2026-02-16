@@ -76,7 +76,7 @@ function verifySpeakerInArticle(speaker, articleText) {
 async function extractQuotesWithGemini(articleText, article) {
   if (!config.geminiApiKey) {
     logger.warn('extractor', 'no_gemini_key', {});
-    return [];
+    return { quotes: [], extracted_entities: [] };
   }
 
   // Load prompt template from DB (falls back to hardcoded default)
@@ -91,7 +91,10 @@ async function extractQuotesWithGemini(articleText, article) {
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const parsed = await gemini.generateJSON(prompt);
-      return parsed.quotes || [];
+      return {
+        quotes: parsed.quotes || [],
+        extracted_entities: parsed.extracted_entities || [],
+      };
     } catch (err) {
       lastError = err;
       // Check for rate limit (429) or server errors (5xx)
@@ -108,7 +111,7 @@ async function extractQuotesWithGemini(articleText, article) {
   }
 
   logger.error('extractor', 'gemini_extraction_failed', { error: lastError?.message });
-  return [];
+  return { quotes: [], extracted_entities: [] };
 }
 
 /**

@@ -83,8 +83,20 @@ Rules:
 - Do NOT fabricate or embellish quotes. Only extract what is in the article.
 - For speaker names, use the most complete version that appears in the article.
 
-Return a JSON object: { "quotes": [...] }
-If there are no attributable direct quotes, return: { "quotes": [] }
+Additionally, extract all notable entities and key themes from the entire article (not just the quotes). For each entity, provide:
+- name: The full proper name of the entity (e.g., "Donald Trump", not "Trump")
+- type: One of "person", "organization", "place", "event", or "theme"
+
+Entity extraction rules:
+- Extract people, organizations, places, events, and broad themes/topics discussed in the article
+- Use full proper names: "Donald Trump" not "Trump", "Federal Reserve" not "Fed"
+- For themes, use concise noun phrases: "tariffs", "immigration reform", "climate change"
+- Do NOT include the speakers already listed in the quotes — focus on other entities mentioned
+- Aim for 5-15 entities that capture the key subjects of the article
+
+Return a JSON object: { "quotes": [...], "extracted_entities": [{"name": "...", "type": "..."}] }
+If there are no attributable direct quotes, return: { "quotes": [], "extracted_entities": [...] }
+Always return extracted_entities even if quotes is empty.
 
 Article text:
 {{article_text}}`,
