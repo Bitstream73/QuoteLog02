@@ -101,6 +101,18 @@ async function adminEditAuthorName(personId, currentName, currentDisambiguation,
   }
 }
 
+async function adminDeleteQuote(quoteId, onUpdate) {
+  showConfirmToast('Permanently delete this quote?', async () => {
+    try {
+      await API.delete(`/quotes/${quoteId}`);
+      showToast('Quote deleted', 'success');
+      if (onUpdate) onUpdate();
+    } catch (err) {
+      showToast('Error: ' + err.message, 'error', 5000);
+    }
+  });
+}
+
 async function adminChangeHeadshot(personId, personName, onUpdate) {
   const newUrl = prompt(`Enter new headshot URL for ${personName}:`, '');
   if (newUrl === null) return;
@@ -130,10 +142,11 @@ function buildAdminActionsHtml(q) {
     <div class="admin-inline-actions">
       <button onclick="adminEditQuoteText(${q.id}, this.closest('.quote-entry, .admin-quote-card')?.querySelector('.quote-text')?.textContent || '')" title="Edit text">Edit</button>
       <button onclick="adminEditContext(${q.id}, '${safeCtx}')" title="Edit context">Context</button>
-      <button onclick="adminToggleVis(${q.id}, ${q.isVisible ? 'true' : 'false'})" title="${q.isVisible ? 'Hide' : 'Show'}">${q.isVisible ? 'Hide' : 'Show'}</button>
+      <button onclick="adminToggleVis(${q.id}, ${q.isVisible ? 'true' : 'false'}, function(){ loadAdminQuotes ? loadAdminQuotes() : location.reload(); })" title="${q.isVisible ? 'Hide' : 'Show'}">${q.isVisible ? 'Hide' : 'Show'}</button>
       <button onclick="adminEditCategory(${q.personId}, '${safeName}')" title="Edit category">Category</button>
       <button onclick="adminEditAuthorName(${q.personId}, '${safeName}', '${safeDisambig}')" title="Edit author">Author</button>
       <button onclick="adminChangeHeadshot(${q.personId}, '${safeName}')" title="Change photo">Photo</button>
+      <button onclick="adminDeleteQuote(${q.id}, function(){ loadAdminQuotes ? loadAdminQuotes() : location.reload(); })" title="Delete quote" style="color:var(--danger,#dc2626)">Delete</button>
     </div>
   `;
 }
