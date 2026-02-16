@@ -5,18 +5,22 @@ async function renderSettings() {
   content.innerHTML = '<div class="loading">Loading settings...</div>';
 
   try {
-    const [settings, sourcesData, promptsData, noteworthyData, keywordsData] = await Promise.all([
+    const [settings, sourcesData, promptsData, noteworthyData, keywordsData, topicsData, categoriesData] = await Promise.all([
       API.get('/settings'),
       API.get('/sources'),
       API.get('/settings/prompts').catch(() => ({ prompts: [] })),
       API.get('/admin/noteworthy').catch(() => ({ items: [] })),
       API.get('/admin/keywords').catch(() => ({ keywords: [] })),
+      API.get('/admin/topics').catch(() => ({ topics: [] })),
+      API.get('/admin/categories').catch(() => ({ categories: [] })),
     ]);
 
     const sources = sourcesData.sources || [];
     const prompts = promptsData.prompts || [];
     const noteworthyItems = noteworthyData.items || [];
     const keywords = keywordsData.keywords || [];
+    const topics = topicsData.topics || [];
+    const categories = categoriesData.categories || [];
 
     let html = `
       <p style="margin-bottom:1rem">
@@ -282,6 +286,85 @@ async function renderSettings() {
           </div>
           <div id="keywords-list" class="topics-keywords-list">
             ${renderKeywords(keywords)}
+          </div>
+        </div>
+      </div>
+
+      <!-- Topics Section -->
+      <div class="settings-section" id="settings-section-topics">
+        <h2>Topics</h2>
+        <p class="section-description">Manage topics that group keywords together. Topics can have date ranges, aliases, and linked keywords.</p>
+
+        <div class="settings-subsection">
+          <h3 class="subsection-title">Add Topic</h3>
+          <div class="topic-add-form" style="display:flex;flex-wrap:wrap;gap:0.5rem;align-items:flex-end">
+            <div style="flex:1;min-width:180px">
+              <label class="input-label" style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:2px">Name</label>
+              <input type="text" id="new-topic-name" placeholder="Topic name" class="input-text">
+            </div>
+            <div style="min-width:120px">
+              <label class="input-label" style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:2px">Status</label>
+              <select id="new-topic-status" class="input-select">
+                <option value="active">Active</option>
+                <option value="draft">Draft</option>
+                <option value="archived">Archived</option>
+              </select>
+            </div>
+            <div style="min-width:140px">
+              <label class="input-label" style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:2px">Start Date</label>
+              <input type="date" id="new-topic-start-date" class="input-text">
+            </div>
+            <div style="min-width:140px">
+              <label class="input-label" style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:2px">End Date</label>
+              <input type="date" id="new-topic-end-date" class="input-text">
+            </div>
+            <div style="flex:2;min-width:200px">
+              <label class="input-label" style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:2px">Description</label>
+              <input type="text" id="new-topic-description" placeholder="Description (optional)" class="input-text">
+            </div>
+            <button class="btn btn-primary" onclick="addTopic()">Add</button>
+          </div>
+        </div>
+
+        <div class="settings-subsection">
+          <div class="subsection-header">
+            <h3 class="subsection-title" id="topics-count-title">Topics (${topics.length})</h3>
+            <div style="display:flex;gap:0.5rem;align-items:center">
+              <select id="topics-status-filter" class="input-select" style="width:auto;min-width:100px" onchange="filterTopics()">
+                <option value="">All</option>
+                <option value="active">Active</option>
+                <option value="draft">Draft</option>
+                <option value="archived">Archived</option>
+              </select>
+              <input type="text" id="topics-filter" placeholder="Filter topics..." class="input-text" style="width:180px" oninput="filterTopics()">
+            </div>
+          </div>
+          <div id="topics-list" class="topics-keywords-list">
+            ${renderTopics(topics)}
+          </div>
+        </div>
+      </div>
+
+      <!-- Categories Section -->
+      <div class="settings-section" id="settings-section-categories">
+        <h2>Categories</h2>
+        <p class="section-description">Organize topics into categories for navigation and grouping. Drag topics between categories to reorganize.</p>
+
+        <div class="settings-subsection">
+          <h3 class="subsection-title">Add Category</h3>
+          <div class="keyword-add-form">
+            <input type="text" id="new-category-name" placeholder="Category name" class="input-text"
+                   onkeydown="if(event.key==='Enter')addCategory()">
+            <button class="btn btn-primary" onclick="addCategory()">Add</button>
+          </div>
+        </div>
+
+        <div class="settings-subsection">
+          <div class="subsection-header">
+            <h3 class="subsection-title" id="categories-count-title">Categories (${categories.length})</h3>
+          </div>
+          <div id="categories-list" class="topics-keywords-list">
+            ${renderCategories(categories)}
           </div>
         </div>
       </div>
@@ -1200,5 +1283,240 @@ async function reloadKeywords() {
     if (title) title.textContent = `Keywords (${keywords.length})`;
   } catch (err) {
     console.error('Failed to reload keywords:', err);
+  }
+}
+
+// ======= Categories Section =======
+
+let _categoriesCache = [];
+
+function renderCategories(categories) {
+  _categoriesCache = categories;
+  if (categories.length === 0) {
+    return '<p class="empty-message">No categories configured. Add a category above.</p>';
+  }
+  return categories.map(cat => renderCategoryRow(cat)).join('');
+}
+
+function renderCategoryRow(cat) {
+  return `
+    <details class="keyword-card" data-category-id="${cat.id}">
+      <summary class="keyword-card__summary">
+        <div class="keyword-card__info">
+          <span class="keyword-card__name" id="category-name-${cat.id}">${escapeHtml(cat.name)}</span>
+          <span class="keyword-card__stats">${cat.topic_count || 0} topics &middot; Order: ${cat.sort_order ?? 0}</span>
+        </div>
+        <div class="keyword-card__actions" onclick="event.stopPropagation()">
+          <button class="btn btn-secondary btn-sm" onclick="categoryMoveUp(${cat.id})" title="Move up">&uarr;</button>
+          <button class="btn btn-secondary btn-sm" onclick="categoryMoveDown(${cat.id})" title="Move down">&darr;</button>
+          <button class="btn btn-secondary btn-sm" onclick="editCategory(${cat.id})" title="Rename">Edit</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteCategory(${cat.id})" title="Delete">Delete</button>
+        </div>
+      </summary>
+      <div class="keyword-card__body" id="category-body-${cat.id}">
+        <div class="keyword-aliases-loading">Loading topics...</div>
+      </div>
+    </details>
+  `;
+}
+
+// Lazy-load topics when category card is opened
+document.addEventListener('toggle', async (e) => {
+  const details = e.target.closest?.('.keyword-card[data-category-id]');
+  if (!details || !details.open) return;
+  const catId = details.dataset.categoryId;
+  if (!catId) return;
+  const body = document.getElementById(`category-body-${catId}`);
+  if (!body || body.dataset.loaded) return;
+  try {
+    const data = await API.get(`/admin/categories/${catId}`);
+    const topics = data.topics || [];
+    body.dataset.loaded = 'true';
+    body.innerHTML = renderCategoryTopics(catId, topics);
+  } catch (err) {
+    body.innerHTML = `<p class="empty-message">Error loading topics: ${escapeHtml(err.message)}</p>`;
+  }
+}, true);
+
+function renderCategoryTopics(catId, topics) {
+  let html = '<div class="keyword-aliases-list">';
+  if (topics.length === 0) {
+    html += '<p class="empty-message" style="padding:0.5rem 0">No topics linked.</p>';
+  } else {
+    html += topics.map(t => `
+      <span class="keyword-alias-chip" data-topic-id="${t.id}">
+        ${escapeHtml(t.name)}
+        <button class="keyword-alias-remove" onclick="removeCategoryTopic(${catId}, ${t.id})" title="Unlink topic">&times;</button>
+      </span>
+    `).join('');
+  }
+  html += '</div>';
+  html += `
+    <div class="keyword-alias-add">
+      <select id="category-topic-select-${catId}" class="input-select" style="width:200px">
+        <option value="">Select a topic...</option>
+      </select>
+      <button class="btn btn-secondary btn-sm" onclick="addCategoryTopic(${catId})">Link Topic</button>
+    </div>
+  `;
+  // Populate the topic dropdown asynchronously
+  loadCategoryTopicOptions(catId, topics.map(t => t.id));
+  return html;
+}
+
+async function loadCategoryTopicOptions(catId, linkedTopicIds) {
+  try {
+    const data = await API.get('/admin/topics');
+    const allTopics = data.topics || [];
+    const select = document.getElementById(`category-topic-select-${catId}`);
+    if (!select) return;
+    const linkedSet = new Set(linkedTopicIds);
+    const available = allTopics.filter(t => !linkedSet.has(t.id));
+    select.innerHTML = '<option value="">Select a topic...</option>' +
+      available.map(t => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join('');
+  } catch (err) {
+    console.error('Failed to load topics for dropdown:', err);
+  }
+}
+
+async function addCategory() {
+  const nameInput = document.getElementById('new-category-name');
+  const name = (nameInput?.value || '').trim();
+
+  if (!name) {
+    showToast('Please enter a category name', 'error');
+    return;
+  }
+
+  try {
+    await API.post('/admin/categories', { name });
+    showToast('Category added', 'success');
+    nameInput.value = '';
+    await reloadCategories();
+  } catch (err) {
+    showToast('Error adding category: ' + err.message, 'error', 5000);
+  }
+}
+
+async function editCategory(id) {
+  const nameEl = document.getElementById(`category-name-${id}`);
+  if (!nameEl) return;
+  const currentName = nameEl.textContent;
+  const newName = prompt('Rename category:', currentName);
+  if (!newName || newName.trim() === '' || newName.trim() === currentName) return;
+
+  try {
+    await API.put(`/admin/categories/${id}`, { name: newName.trim() });
+    showToast('Category renamed', 'success');
+    await reloadCategories();
+  } catch (err) {
+    showToast('Error renaming category: ' + err.message, 'error', 5000);
+  }
+}
+
+async function deleteCategory(id) {
+  showConfirmToast('Delete this category? Topics will be unlinked but not deleted.', async () => {
+    try {
+      await API.delete(`/admin/categories/${id}`);
+      showToast('Category deleted', 'success');
+      await reloadCategories();
+    } catch (err) {
+      showToast('Error deleting category: ' + err.message, 'error', 5000);
+    }
+  });
+}
+
+async function categoryMoveUp(id) {
+  const cat = _categoriesCache.find(c => c.id === id);
+  if (!cat) return;
+  const idx = _categoriesCache.indexOf(cat);
+  if (idx <= 0) return;
+  const prev = _categoriesCache[idx - 1];
+  try {
+    await API.put(`/admin/categories/${id}`, { sort_order: prev.sort_order });
+    await API.put(`/admin/categories/${prev.id}`, { sort_order: cat.sort_order });
+    await reloadCategories();
+  } catch (err) {
+    showToast('Error reordering: ' + err.message, 'error');
+  }
+}
+
+async function categoryMoveDown(id) {
+  const cat = _categoriesCache.find(c => c.id === id);
+  if (!cat) return;
+  const idx = _categoriesCache.indexOf(cat);
+  if (idx < 0 || idx >= _categoriesCache.length - 1) return;
+  const next = _categoriesCache[idx + 1];
+  try {
+    await API.put(`/admin/categories/${id}`, { sort_order: next.sort_order });
+    await API.put(`/admin/categories/${next.id}`, { sort_order: cat.sort_order });
+    await reloadCategories();
+  } catch (err) {
+    showToast('Error reordering: ' + err.message, 'error');
+  }
+}
+
+async function addCategoryTopic(catId) {
+  const select = document.getElementById(`category-topic-select-${catId}`);
+  const topicId = select?.value;
+  if (!topicId) {
+    showToast('Please select a topic', 'error');
+    return;
+  }
+
+  try {
+    await API.post(`/admin/categories/${catId}/topics`, { topic_id: parseInt(topicId) });
+    showToast('Topic linked', 'success');
+    // Refresh the category body
+    const body = document.getElementById(`category-body-${catId}`);
+    if (body) {
+      const data = await API.get(`/admin/categories/${catId}`);
+      body.innerHTML = renderCategoryTopics(catId, data.topics || []);
+    }
+    await reloadCategories();
+  } catch (err) {
+    showToast('Error linking topic: ' + err.message, 'error', 5000);
+  }
+}
+
+async function removeCategoryTopic(catId, topicId) {
+  try {
+    await API.delete(`/admin/categories/${catId}/topics/${topicId}`);
+    showToast('Topic unlinked', 'success');
+    // Refresh the category body
+    const body = document.getElementById(`category-body-${catId}`);
+    if (body) {
+      const data = await API.get(`/admin/categories/${catId}`);
+      body.innerHTML = renderCategoryTopics(catId, data.topics || []);
+    }
+    await reloadCategories();
+  } catch (err) {
+    showToast('Error unlinking topic: ' + err.message, 'error', 5000);
+  }
+}
+
+async function reloadCategories() {
+  try {
+    const data = await API.get('/admin/categories');
+    const categories = data.categories || [];
+    _categoriesCache = categories;
+    const list = document.getElementById('categories-list');
+    if (list) {
+      // Preserve which cards are open
+      const openIds = new Set();
+      list.querySelectorAll('.keyword-card[data-category-id][open]').forEach(d => openIds.add(d.dataset.categoryId));
+      list.innerHTML = categories.length === 0
+        ? '<p class="empty-message">No categories configured. Add a category above.</p>'
+        : categories.map(cat => renderCategoryRow(cat)).join('');
+      // Re-open previously open cards
+      openIds.forEach(catId => {
+        const card = list.querySelector(`.keyword-card[data-category-id="${catId}"]`);
+        if (card) card.open = true;
+      });
+    }
+    const title = document.getElementById('categories-count-title');
+    if (title) title.textContent = `Categories (${categories.length})`;
+  } catch (err) {
+    console.error('Failed to reload categories:', err);
   }
 }

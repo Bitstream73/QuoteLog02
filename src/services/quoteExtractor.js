@@ -6,6 +6,7 @@ import { resolvePersonId } from './nameDisambiguator.js';
 import { insertAndDeduplicateQuote } from './quoteDeduplicator.js';
 import { fetchAndStoreHeadshot } from './personPhoto.js';
 import { getPromptTemplate } from './promptManager.js';
+import { classifyQuote } from './classificationPipeline.js';
 
 // Quote detection patterns
 const QUOTE_CHARS = /["\u201C\u201D]/;
@@ -241,6 +242,25 @@ export async function extractQuotesFromArticle(articleText, article, db, io) {
 
       if (quoteResult) {
         insertedQuotes.push(quoteResult);
+
+        // Classify new (non-duplicate) quotes using taxonomy pipeline
+        if (!quoteResult.isDuplicate && extractedEntities.length > 0) {
+          try {
+            const classification = classifyQuote(quoteResult.id, quoteDate, extractedEntities);
+            logger.debug('extractor', 'quote_classified', {
+              quoteId: quoteResult.id,
+              matched: classification.matched.length,
+              unmatched: classification.unmatched.length,
+              flagged: classification.flagged.length,
+            });
+          } catch (classifyErr) {
+            logger.error('extractor', 'quote_classification_failed', {
+              quoteId: quoteResult.id,
+              error: classifyErr.message,
+            });
+          }
+        }
+
         logger.info('extractor', 'quote_extracted', {
           quoteId: quoteResult.id,
           speaker: q.speaker,

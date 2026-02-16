@@ -1,6 +1,8 @@
-// Disambiguation Review & Quote Management Page
+// Disambiguation Review & Quote Management & Taxonomy Review Page
 
 let _reviewActiveTab = 'quotes';
+let _taxonomyTypeFilter = '';
+let _taxonomySourceFilter = '';
 
 async function renderReview() {
   const content = document.getElementById('content');
@@ -15,12 +17,18 @@ async function renderReview() {
     <div class="review-tab-bar">
       <button class="review-tab ${_reviewActiveTab === 'quotes' ? 'active' : ''}" data-tab="quotes" onclick="switchReviewTab('quotes')">Quote Management</button>
       <button class="review-tab ${_reviewActiveTab === 'disambiguation' ? 'active' : ''}" data-tab="disambiguation" onclick="switchReviewTab('disambiguation')">Disambiguation Review <span class="disambig-tab-badge" id="disambig-tab-badge" style="display:none"></span></button>
+      <button class="review-tab ${_reviewActiveTab === 'taxonomy' ? 'active' : ''}" data-tab="taxonomy" onclick="switchReviewTab('taxonomy')">Taxonomy Review <span class="taxonomy-tab-badge" id="taxonomy-tab-badge" style="display:none"></span></button>
     </div>
     <div id="review-tab-content"></div>
   `;
   content.innerHTML = html;
 
-  if (_reviewActiveTab === 'disambiguation') {
+  // Load taxonomy badge count in background
+  loadTaxonomyBadgeCount();
+
+  if (_reviewActiveTab === 'taxonomy') {
+    await renderTaxonomyTab();
+  } else if (_reviewActiveTab === 'disambiguation') {
     await renderDisambiguationTab();
   } else {
     await renderQuoteManagementTab();
@@ -36,7 +44,9 @@ function switchReviewTab(tab) {
   const container = document.getElementById('review-tab-content');
   if (!container) return;
   container.innerHTML = '<div class="loading">Loading...</div>';
-  if (tab === 'disambiguation') {
+  if (tab === 'taxonomy') {
+    renderTaxonomyTab();
+  } else if (tab === 'disambiguation') {
     renderDisambiguationTab();
   } else {
     renderQuoteManagementTab();
