@@ -36,6 +36,8 @@ describe('Quote Quality Purge', () => {
   let gemini;
 
   beforeAll(async () => {
+    const { closeDb } = await import('../../src/config/database.js');
+    closeDb();
     const { createApp } = await import('../../src/index.js');
     app = createApp();
     const dbModule = await import('../../src/config/database.js');

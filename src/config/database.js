@@ -17,8 +17,8 @@ let dbInitPromise = null;
 export function getDb() {
   if (db) return db;
 
-  // Synchronous attempt — works in dev or after volume is mounted
-  const dbPath = config.databasePath;
+  // Re-read DATABASE_PATH from env to support test-file isolation (ESM caches config at first import)
+  const dbPath = process.env.DATABASE_PATH ? path.resolve(process.env.DATABASE_PATH) : config.databasePath;
   const dbDir = path.dirname(dbPath);
 
   if (!fs.existsSync(dbDir)) {
@@ -49,7 +49,7 @@ export async function initDbAsync() {
   if (dbInitPromise) return dbInitPromise;
 
   dbInitPromise = (async () => {
-    const dbPath = config.databasePath;
+    const dbPath = process.env.DATABASE_PATH ? path.resolve(process.env.DATABASE_PATH) : config.databasePath;
     const dbDir = path.dirname(dbPath);
     const maxRetries = 60;
     const retryDelayMs = 2000;
@@ -1187,6 +1187,8 @@ export function closeDb() {
     db.close();
     db = null;
   }
+  dbReady = false;
+  dbInitPromise = null;
 }
 
 // Helper function to get a setting value

@@ -11,9 +11,26 @@ describe('Categories API', () => {
   let authCookie;
 
   beforeAll(async () => {
+    // Ensure closeDb is called to pick up our DATABASE_PATH
+    const { closeDb } = await import('../../src/config/database.js');
+    closeDb();
     const { createApp } = await import('../../src/index.js');
     app = createApp();
     authCookie = getAuthCookie();
+
+    // Clean taxonomy tables for test isolation
+    const { getDb } = await import('../../src/config/database.js');
+    const db = getDb();
+    db.prepare('DELETE FROM category_topics').run();
+    db.prepare('DELETE FROM topic_keywords').run();
+    db.prepare('DELETE FROM quote_keywords').run();
+    db.prepare('DELETE FROM quote_topics').run();
+    db.prepare('DELETE FROM topic_aliases').run();
+    db.prepare('DELETE FROM keyword_aliases').run();
+    db.prepare('DELETE FROM taxonomy_suggestions').run();
+    db.prepare('DELETE FROM topics').run();
+    db.prepare('DELETE FROM keywords').run();
+    db.prepare('DELETE FROM categories').run();
   });
 
   afterAll(async () => {

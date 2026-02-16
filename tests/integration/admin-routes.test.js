@@ -12,6 +12,8 @@ describe('Admin Route Protection', () => {
   let authCookie;
 
   beforeAll(async () => {
+    const { closeDb } = await import('../../src/config/database.js');
+    closeDb();
     const { createApp } = await import('../../src/index.js');
     app = createApp();
     authCookie = getAuthCookie();

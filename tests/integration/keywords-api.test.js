@@ -12,6 +12,8 @@ describe('Keywords API', () => {
   const authCookie = getAuthCookie();
 
   beforeAll(async () => {
+    const { closeDb } = await import('../../src/config/database.js');
+    closeDb();
     const { createApp } = await import('../../src/index.js');
     app = createApp();
 
