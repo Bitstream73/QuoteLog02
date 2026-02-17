@@ -4,11 +4,22 @@ import { getDb } from '../config/database.js';
 const router = Router();
 
 /**
+ * SQL expression that safely resolves a quote's effective date.
+ * Only uses quote_datetime if it's in ISO format (YYYY-MM-DD...),
+ * otherwise falls back to created_at. This prevents non-ISO dates
+ * (e.g. "October 28, 1932") from sorting incorrectly via lexicographic comparison.
+ */
+const QUOTE_DATE_EXPR = `COALESCE(
+  CASE WHEN q.quote_datetime GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]*'
+    THEN q.quote_datetime ELSE NULL END,
+  q.created_at)`;
+
+/**
  * Build tiered importance ORDER BY clause for quotes.
  * Tier 1: importance today (skip 0), Tier 2: this week (skip 0),
  * Tier 3: this month (skip 0), Tier 4: all time (skip 0),
  * Tier 5: by date (newest first)
- * @param {string} dateCol - the date column to use for tiers (e.g. 'q.quote_datetime', 'q.created_at')
+ * @param {string} dateCol - the date column to use for tiers (e.g. QUOTE_DATE_EXPR)
  * @param {string} importantsCol - the importants_count column (e.g. 'q.importants_count')
  * @returns {string} SQL ORDER BY clause (without ORDER BY keyword)
  */

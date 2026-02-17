@@ -8,6 +8,23 @@ import { fetchAndStoreHeadshot } from './personPhoto.js';
 import { getPromptTemplate } from './promptManager.js';
 import { classifyQuote } from './classificationPipeline.js';
 
+/**
+ * Normalize a date string to ISO format (YYYY-MM-DD).
+ * Handles formats like "October 28, 1932", "10/28/1932", etc.
+ * Returns null if unparseable.
+ */
+export function normalizeToIsoDate(dateStr) {
+  if (!dateStr || dateStr === 'unknown') return null;
+  // Already ISO format (YYYY-MM-DD with optional time suffix)
+  if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) return dateStr.substring(0, 10);
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return null;
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 // Quote detection patterns
 const QUOTE_CHARS = /["\u201C\u201D]/;
 const ATTRIBUTION_VERBS = /\b(said|stated|told|claimed|argued|noted|added|explained|warned|insisted|remarked|commented|declared|announced|responded|replied|acknowledged|admitted|confirmed|denied|emphasized|stressed|suggested|urged|asked|demanded|revealed|disclosed|predicted|recalled|testified|wrote|tweeted|posted)\b/i;
@@ -216,8 +233,9 @@ export async function extractQuotesFromArticle(articleText, article, db, io) {
         domain: article.domain || null,
       };
 
-      // Determine quote date
-      const quoteDate = q.quote_date && q.quote_date !== 'unknown' ? q.quote_date : (article.published_at || null);
+      // Determine quote date — normalize to ISO format (YYYY-MM-DD)
+      const rawDate = q.quote_date && q.quote_date !== 'unknown' ? q.quote_date : (article.published_at || null);
+      const quoteDate = normalizeToIsoDate(rawDate);
 
       // Determine visibility based on significance score and fragment detection
       const significance = parseInt(q.significance, 10) || 5;
