@@ -262,7 +262,7 @@ async function loadAdminQuotes(page) {
         : `<div class="admin-quote-headshot-placeholder">${initial}</div>`;
 
       const sourceUrls = (q.sourceUrls || []).map(u => {
-        try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; }
+        try { return new URL(u).hostname.replace(/^www\\./, ''); } catch { return u; }
       });
 
       html += `
@@ -294,6 +294,15 @@ async function loadAdminQuotes(page) {
                 personCategory: q.personCategory, personCategoryContext: q.personCategoryContext,
                 disambiguation: q.personDisambiguation
               }) : ''}
+              ${typeof buildAdminQuoteDetailsPanel === 'function' ? `
+              <details class="admin-details-panel admin-details-panel--list" ontoggle="loadListAdminDetails(this, ${q.id})">
+                <summary class="admin-details-panel__summary">
+                  <span class="admin-details-panel__title">Admin Details</span>
+                </summary>
+                <div class="admin-details-panel__body" id="admin-details-body-${q.id}">
+                </div>
+              </details>
+              ` : ''}
               <div style="margin-top:0.4rem">
                 <button class="btn btn-success btn-sm review-mark-btn" onclick="markQuoteReviewed(${q.id})">Reviewed</button>
               </div>
