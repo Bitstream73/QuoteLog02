@@ -3866,7 +3866,7 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
 }
 
 .quote-block--hero .quote-block__text {
-  font-size: var(--text-2xl);
+  font-size: var(--text-lg);
 }
 
 .quote-block--hero .quote-block__byline {
