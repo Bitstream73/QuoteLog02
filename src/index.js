@@ -48,6 +48,9 @@ export function createApp({ skipDbInit = false } = {}) {
     verifyDatabaseState();
   }
 
+  // Trust first proxy (Railway, nginx, etc.) for correct req.hostname / req.protocol
+  app.set('trust proxy', 1);
+
   // Security middleware
   const corsOptions = config.corsOrigins.includes('*')
     ? { credentials: true }
