@@ -83,7 +83,7 @@ router.get('/', (req, res) => {
 
   // Get quotes with person info + first linked article/source + vote score
   const quotes = db.prepare(`
-    SELECT q.id, q.text, q.source_urls, q.created_at, q.context, q.quote_type, q.is_visible,
+    SELECT q.id, q.text, q.source_urls, q.created_at, q.quote_datetime, q.context, q.quote_type, q.is_visible,
            q.rss_metadata,
            p.id AS person_id, p.canonical_name, p.photo_url, p.category AS person_category,
            p.category_context AS person_category_context,
@@ -97,7 +97,7 @@ router.get('/', (req, res) => {
     LEFT JOIN sources s ON a.source_id = s.id
     WHERE q.canonical_quote_id IS NULL ${visibilityFilter} ${topStoriesFilter} ${categoryFilter} ${subFilterSql} ${searchFilter}
     GROUP BY q.id
-    ORDER BY COALESCE(a.published_at, q.created_at) DESC
+    ORDER BY COALESCE(q.quote_datetime, q.created_at) DESC
     LIMIT ? OFFSET ?
   `).all(...params, limit, offset);
 
@@ -121,6 +121,7 @@ router.get('/', (req, res) => {
     sourceUrls: JSON.parse(q.source_urls || '[]'),
     rssMetadata: q.rss_metadata ? JSON.parse(q.rss_metadata) : null,
     createdAt: q.created_at,
+    quoteDateTime: q.quote_datetime || null,
     importantsCount: q.importants_count,
   }));
 
