@@ -3706,8 +3706,8 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
 
 .quote-block__text {
   font-family: var(--font-headline);
-  font-size: var(--text-xl, 1.953rem);
-  line-height: 1.6;
+  font-size: calc(var(--text-xl, 1.953rem) * 0.5);
+  line-height: 1.5;
   font-weight: 400;
   font-style: italic;
   color: var(--text-primary);
@@ -5335,11 +5335,7 @@ span.evidence-source-cite {
    Phase 2: Homepage tweaks
    =================================== */
 
-/* 2C: Reduce quote font on homepage */
-#homepage-tab-content .quote-block__text {
-  font-size: calc(var(--text-xl, 1.953rem) * 0.5);
-  line-height: 1.5;
-}
+/* 2C: (quote font reduction now in base .quote-block__text rule) */
 
 /* 2D: Sticky tabs */
 .homepage-tabs {
