@@ -109,7 +109,7 @@ router.get('/trending-sources', (req, res) => {
       JOIN quote_articles qa ON qa.quote_id = q.id AND qa.article_id = ?
       JOIN persons p ON p.id = q.person_id
       WHERE q.is_visible = 1
-      ORDER BY COALESCE(q.quote_datetime, q.created_at) DESC
+      ORDER BY ${QUOTE_DATE_EXPR} DESC
       LIMIT 3
     `);
 
@@ -171,8 +171,8 @@ router.get('/trending-quotes', (req, res) => {
     `).get();
 
     const recentSort = req.query.sort === 'importance'
-      ? tieredImportanceOrder('COALESCE(q.quote_datetime, q.created_at)', 'q.importants_count')
-      : 'COALESCE(q.quote_datetime, q.created_at) DESC';
+      ? tieredImportanceOrder(QUOTE_DATE_EXPR, 'q.importants_count')
+      : `${QUOTE_DATE_EXPR} DESC`;
     const recentQuotes = db.prepare(`${baseSelect}
       GROUP BY q.id ORDER BY ${recentSort} LIMIT ? OFFSET ?
     `).all(limit, offset);
@@ -243,7 +243,7 @@ router.get('/all-sources', (req, res) => {
       JOIN quote_articles qa ON qa.quote_id = q.id AND qa.article_id = ?
       JOIN persons p ON p.id = q.person_id
       WHERE q.is_visible = 1
-      ORDER BY COALESCE(q.quote_datetime, q.created_at) DESC
+      ORDER BY ${QUOTE_DATE_EXPR} DESC
       LIMIT 3
     `);
 
@@ -368,7 +368,7 @@ router.get('/trending-authors', (req, res) => {
       LEFT JOIN sources s ON s.id = a.source_id
       WHERE q.person_id = ? AND q.is_visible = 1 AND q.canonical_quote_id IS NULL
       GROUP BY q.id
-      ORDER BY COALESCE(q.quote_datetime, q.created_at) DESC
+      ORDER BY ${QUOTE_DATE_EXPR} DESC
       LIMIT 4
     `);
 

@@ -1197,6 +1197,31 @@ The output should be ONLY the HTML fragment, no explanation.`,
     'fact_check'
   );
 
+  // --- Migration: normalize non-ISO quote_datetime values ---
+  const badDates = db.prepare(
+    `SELECT id, quote_datetime FROM quotes
+     WHERE quote_datetime IS NOT NULL
+       AND quote_datetime NOT GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]*'`
+  ).all();
+  if (badDates.length > 0) {
+    const update = db.prepare('UPDATE quotes SET quote_datetime = ? WHERE id = ?');
+    const fixBatch = db.transaction(() => {
+      for (const row of badDates) {
+        const d = new Date(row.quote_datetime);
+        if (!isNaN(d.getTime())) {
+          const yyyy = d.getFullYear();
+          const mm = String(d.getMonth() + 1).padStart(2, '0');
+          const dd = String(d.getDate()).padStart(2, '0');
+          update.run(`${yyyy}-${mm}-${dd}`, row.id);
+        } else {
+          update.run(null, row.id);
+        }
+      }
+    });
+    fixBatch();
+    console.log(`[migration] Normalized ${badDates.length} non-ISO quote_datetime values`);
+  }
+
 }
 
 export function closeDb() {

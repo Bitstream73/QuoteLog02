@@ -97,7 +97,10 @@ router.get('/', (req, res) => {
     LEFT JOIN sources s ON a.source_id = s.id
     WHERE q.canonical_quote_id IS NULL ${visibilityFilter} ${topStoriesFilter} ${categoryFilter} ${subFilterSql} ${searchFilter}
     GROUP BY q.id
-    ORDER BY COALESCE(q.quote_datetime, q.created_at) DESC
+    ORDER BY COALESCE(
+      CASE WHEN q.quote_datetime GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]*'
+        THEN q.quote_datetime ELSE NULL END,
+      q.created_at) DESC
     LIMIT ? OFFSET ?
   `).all(...params, limit, offset);
 
