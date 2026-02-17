@@ -5221,10 +5221,17 @@ span.evidence-source-cite {
 .quote-page__context .quote-hero__summary {
   max-width: none;
   margin: 0;
+  padding: 0;
   text-align: left;
   display: block;
   -webkit-line-clamp: unset;
   overflow: visible;
+}
+
+/* Fact-check container — ensure widget and references fill same width */
+#fact-check-content > * {
+  width: 100%;
+  box-sizing: border-box;
 }
 
 /* Quote page — source section */
