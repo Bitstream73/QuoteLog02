@@ -241,13 +241,19 @@ export async function resolvePersonId(speakerName, speakerTitle, context, articl
     return { ...m, score };
   }).filter(m => m.score > 0.85);
 
-  if (scoredCandidates.length === 1) {
+  // Filter phonetic matches by first-name compatibility before auto-returning
+  const compatiblePhoneticMatches = scoredCandidates.filter(m => {
+    const mParts = splitNameParts(normalizeName(m.canonical_name));
+    return areFirstNamesCompatible(nameParts.first, mParts.first);
+  });
+
+  if (compatiblePhoneticMatches.length === 1) {
     logger.debug('disambiguator', 'phonetic_match', {
       name: speakerName,
-      personId: scoredCandidates[0].person_id,
-      score: scoredCandidates[0].score,
+      personId: compatiblePhoneticMatches[0].person_id,
+      score: compatiblePhoneticMatches[0].score,
     });
-    return scoredCandidates[0].person_id;
+    return compatiblePhoneticMatches[0].person_id;
   }
 
   // Step 4: If multiple candidates, try LLM disambiguation
@@ -368,4 +374,5 @@ function createNewPerson(speakerName, speakerTitle, nameParts, db) {
   return personId;
 }
 
+export { areFirstNamesCompatible, splitNameParts };
 export default { resolvePersonId, normalizeName };

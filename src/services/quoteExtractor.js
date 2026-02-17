@@ -234,7 +234,7 @@ export async function extractQuotesFromArticle(articleText, article, db, io) {
       };
 
       // Determine quote date — normalize to ISO format (YYYY-MM-DD)
-      const rawDate = q.quote_date && q.quote_date !== 'unknown' ? q.quote_date : (article.published_at || null);
+      const rawDate = q.quote_date === 'unknown' ? null : (q.quote_date || article.published_at || null);
       const quoteDate = normalizeToIsoDate(rawDate);
 
       // Determine visibility based on significance score and fragment detection

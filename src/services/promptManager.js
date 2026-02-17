@@ -25,7 +25,7 @@ For each quote, return:
 - context: One sentence describing what the quote is about and why it was said.
 - quote_date: The date when this quote was actually spoken/written, in ISO format (YYYY-MM-DD).
   * For current news quotes: use the article's publication date provided above.
-  * For historical quotes (quoting someone from the past, reprinting old statements): use the original date if mentioned in the article, otherwise "unknown".
+  * For historical quotes (quoting someone from the past, reprinting old statements): use the original date if mentioned in the article. If only a year is known, use "YYYY-01-01" (e.g., "2001-01-01"). If only year and month, use "YYYY-MM-01". If no date context at all, return "unknown".
   * For "yesterday"/"last week" references: compute the actual date relative to the article publication date.
   * If the speaker is deceased or the quote clearly predates the article, do NOT use the article date.
 - topics: Array of 1-3 SPECIFIC subject categories. Use the most specific applicable name:
