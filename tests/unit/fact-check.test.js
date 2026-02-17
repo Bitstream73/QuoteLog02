@@ -699,5 +699,89 @@ describe('Fact Check Service', () => {
         redirect: 'follow',
       }));
     });
+
+    it('should null out broken media clip embed URL', async () => {
+      global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 404 });
+
+      const data = {
+        references: [],
+        media_clip: {
+          enrichment: {
+            found: true,
+            primary_url: 'https://youtube.com/watch?v=abc',
+            media_embed: { type: 'youtube', url: 'https://www.youtube.com/embed/abc' },
+          },
+        },
+      };
+
+      await factCheck.validateReferenceUrls(data);
+      expect(data.media_clip.enrichment.media_embed.url).toBeNull();
+      expect(data.media_clip.enrichment.primary_url).toBeNull();
+    });
+
+    it('should keep valid media clip URLs', async () => {
+      global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+
+      const data = {
+        references: [],
+        media_clip: {
+          enrichment: {
+            found: true,
+            primary_url: 'https://youtube.com/watch?v=good',
+            media_embed: { type: 'youtube', url: 'https://www.youtube.com/embed/good' },
+          },
+        },
+      };
+
+      await factCheck.validateReferenceUrls(data);
+      expect(data.media_clip.enrichment.media_embed.url).toBe('https://www.youtube.com/embed/good');
+      expect(data.media_clip.enrichment.primary_url).toBe('https://youtube.com/watch?v=good');
+    });
+
+    it('should null broken embed but keep valid primary URL for media clip', async () => {
+      global.fetch = vi.fn().mockImplementation((url) => {
+        if (url === 'https://www.youtube.com/embed/bad') {
+          return Promise.resolve({ ok: false, status: 404 });
+        }
+        return Promise.resolve({ ok: true, status: 200 });
+      });
+
+      const data = {
+        references: [],
+        media_clip: {
+          enrichment: {
+            found: true,
+            primary_url: 'https://youtube.com/watch?v=good',
+            media_embed: { type: 'youtube', url: 'https://www.youtube.com/embed/bad' },
+          },
+        },
+      };
+
+      await factCheck.validateReferenceUrls(data);
+      expect(data.media_clip.enrichment.media_embed.url).toBeNull();
+      expect(data.media_clip.enrichment.primary_url).toBe('https://youtube.com/watch?v=good');
+    });
+
+    it('should validate both references and media clip URLs together', async () => {
+      global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+
+      const data = {
+        references: [{
+          display_name: 'Test',
+          enrichment: { found: true, primary_url: 'https://example.com/ref', additional_links: [] },
+        }],
+        media_clip: {
+          enrichment: {
+            found: true,
+            primary_url: 'https://youtube.com/watch?v=abc',
+            media_embed: { type: 'youtube', url: 'https://www.youtube.com/embed/abc' },
+          },
+        },
+      };
+
+      await factCheck.validateReferenceUrls(data);
+      // All 3 unique URLs validated
+      expect(global.fetch).toHaveBeenCalledTimes(3);
+    });
   });
 });

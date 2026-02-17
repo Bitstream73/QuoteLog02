@@ -337,6 +337,14 @@ function buildAdminQuoteBlockHtml(q, isImportant) {
         <button onclick="adminEditAuthorFromQuote(${q.person_id || q.personId})">Author</button>
         <button onclick="adminChangeHeadshotFromQuote(${q.person_id || q.personId})">Photo</button>
       </div>
+
+      <details class="admin-details-panel admin-details-panel--list" ontoggle="loadListAdminDetails(this, ${q.id})">
+        <summary class="admin-details-panel__summary">
+          <span class="admin-details-panel__title">Admin Details</span>
+        </summary>
+        <div class="admin-details-panel__body" id="admin-details-body-${q.id}">
+        </div>
+      </details>
     </div>
   `;
 }
@@ -362,6 +370,29 @@ async function adminChangeHeadshotFromQuote(personId) {
     showToast('Headshot updated', 'success');
   } catch (err) {
     showToast('Error: ' + err.message, 'error');
+  }
+}
+
+// ======= Lazy-Load Admin Details for List View =======
+
+async function loadListAdminDetails(detailsEl, quoteId) {
+  if (!detailsEl.open) return;
+  const body = detailsEl.querySelector('.admin-details-panel__body');
+  if (body.dataset.loaded) return;
+
+  body.innerHTML = '<div class="context-loading"><div class="context-loading-spinner"></div><span style="font-family:var(--font-ui);font-size:var(--text-sm);color:var(--text-muted)">Loading admin details...</span></div>';
+
+  try {
+    const data = await API.get(`/quotes/${quoteId}`);
+    const fullPanel = buildAdminQuoteDetailsPanel(data);
+    // Extract just the body content from the full panel HTML
+    const temp = document.createElement('div');
+    temp.innerHTML = fullPanel;
+    const panelBody = temp.querySelector('.admin-details-panel__body');
+    body.innerHTML = panelBody ? panelBody.innerHTML : '<p class="admin-details-empty">No details available</p>';
+    body.dataset.loaded = 'true';
+  } catch (err) {
+    body.innerHTML = `<p class="admin-details-empty">Error loading details: ${escapeHtml(err.message)}</p>`;
   }
 }
 
