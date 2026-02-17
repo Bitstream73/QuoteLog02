@@ -358,7 +358,7 @@ function renderReferencesHTML(enrichedData) {
 
 async function factCheckQuote(quoteData, options = {}) {
   const startTime = Date.now();
-  const { skipFactCheck = false, skipReferences = false } = options;
+  const { skipFactCheck = false, skipReferences = false, quoteId = null } = options;
 
   const factCheckPromise = skipFactCheck
     ? Promise.resolve(null)
@@ -377,6 +377,26 @@ async function factCheckQuote(quoteData, options = {}) {
   const referencesHtml = referencesResult?.html || '';
 
   const combinedHtml = [factCheckHtml, referencesHtml].filter(Boolean).join('\n');
+
+  // Persist verdict data to the quote record if quoteId was provided
+  if (quoteId && factCheckResult) {
+    try {
+      const { getDb } = await import('../config/database.js');
+      const db = getDb();
+      const classification = factCheckResult.classification || {};
+      const verdict = factCheckResult.verdict || null;
+      const claim = classification.claims?.[0]?.claim_text || classification.summary_label || null;
+      const explanation = classification.verdict_explanation || classification.reasoning || null;
+
+      db.prepare(`
+        UPDATE quotes
+        SET fact_check_verdict = ?, fact_check_claim = ?, fact_check_explanation = ?
+        WHERE id = ?
+      `).run(verdict, claim, explanation, quoteId);
+    } catch (err) {
+      logger.warn('factcheck', 'persist_verdict_failed', { quoteId, error: err.message });
+    }
+  }
 
   return {
     category: factCheckResult?.category || null,

@@ -62,6 +62,7 @@ router.post('/check', async (req, res) => {
       {
         skipFactCheck: skipFactCheck || false,
         skipReferences: skipReferences || false,
+        quoteId: quoteId || null,
       }
     );
 

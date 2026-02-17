@@ -46,6 +46,10 @@
           </button>
           <a href="/" onclick="navigate(event, '/')">Home</a>
           <a href="/analytics" onclick="navigate(event, '/analytics')">Analytics</a>
+          <a href="https://buymeacoffee.com/whattheysaidnews" target="_blank" rel="noopener" class="nav-support-link">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+            Support
+          </a>
           <a href="/review" id="nav-review" onclick="navigate(event, '/review')" class="nav-link-review" style="display: none;">
             Review
             <span class="review-badge" id="review-badge" style="display: none;">0</span>
@@ -81,6 +85,13 @@
         <div class="footer-links">
           <a href="/" onclick="navigate(event, '/')">Home</a>
           <a href="/login" onclick="navigate(event, '/login')">Admin</a>
+        </div>
+        <div class="footer-support">
+          <span class="footer-support-text">Independently built. No ads, no tracking.</span>
+          <a href="https://buymeacoffee.com/whattheysaidnews" target="_blank" rel="noopener" class="footer-support-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+            Support This Project
+          </a>
         </div>
         <div class="footer-copyright">
           &copy; 2026 WhatTheySaid.News / GGM, LLC.
@@ -126,6 +137,19 @@
   <script src="/js/login.js?v=27"></script>
   <script src="/js/resetPassword.js?v=27"></script>
   <script src="/js/app.js?v=27"></script>
+
+  <!-- Buy Me a Coffee floating widget -->
+  <script
+    data-name="BMC-Widget"
+    data-id="whattheysaidnews"
+    data-description="Support WhatTheySaid.News"
+    data-message="Help keep this site free and ad-free"
+    data-color="#E8596E"
+    data-position="Right"
+    data-x_margin="18"
+    data-y_margin="18"
+    src="https://cdnjs.buymeacoffee.com/1.0.0/widget.prod.min.js">
+  </script>
 
   <script>
     let _searchDebounce = null;

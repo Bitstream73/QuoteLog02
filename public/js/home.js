@@ -84,6 +84,11 @@ function escapeHtml(str) {
  * Build share buttons for any entity type
  */
 function buildShareButtonsHtml(entityType, entityId, text, authorName) {
+  const downloadBtn = entityType === 'quote' ? `
+      <button class="share-btn share-btn--download" onclick="downloadShareImage(event, ${entityId})" title="Download Image">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+      </button>` : '';
+
   return `
     <div class="share-buttons" data-entity-type="${entityType}" data-entity-id="${entityId}">
       <button class="share-btn" onclick="shareEntity(event, '${entityType}', ${entityId}, 'twitter')" title="Share on X">
@@ -97,7 +102,7 @@ function buildShareButtonsHtml(entityType, entityId, text, authorName) {
       </button>
       <button class="share-btn" onclick="shareEntity(event, '${entityType}', ${entityId}, 'copy')" title="Copy link">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
-      </button>
+      </button>${downloadBtn}
     </div>
   `;
 }
@@ -143,6 +148,57 @@ async function shareEntity(event, entityType, entityId, platform) {
         showToast('Link copied to clipboard', 'success');
       }).catch(() => {});
       break;
+  }
+}
+
+/**
+ * Download a share image (portrait format) for a quote
+ */
+async function downloadShareImage(event, quoteId) {
+  event.stopPropagation();
+  event.preventDefault();
+
+  const btn = event.currentTarget;
+  btn.classList.add('share-btn--loading');
+
+  try {
+    // Try native share with image on supported platforms (mobile)
+    if (navigator.share && navigator.canShare) {
+      const res = await fetch(`/api/quotes/${quoteId}/share-image?format=portrait`);
+      if (!res.ok) throw new Error('Failed to fetch image');
+      const blob = await res.blob();
+      const file = new File([blob], `whattheysaid-quote-${quoteId}.jpg`, { type: 'image/jpeg' });
+
+      if (navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: 'Quote from WhatTheySaid.News',
+          url: window.location.origin + '/quote/' + quoteId,
+        });
+        btn.classList.remove('share-btn--loading');
+        return;
+      }
+    }
+
+    // Fallback: download the image
+    const res = await fetch(`/api/quotes/${quoteId}/share-image?format=portrait`);
+    if (!res.ok) throw new Error('Failed to fetch image');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `whattheysaid-quote-${quoteId}.jpg`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('Image downloaded', 'success');
+  } catch (err) {
+    if (err.name !== 'AbortError') {
+      showToast('Failed to download image', 'error');
+    }
+  } finally {
+    btn.classList.remove('share-btn--loading');
   }
 }
 

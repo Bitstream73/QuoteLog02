@@ -36,6 +36,7 @@ import historicalSourcesRouter from './routes/historicalSources.js';
 import contextRouter from './routes/context.js';
 import factCheckRouter from './routes/factCheck.js';
 import searchRouter from './routes/search.js';
+import { loadFonts } from './services/shareImage.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -179,19 +180,23 @@ export function createApp({ skipDbInit = false } = {}) {
             quote.source_name ? `Source: ${quote.source_name}` : null,
           ].filter(Boolean).join(' | ');
           const proto = req.get('x-forwarded-proto') || req.protocol;
-          const url = `${proto}://${req.get('host')}/quote/${quoteMatch[1]}`;
-          const image = quote.photo_url || '';
+          const host = req.get('host');
+          const url = `${proto}://${host}/quote/${quoteMatch[1]}`;
+          const image = `${proto}://${host}/api/quotes/${quoteMatch[1]}/share-image`;
 
           const metaTags = `
     <meta property="og:type" content="article">
     <meta property="og:title" content="${title}">
     <meta property="og:description" content="${esc(description)}">
     <meta property="og:url" content="${esc(url)}">
-    ${image ? `<meta property="og:image" content="${esc(image)}">` : ''}
-    <meta name="twitter:card" content="summary">
+    <meta property="og:image" content="${esc(image)}">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:type" content="image/jpeg">
+    <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="${title}">
     <meta name="twitter:description" content="${esc(description)}">
-    ${image ? `<meta name="twitter:image" content="${esc(image)}">` : ''}
+    <meta name="twitter:image" content="${esc(image)}">
     <title>${title} | WhatTheySaid.News</title>`;
 
           html = html.replace('<title>WhatTheySaid.News</title>', metaTags);
@@ -267,6 +272,11 @@ if (isMainModule || (!process.argv[1] && process.env.NODE_ENV !== 'test')) {
       port: config.port,
     });
     console.log(`Server running on port ${config.port}`);
+
+    // Pre-load fonts for share image generation (non-blocking)
+    loadFonts().catch(err => {
+      console.warn('[startup] Font loading failed (share images will retry on first request):', err.message);
+    });
 
     // In production, initialize DB asynchronously (with retries for volume mount)
     // then start the scheduler once DB is ready

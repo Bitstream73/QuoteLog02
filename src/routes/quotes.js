@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { getDb } from '../config/database.js';
 import { requireAdmin } from '../middleware/auth.js';
 import { searchQuotes } from '../services/vectorDb.js';
+import { generateShareImage, invalidateShareImageCache } from '../services/shareImage.js';
 import config from '../config/index.js';
 
 const router = Router();
@@ -318,6 +319,59 @@ function formatQuoteResult(q) {
   };
 }
 
+// 1x1 transparent JPEG for 404 fallback (prevents broken images in social crawlers)
+const FALLBACK_JPEG = Buffer.from(
+  '/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////2wBDAf//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/xAAUAQEAAAAAAAAAAAAAAAAAAAAA/8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAwDAQACEQMRAD8AKwA//9k=',
+  'base64'
+);
+
+// Generate share image for a quote (landscape for OG, portrait for download)
+router.get('/:id/share-image', async (req, res) => {
+  try {
+    const db = getDb();
+    const format = req.query.format === 'portrait' ? 'portrait' : 'landscape';
+
+    const quote = db.prepare(`
+      SELECT q.id, q.text, q.context, q.fact_check_category, q.fact_check_verdict,
+             q.fact_check_claim, q.fact_check_explanation, q.is_visible,
+             p.canonical_name, p.disambiguation, p.photo_url,
+             a.title AS article_title, s.name AS source_name
+      FROM quotes q
+      JOIN persons p ON q.person_id = p.id
+      LEFT JOIN quote_articles qa ON qa.quote_id = q.id
+      LEFT JOIN articles a ON qa.article_id = a.id
+      LEFT JOIN sources s ON a.source_id = s.id
+      WHERE q.id = ?
+    `).get(req.params.id);
+
+    if (!quote || !quote.is_visible) {
+      res.set('Content-Type', 'image/jpeg');
+      res.set('Cache-Control', 'no-cache');
+      return res.status(404).send(FALLBACK_JPEG);
+    }
+
+    const jpegBuffer = await generateShareImage({
+      quoteId: quote.id,
+      quoteText: quote.text,
+      authorName: quote.canonical_name,
+      disambiguation: quote.disambiguation,
+      verdict: quote.fact_check_verdict,
+      category: quote.fact_check_category,
+      claim: quote.fact_check_claim,
+      explanation: quote.fact_check_explanation,
+    }, format);
+
+    res.set('Content-Type', 'image/jpeg');
+    res.set('Cache-Control', 'public, max-age=3600');
+    res.send(jpegBuffer);
+  } catch (err) {
+    console.error('[share-image] Generation failed:', err.message);
+    res.set('Content-Type', 'image/jpeg');
+    res.set('Cache-Control', 'no-cache');
+    res.status(500).send(FALLBACK_JPEG);
+  }
+});
+
 // Get single quote with details
 router.get('/:id', (req, res) => {
   const db = getDb();
@@ -571,6 +625,9 @@ router.patch('/:id', requireAdmin, (req, res) => {
       ) WHERE id = ?
     `).run(quote.person_id, quote.person_id);
   }
+
+  // Invalidate share image cache when quote is edited
+  invalidateShareImageCache(parseInt(req.params.id));
 
   const updated = db.prepare('SELECT * FROM quotes WHERE id = ?').get(req.params.id);
   res.json({

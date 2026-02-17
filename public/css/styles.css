@@ -468,6 +468,21 @@ nav {
   border-bottom: 1px solid var(--accent);
 }
 
+.nav-support-link {
+  color: var(--accent) !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.nav-support-link svg {
+  opacity: 0.8;
+}
+
+.nav-support-link:hover svg {
+  opacity: 1;
+}
+
 .theme-toggle {
   background: none;
   border: 1px solid var(--border);
@@ -580,6 +595,43 @@ footer {
   font-family: var(--font-ui);
   font-size: 0.7rem;
   color: var(--text-muted);
+}
+
+.footer-support {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  justify-content: center;
+  padding: 0.75rem 0;
+}
+
+.footer-support-text {
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.footer-support-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #fff;
+  background: var(--accent);
+  padding: 0.4rem 1rem;
+  border-radius: var(--radius);
+  text-decoration: none;
+  transition: opacity 0.2s;
+}
+
+.footer-support-btn:hover {
+  opacity: 0.85;
 }
 
 /* ===================================
@@ -2874,6 +2926,11 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
 .share-btn.share-copied {
   color: var(--success);
   border-color: var(--success);
+}
+
+.share-btn--loading {
+  opacity: 0.5;
+  pointer-events: none;
 }
 
 /* ===================================
