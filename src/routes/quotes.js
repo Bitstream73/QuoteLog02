@@ -355,7 +355,7 @@ router.get('/:id', (req, res) => {
     WHERE q.canonical_quote_id = ?
   `).all(quote.id);
 
-  res.json({
+  const response = {
     quote: {
       id: quote.id,
       text: quote.text,
@@ -381,7 +381,78 @@ router.get('/:id', (req, res) => {
       text: v.text,
       sourceUrls: JSON.parse(v.source_urls || '[]'),
     })),
-  });
+  };
+
+  // Admin-only: include full details for the admin panel
+  if (admin) {
+    response.quote.quoteDateTime = quote.quote_datetime || null;
+    response.quote.firstSeenAt = quote.first_seen_at || null;
+    response.quote.rssMetadata = quote.rss_metadata ? JSON.parse(quote.rss_metadata) : null;
+    response.quote.shareCount = quote.share_count || 0;
+    response.quote.trendingScore = quote.trending_score || 0;
+    response.quote.factCheckCategory = quote.fact_check_category || null;
+    response.quote.factCheckConfidence = quote.fact_check_confidence != null ? quote.fact_check_confidence : null;
+    response.quote.canonicalQuoteId = quote.canonical_quote_id || null;
+
+    const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(quote.person_id);
+    if (person) {
+      const metadata = person.metadata ? JSON.parse(person.metadata) : {};
+      response.adminAuthor = {
+        id: person.id,
+        canonicalName: person.canonical_name,
+        disambiguation: person.disambiguation,
+        wikidataId: person.wikidata_id,
+        firstSeenAt: person.first_seen_at,
+        lastSeenAt: person.last_seen_at,
+        quoteCount: person.quote_count,
+        photoUrl: person.photo_url || null,
+        category: person.category || 'Other',
+        categoryContext: person.category_context || null,
+        importantsCount: person.importants_count || 0,
+        shareCount: person.share_count || 0,
+        viewCount: person.view_count || 0,
+        trendingScore: person.trending_score || 0,
+        organizations: metadata.organizations || [],
+        titles: metadata.titles || [],
+      };
+    }
+
+    if (articles.length > 0) {
+      const sourceIds = new Set();
+      const adminSources = [];
+      for (const a of articles) {
+        const art = db.prepare('SELECT source_id FROM articles WHERE id = ?').get(a.id);
+        if (art && art.source_id && !sourceIds.has(art.source_id)) {
+          sourceIds.add(art.source_id);
+          const src = db.prepare('SELECT * FROM sources WHERE id = ?').get(art.source_id);
+          if (src) {
+            adminSources.push({
+              id: src.id, domain: src.domain, name: src.name,
+              rssUrl: src.rss_url, enabled: src.enabled,
+              isTopStory: src.is_top_story,
+              consecutiveFailures: src.consecutive_failures,
+              createdAt: src.created_at, updatedAt: src.updated_at,
+            });
+          }
+        }
+      }
+      response.adminSources = adminSources;
+    }
+
+    const topics = db.prepare(`
+      SELECT t.id, t.name, t.status FROM quote_topics qt
+      JOIN topics t ON qt.topic_id = t.id WHERE qt.quote_id = ? ORDER BY t.name
+    `).all(quote.id);
+    response.adminTopics = topics;
+
+    const keywords = db.prepare(`
+      SELECT k.id, k.name, qk.confidence FROM quote_keywords qk
+      JOIN keywords k ON qk.keyword_id = k.id WHERE qk.quote_id = ? ORDER BY k.name
+    `).all(quote.id);
+    response.adminKeywords = keywords;
+  }
+
+  res.json(response);
 });
 
 // Toggle quote visibility (admin only)
@@ -440,12 +511,12 @@ router.delete('/:id', requireAdmin, (req, res) => {
   res.json({ success: true, deletedId: quoteId });
 });
 
-// Edit quote text (admin only)
+// Edit quote fields (admin only)
 router.patch('/:id', requireAdmin, (req, res) => {
   const db = getDb();
-  const { text, context } = req.body;
+  const { text, context, quoteType, quoteDateTime, isVisible } = req.body;
 
-  const quote = db.prepare('SELECT id FROM quotes WHERE id = ?').get(req.params.id);
+  const quote = db.prepare('SELECT id, person_id FROM quotes WHERE id = ?').get(req.params.id);
   if (!quote) {
     return res.status(404).json({ error: 'Quote not found' });
   }
@@ -461,8 +532,35 @@ router.patch('/:id', requireAdmin, (req, res) => {
     db.prepare('UPDATE quotes SET context = ? WHERE id = ?').run(context || null, req.params.id);
   }
 
+  if (quoteType !== undefined) {
+    if (!['direct', 'indirect'].includes(quoteType)) {
+      return res.status(400).json({ error: 'quoteType must be "direct" or "indirect"' });
+    }
+    db.prepare('UPDATE quotes SET quote_type = ? WHERE id = ?').run(quoteType, req.params.id);
+  }
+
+  if (quoteDateTime !== undefined) {
+    db.prepare('UPDATE quotes SET quote_datetime = ? WHERE id = ?').run(quoteDateTime || null, req.params.id);
+  }
+
+  if (isVisible !== undefined) {
+    db.prepare('UPDATE quotes SET is_visible = ? WHERE id = ?').run(isVisible ? 1 : 0, req.params.id);
+    db.prepare(`
+      UPDATE persons SET quote_count = (
+        SELECT COUNT(*) FROM quotes WHERE person_id = ? AND is_visible = 1 AND canonical_quote_id IS NULL
+      ) WHERE id = ?
+    `).run(quote.person_id, quote.person_id);
+  }
+
   const updated = db.prepare('SELECT * FROM quotes WHERE id = ?').get(req.params.id);
-  res.json({ success: true, quote: { id: updated.id, text: updated.text, context: updated.context } });
+  res.json({
+    success: true,
+    quote: {
+      id: updated.id, text: updated.text, context: updated.context,
+      quoteType: updated.quote_type, quoteDateTime: updated.quote_datetime,
+      isVisible: updated.is_visible,
+    },
+  });
 });
 
 export default router;

@@ -422,11 +422,15 @@ async function runReferencesPipeline(quoteData) {
  * Mutates enrichedData in place.
  */
 async function validateReferenceUrls(enrichedData) {
-  if (!enrichedData?.references?.length) return enrichedData;
+  if (!enrichedData) return enrichedData;
+
+  const hasRefs = enrichedData.references?.length > 0;
+  const hasClip = enrichedData.media_clip?.enrichment?.found;
+  if (!hasRefs && !hasClip) return enrichedData;
 
   // Collect all unique URLs to validate
   const urlSet = new Set();
-  for (const ref of enrichedData.references) {
+  for (const ref of (enrichedData.references || [])) {
     const e = ref.enrichment;
     if (!e) continue;
     if (e.primary_url) urlSet.add(cleanUrl(e.primary_url));
@@ -435,6 +439,13 @@ async function validateReferenceUrls(enrichedData) {
         if (link.url) urlSet.add(cleanUrl(link.url));
       }
     }
+  }
+
+  // Also collect media clip URLs
+  if (hasClip) {
+    const clipE = enrichedData.media_clip.enrichment;
+    if (clipE.primary_url) urlSet.add(cleanUrl(clipE.primary_url));
+    if (clipE.media_embed?.url) urlSet.add(cleanUrl(clipE.media_embed.url));
   }
 
   if (urlSet.size === 0) return enrichedData;
@@ -457,7 +468,7 @@ async function validateReferenceUrls(enrichedData) {
   );
 
   // Apply results to references
-  for (const ref of enrichedData.references) {
+  for (const ref of (enrichedData.references || [])) {
     const e = ref.enrichment;
     if (!e) continue;
 
@@ -482,6 +493,21 @@ async function validateReferenceUrls(enrichedData) {
       } else {
         e.primary_url = null;
       }
+    }
+  }
+
+  // Apply results to media clip — remove broken embed/primary URLs
+  if (hasClip) {
+    const clipE = enrichedData.media_clip.enrichment;
+
+    if (clipE.media_embed?.url && !results.get(cleanUrl(clipE.media_embed.url))) {
+      logger.warn('references', 'broken_media_embed_url', { url: clipE.media_embed.url });
+      clipE.media_embed.url = null;
+    }
+
+    if (clipE.primary_url && !results.get(cleanUrl(clipE.primary_url))) {
+      logger.warn('references', 'broken_media_clip_url', { url: clipE.primary_url });
+      clipE.primary_url = null;
     }
   }
 
