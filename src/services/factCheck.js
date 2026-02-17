@@ -376,7 +376,7 @@ async function factCheckQuote(quoteData, options = {}) {
   const factCheckHtml = factCheckResult?.html || '';
   const referencesHtml = referencesResult?.html || '';
 
-  const combinedHtml = [referencesHtml, factCheckHtml].filter(Boolean).join('\n');
+  const combinedHtml = [factCheckHtml, referencesHtml].filter(Boolean).join('\n');
 
   return {
     category: factCheckResult?.category || null,
