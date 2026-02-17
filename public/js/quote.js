@@ -126,6 +126,11 @@ async function renderQuote(id) {
       }
     }
 
+    // Admin details panel (twirl-down)
+    if (typeof isAdmin !== 'undefined' && isAdmin) {
+      html += buildAdminQuoteDetailsPanel(data);
+    }
+
     content.innerHTML = html;
 
     // Reset annotation flag for this page render
@@ -377,5 +382,248 @@ function cleanUrlForAttr(url) {
     .replace(/&quot;/g, '"')
     .replace(/&#x27;/g, "'")
     .replace(/&#39;/g, "'");
+}
+
+// ---------------------------------------------------------------------------
+// Admin Details Panel
+// ---------------------------------------------------------------------------
+
+function buildAdminQuoteDetailsPanel(data) {
+  const q = data.quote;
+  const author = data.adminAuthor;
+  const sources = data.adminSources || [];
+  const topics = data.adminTopics || [];
+  const keywords = data.adminKeywords || [];
+
+  // Filter keywords that are NOT in any topic (topics have their own keywords)
+  const topicNames = new Set(topics.map(t => t.name.toLowerCase()));
+
+  let html = `
+    <details class="admin-details-panel" id="admin-details-panel">
+      <summary class="admin-details-panel__summary">
+        <span class="admin-details-panel__title">Admin Details</span>
+      </summary>
+      <div class="admin-details-panel__body">
+  `;
+
+  // --- Topics section ---
+  html += `<div class="admin-details-section">
+    <h4 class="admin-details-section__title">Topics</h4>`;
+  if (topics.length > 0) {
+    html += '<div class="admin-details-tags">';
+    for (const t of topics) {
+      html += `<span class="admin-details-tag admin-details-tag--topic">${escapeHtml(t.name)}<span class="admin-details-tag__status">${t.status}</span></span>`;
+    }
+    html += '</div>';
+  } else {
+    html += '<p class="admin-details-empty">No topics associated</p>';
+  }
+  html += '</div>';
+
+  // --- Keywords section ---
+  html += `<div class="admin-details-section">
+    <h4 class="admin-details-section__title">Keywords</h4>`;
+  if (keywords.length > 0) {
+    html += '<div class="admin-details-tags">';
+    for (const k of keywords) {
+      html += `<span class="admin-details-tag admin-details-tag--keyword">${escapeHtml(k.name)}${k.confidence ? `<span class="admin-details-tag__confidence">${k.confidence}</span>` : ''}</span>`;
+    }
+    html += '</div>';
+  } else {
+    html += '<p class="admin-details-empty">No keywords associated</p>';
+  }
+  html += '</div>';
+
+  // --- Quote Fields section ---
+  html += `<div class="admin-details-section">
+    <h4 class="admin-details-section__title">Quote Fields</h4>
+    <table class="admin-details-table">
+      <tbody>
+        ${adminFieldRow('ID', q.id, false)}
+        ${adminFieldRow('Text', q.text, true, 'textarea', q.id, 'quote', 'text')}
+        ${adminFieldRow('Context', q.context || '', true, 'textarea', q.id, 'quote', 'context')}
+        ${adminFieldRow('Type', q.quoteType || 'direct', true, 'select:direct,indirect', q.id, 'quote', 'quoteType')}
+        ${adminFieldRow('Visible', q.isVisible ? 'Yes' : 'No', true, 'toggle', q.id, 'quote', 'isVisible')}
+        ${adminFieldRow('Quote Date', q.quoteDateTime || '', true, 'text', q.id, 'quote', 'quoteDateTime')}
+        ${adminFieldRow('First Seen', q.firstSeenAt || '', false)}
+        ${adminFieldRow('Created', q.createdAt || '', false)}
+        ${adminFieldRow('Canonical Quote ID', q.canonicalQuoteId || 'None', false)}
+        ${adminFieldRow('Importants', q.importantsCount || 0, false)}
+        ${adminFieldRow('Shares', q.shareCount || 0, false)}
+        ${adminFieldRow('Trending Score', q.trendingScore || 0, false)}
+        ${adminFieldRow('Fact Check', q.factCheckCategory ? q.factCheckCategory + (q.factCheckConfidence != null ? ' (' + (q.factCheckConfidence * 100).toFixed(0) + '%)' : '') : 'None', false)}
+        ${adminFieldRow('Source URLs', (q.sourceUrls || []).length > 0 ? q.sourceUrls.map(u => '<a href="' + escapeHtml(u) + '" target="_blank" rel="noopener" style="color:var(--accent);word-break:break-all">' + escapeHtml(u) + '</a>').join('<br>') : 'None', false, 'html')}
+        ${q.rssMetadata ? adminFieldRow('RSS Article', '<a href="' + escapeHtml(q.rssMetadata.articleUrl || '') + '" target="_blank" rel="noopener" style="color:var(--accent)">' + escapeHtml(q.rssMetadata.articleTitle || '') + '</a><br><span style="color:var(--text-muted)">' + escapeHtml(q.rssMetadata.domain || '') + ' &middot; ' + escapeHtml(q.rssMetadata.publishedAt || '') + '</span>', false, 'html') : ''}
+      </tbody>
+    </table>
+  </div>`;
+
+  // --- Author Fields section ---
+  if (author) {
+    html += `<div class="admin-details-section">
+      <h4 class="admin-details-section__title">Author Fields</h4>
+      <table class="admin-details-table">
+        <tbody>
+          ${adminFieldRow('ID', author.id, false)}
+          ${adminFieldRow('Name', author.canonicalName || '', true, 'text', author.id, 'author', 'canonicalName')}
+          ${adminFieldRow('Disambiguation', author.disambiguation || '', true, 'text', author.id, 'author', 'disambiguation')}
+          ${adminFieldRow('Photo URL', author.photoUrl || '', true, 'text', author.id, 'author', 'photoUrl')}
+          ${adminFieldRow('Category', author.category || 'Other', true, 'text', author.id, 'author', 'category')}
+          ${adminFieldRow('Category Context', author.categoryContext || '', true, 'text', author.id, 'author', 'categoryContext')}
+          ${adminFieldRow('Wikidata ID', author.wikidataId || 'None', false)}
+          ${adminFieldRow('First Seen', author.firstSeenAt || '', false)}
+          ${adminFieldRow('Last Seen', author.lastSeenAt || '', false)}
+          ${adminFieldRow('Quote Count', author.quoteCount || 0, false)}
+          ${adminFieldRow('Importants', author.importantsCount || 0, false)}
+          ${adminFieldRow('Shares', author.shareCount || 0, false)}
+          ${adminFieldRow('Views', author.viewCount || 0, false)}
+          ${adminFieldRow('Trending Score', author.trendingScore || 0, false)}
+          ${(author.organizations || []).length > 0 ? adminFieldRow('Organizations', author.organizations.join(', '), false) : ''}
+          ${(author.titles || []).length > 0 ? adminFieldRow('Titles', author.titles.join(', '), false) : ''}
+        </tbody>
+      </table>
+    </div>`;
+  }
+
+  // --- Source Fields section ---
+  if (sources.length > 0) {
+    for (const src of sources) {
+      html += `<div class="admin-details-section">
+        <h4 class="admin-details-section__title">Source: ${escapeHtml(src.name || src.domain)}</h4>
+        <table class="admin-details-table">
+          <tbody>
+            ${adminFieldRow('ID', src.id, false)}
+            ${adminFieldRow('Domain', src.domain || '', true, 'text', src.id, 'source', 'domain')}
+            ${adminFieldRow('Name', src.name || '', true, 'text', src.id, 'source', 'name')}
+            ${adminFieldRow('RSS URL', src.rssUrl || '', true, 'text', src.id, 'source', 'rss_url')}
+            ${adminFieldRow('Enabled', src.enabled ? 'Yes' : 'No', true, 'toggle', src.id, 'source', 'enabled')}
+            ${adminFieldRow('Top Story', src.isTopStory ? 'Yes' : 'No', true, 'toggle', src.id, 'source', 'is_top_story')}
+            ${adminFieldRow('Failures', src.consecutiveFailures || 0, false)}
+            ${adminFieldRow('Created', src.createdAt || '', false)}
+            ${adminFieldRow('Updated', src.updatedAt || '', false)}
+          </tbody>
+        </table>
+      </div>`;
+    }
+  }
+
+  html += '</div></details>';
+  return html;
+}
+
+function adminFieldRow(label, value, editable, inputType, entityId, entityType, fieldName) {
+  const displayValue = inputType === 'html' ? value : escapeHtml(String(value));
+
+  if (!editable) {
+    return `<tr class="admin-details-row">
+      <td class="admin-details-row__label">${escapeHtml(label)}</td>
+      <td class="admin-details-row__value">${displayValue}</td>
+    </tr>`;
+  }
+
+  const editId = `admin-edit-${entityType}-${fieldName}-${entityId}`;
+  return `<tr class="admin-details-row">
+    <td class="admin-details-row__label">${escapeHtml(label)}</td>
+    <td class="admin-details-row__value admin-details-row__value--editable">
+      <span id="${editId}-display" onclick="adminStartInlineEdit('${editId}', '${inputType}', '${entityType}', '${fieldName}', ${entityId})">${displayValue}</span>
+      <button class="admin-details-edit-btn" onclick="adminStartInlineEdit('${editId}', '${inputType}', '${entityType}', '${fieldName}', ${entityId})" title="Edit">&#9998;</button>
+    </td>
+  </tr>`;
+}
+
+function adminStartInlineEdit(editId, inputType, entityType, fieldName, entityId) {
+  const display = document.getElementById(editId + '-display');
+  if (!display || display.style.display === 'none') return;
+
+  const currentValue = display.textContent.trim();
+  display.style.display = 'none';
+
+  // Hide the edit button
+  const editBtn = display.nextElementSibling;
+  if (editBtn) editBtn.style.display = 'none';
+
+  let inputHtml;
+  if (inputType === 'textarea') {
+    inputHtml = `<textarea id="${editId}-input" class="admin-details-input" rows="3">${escapeHtml(currentValue)}</textarea>`;
+  } else if (inputType.startsWith('select:')) {
+    const options = inputType.substring(7).split(',');
+    inputHtml = `<select id="${editId}-input" class="admin-details-input">
+      ${options.map(o => `<option value="${o}" ${o === currentValue ? 'selected' : ''}>${o}</option>`).join('')}
+    </select>`;
+  } else if (inputType === 'toggle') {
+    const isOn = currentValue === 'Yes';
+    inputHtml = `<select id="${editId}-input" class="admin-details-input">
+      <option value="true" ${isOn ? 'selected' : ''}>Yes</option>
+      <option value="false" ${!isOn ? 'selected' : ''}>No</option>
+    </select>`;
+  } else {
+    inputHtml = `<input id="${editId}-input" type="text" class="admin-details-input" value="${escapeHtml(currentValue)}">`;
+  }
+
+  const actionsHtml = `<div id="${editId}-actions" class="admin-details-actions">
+    ${inputHtml}
+    <div class="admin-details-actions__buttons">
+      <button class="admin-details-save-btn" onclick="adminSaveInlineEdit('${editId}', '${inputType}', '${entityType}', '${fieldName}', ${entityId})">Save</button>
+      <button class="admin-details-cancel-btn" onclick="adminCancelInlineEdit('${editId}')">Cancel</button>
+    </div>
+  </div>`;
+
+  display.insertAdjacentHTML('afterend', actionsHtml);
+
+  // Focus the input
+  const input = document.getElementById(editId + '-input');
+  if (input) input.focus();
+}
+
+function adminCancelInlineEdit(editId) {
+  const actions = document.getElementById(editId + '-actions');
+  if (actions) actions.remove();
+  const display = document.getElementById(editId + '-display');
+  if (display) display.style.display = '';
+  // Show the edit button again
+  if (display && display.nextElementSibling) display.nextElementSibling.style.display = '';
+}
+
+async function adminSaveInlineEdit(editId, inputType, entityType, fieldName, entityId) {
+  const input = document.getElementById(editId + '-input');
+  if (!input) return;
+
+  let newValue = input.value;
+
+  // Convert toggle values
+  if (inputType === 'toggle') {
+    newValue = newValue === 'true';
+  }
+
+  // Build the API call
+  let url, body;
+  if (entityType === 'quote') {
+    url = `/quotes/${entityId}`;
+    body = { [fieldName]: newValue };
+  } else if (entityType === 'author') {
+    url = `/authors/${entityId}`;
+    body = { [fieldName]: newValue };
+  } else if (entityType === 'source') {
+    url = `/sources/${entityId}`;
+    body = { [fieldName]: newValue };
+  }
+
+  try {
+    await API.patch(url, body);
+    showToast('Updated successfully', 'success');
+
+    // Update the display value
+    const display = document.getElementById(editId + '-display');
+    if (display) {
+      if (inputType === 'toggle') {
+        display.textContent = newValue ? 'Yes' : 'No';
+      } else {
+        display.textContent = input.value;
+      }
+    }
+    adminCancelInlineEdit(editId);
+  } catch (err) {
+    showToast('Error: ' + err.message, 'error');
+  }
 }
 
