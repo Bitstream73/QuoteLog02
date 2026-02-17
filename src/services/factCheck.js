@@ -404,6 +404,7 @@ async function runFactCheckPipeline(quoteData) {
 
 async function runReferencesPipeline(quoteData) {
   const enriched = await extractAndEnrichReferences(quoteData);
+  await validateReferenceUrls(enriched);
 
   if (enriched.references.length === 0 && !enriched.media_clip?.enrichment?.found) {
     return { enriched: null, html: '' };
@@ -411,6 +412,80 @@ async function runReferencesPipeline(quoteData) {
 
   const html = renderReferencesHTML(enriched);
   return { enriched, html };
+}
+
+/**
+ * Validate all reference URLs with HEAD requests.
+ * Broken URLs (4xx/5xx/timeout) are removed or replaced:
+ * - If primary_url is broken, promote the first working additional_link
+ * - Remove broken entries from additional_links
+ * Mutates enrichedData in place.
+ */
+async function validateReferenceUrls(enrichedData) {
+  if (!enrichedData?.references?.length) return enrichedData;
+
+  // Collect all unique URLs to validate
+  const urlSet = new Set();
+  for (const ref of enrichedData.references) {
+    const e = ref.enrichment;
+    if (!e) continue;
+    if (e.primary_url) urlSet.add(cleanUrl(e.primary_url));
+    if (e.additional_links) {
+      for (const link of e.additional_links) {
+        if (link.url) urlSet.add(cleanUrl(link.url));
+      }
+    }
+  }
+
+  if (urlSet.size === 0) return enrichedData;
+
+  // Validate all URLs in parallel
+  const results = new Map();
+  await Promise.all(
+    [...urlSet].map(async (url) => {
+      try {
+        const res = await fetch(url, {
+          method: 'HEAD',
+          redirect: 'follow',
+          signal: AbortSignal.timeout(4000),
+        });
+        results.set(url, res.ok);
+      } catch {
+        results.set(url, false);
+      }
+    })
+  );
+
+  // Apply results to references
+  for (const ref of enrichedData.references) {
+    const e = ref.enrichment;
+    if (!e) continue;
+
+    // Filter broken additional_links first
+    if (e.additional_links) {
+      e.additional_links = e.additional_links.filter(link => {
+        const ok = results.get(cleanUrl(link.url));
+        if (!ok) logger.warn('references', 'broken_additional_link', { url: link.url, ref: ref.display_name });
+        return ok;
+      });
+    }
+
+    // Check primary_url
+    if (e.primary_url && !results.get(cleanUrl(e.primary_url))) {
+      logger.warn('references', 'broken_primary_url', { url: e.primary_url, ref: ref.display_name });
+
+      // Promote first working additional_link
+      if (e.additional_links?.length > 0) {
+        const promoted = e.additional_links.shift();
+        e.primary_url = promoted.url;
+        e.primary_source_name = promoted.label || e.primary_source_name;
+      } else {
+        e.primary_url = null;
+      }
+    }
+  }
+
+  return enrichedData;
 }
 
 
@@ -454,6 +529,7 @@ export {
   classifyAndVerify,
   factCheckQuote,
   extractAndEnrichReferences,
+  validateReferenceUrls,
   VERDICT_COLORS,
   VERDICT_LABELS,
 };

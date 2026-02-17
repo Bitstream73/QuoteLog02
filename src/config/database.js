@@ -906,8 +906,8 @@ For each quote, return:
   3-4: Routine statement, standard commentary, generic encouragement
   1-2: Vague platitude, meaningless fragment, purely descriptive, no substance
 
-  HIGH: makes a specific claim, sets a goal, predicts, reveals information, accuses, is funny/memorable, provides genuine insight
-  LOW: "We need to do better" (platitude), "It was a nice event" (descriptive), "The meeting begins at noon" (procedural), fragments without assertion
+  HIGH (5+): makes a specific, checkable claim; sets a measurable goal; predicts a concrete outcome; reveals new information; makes a direct accusation; provides genuine analytical insight
+  LOW (1-4): "We need to do better" (platitude), "It was a nice event" (descriptive), "The meeting begins at noon" (procedural), fragments without assertion, pure rhetoric without a specific claim ("For 47 years, they've been talking and talking"), descriptions of routine actions ("Investigative actions are being carried out"), vague motivational statements
 
 - fact_check_category: Classify this quote's verifiability:
   "A" - Contains SPECIFIC, VERIFIABLE factual claims (statistics, dates, quantities, named events, measurable outcomes)
@@ -917,6 +917,7 @@ For each quote, return:
 - fact_check_score: Float 0.0-1.0 confidence in the fact_check_category assignment (1.0 = certain, 0.5 = borderline)
 
 Rules:
+- Do NOT extract quotes that are purely rhetorical, procedural, or vague. A quote must contain at least one specific claim, assertion, opinion, accusation, or prediction to be worth extracting.
 - ONLY extract verbatim quotes that appear inside quotation marks.
 - Do NOT extract indirect/reported speech, paraphrases, or descriptions of what someone said.
 - Only extract quotes attributed to a specific named person. Skip unattributed quotes.

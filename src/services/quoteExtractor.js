@@ -237,10 +237,12 @@ export async function extractQuotesFromArticle(articleText, article, db, io) {
       const rawDate = q.quote_date === 'unknown' ? null : (q.quote_date || article.published_at || null);
       const quoteDate = normalizeToIsoDate(rawDate);
 
-      // Determine visibility based on significance score and fragment detection
+      // Determine visibility based on significance score, fragment detection, and fact-check category
       const significance = parseInt(q.significance, 10) || 5;
       const fragment = isQuoteFragment(q.quote_text);
-      const isVisible = (!fragment && significance >= minSignificance) ? 1 : 0;
+      const factCheckCat = (q.fact_check_category || '').toUpperCase();
+      const isRhetorical = factCheckCat === 'C';
+      const isVisible = (!fragment && !isRhetorical && significance >= minSignificance) ? 1 : 0;
 
       // Insert and deduplicate quote (use article summary as context fallback)
       const quoteResult = await insertAndDeduplicateQuote(
@@ -288,6 +290,8 @@ export async function extractQuotesFromArticle(articleText, article, db, io) {
           significance,
           isVisible,
           isFragment: fragment,
+          isRhetorical,
+          factCheckCategory: factCheckCat || null,
           articleUrl: article.url,
         });
       }

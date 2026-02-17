@@ -4979,6 +4979,16 @@ span.evidence-source-cite {
   margin: 1rem 0;
 }
 
+/* Override centered/constrained summary when inside quote page context */
+.quote-page__context .quote-hero__summary {
+  max-width: none;
+  margin: 0;
+  text-align: left;
+  display: block;
+  -webkit-line-clamp: unset;
+  overflow: visible;
+}
+
 /* Quote page — source section */
 .quote-page__source {
   margin: 1.5rem 0;

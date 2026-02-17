@@ -11,6 +11,8 @@
   margin: 1.25rem 0;
   border-top: 1px solid var(--border);
   padding-top: 1rem;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .fact-check-result h3 {
@@ -28,6 +30,8 @@
   padding: 1rem 1.25rem;
   font-family: var(--font-body);
   line-height: 1.6;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 /* --- Header --- */
