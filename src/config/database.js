@@ -598,6 +598,9 @@ function initializeTables(db) {
   if (!quoteCols2.includes('fact_check_confidence')) {
     db.exec(`ALTER TABLE quotes ADD COLUMN fact_check_confidence REAL`);
   }
+  if (!quoteCols2.includes('reviewed_at')) {
+    db.exec(`ALTER TABLE quotes ADD COLUMN reviewed_at TEXT`);
+  }
   db.exec(`CREATE INDEX IF NOT EXISTS idx_quotes_fact_check ON quotes(fact_check_category) WHERE fact_check_category IS NOT NULL`);
 
   // articles: importants_count, share_count, view_count, trending_score

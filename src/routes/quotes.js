@@ -55,11 +55,18 @@ router.get('/', (req, res) => {
   const search = req.query.search || null;
   const tab = req.query.tab || null;
 
+  const publishedAfter = req.query.publishedAfter || null;
+  const publishedBefore = req.query.publishedBefore || null;
+  const excludeReviewed = req.query.excludeReviewed === '1';
+
   const visibilityFilter = admin ? '' : 'AND q.is_visible = 1';
   const topStoriesFilter = tab === 'top-stories' ? 'AND (a.is_top_story = 1 OR s.is_top_story = 1)' : '';
   const { sql: categoryFilter, params: categoryParams } = getBroadCategoryFilter(category);
   const subFilterSql = subFilter ? 'AND (p.category_context LIKE ? OR p.category LIKE ? OR q.context LIKE ?)' : '';
   const searchFilter = search ? 'AND (q.text LIKE ? OR p.canonical_name LIKE ? OR p.category LIKE ? OR q.context LIKE ? OR a.title LIKE ?)' : '';
+  const publishedAfterFilter = publishedAfter ? 'AND a.published_at >= ?' : '';
+  const publishedBeforeFilter = publishedBefore ? 'AND a.published_at <= ?' : '';
+  const reviewedFilter = excludeReviewed ? 'AND q.reviewed_at IS NULL' : '';
 
   const params = [...categoryParams];
   if (subFilterSql) {
@@ -70,6 +77,8 @@ router.get('/', (req, res) => {
     const searchTerm = `%${search}%`;
     params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
   }
+  if (publishedAfter) params.push(publishedAfter);
+  if (publishedBefore) params.push(publishedBefore);
 
   // Count total canonical quotes (not variants)
   const total = db.prepare(
@@ -78,7 +87,7 @@ router.get('/', (req, res) => {
      LEFT JOIN quote_articles qa ON qa.quote_id = q.id
      LEFT JOIN articles a ON qa.article_id = a.id
      LEFT JOIN sources s ON a.source_id = s.id
-     WHERE q.canonical_quote_id IS NULL ${visibilityFilter} ${topStoriesFilter} ${categoryFilter} ${subFilterSql} ${searchFilter}`
+     WHERE q.canonical_quote_id IS NULL ${visibilityFilter} ${topStoriesFilter} ${categoryFilter} ${subFilterSql} ${searchFilter} ${publishedAfterFilter} ${publishedBeforeFilter} ${reviewedFilter}`
   ).get(...params).count;
 
   // Get quotes with person info + first linked article/source + vote score
@@ -95,7 +104,7 @@ router.get('/', (req, res) => {
     LEFT JOIN quote_articles qa ON qa.quote_id = q.id
     LEFT JOIN articles a ON qa.article_id = a.id
     LEFT JOIN sources s ON a.source_id = s.id
-    WHERE q.canonical_quote_id IS NULL ${visibilityFilter} ${topStoriesFilter} ${categoryFilter} ${subFilterSql} ${searchFilter}
+    WHERE q.canonical_quote_id IS NULL ${visibilityFilter} ${topStoriesFilter} ${categoryFilter} ${subFilterSql} ${searchFilter} ${publishedAfterFilter} ${publishedBeforeFilter} ${reviewedFilter}
     GROUP BY q.id
     ORDER BY COALESCE(
       CASE WHEN q.quote_datetime GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]*'
@@ -453,6 +462,17 @@ router.get('/:id', (req, res) => {
   }
 
   res.json(response);
+});
+
+// Mark quote as reviewed (admin only)
+router.post('/:id/reviewed', requireAdmin, (req, res) => {
+  const db = getDb();
+  const quote = db.prepare('SELECT id FROM quotes WHERE id = ?').get(req.params.id);
+  if (!quote) {
+    return res.status(404).json({ error: 'Quote not found' });
+  }
+  db.prepare("UPDATE quotes SET reviewed_at = datetime('now') WHERE id = ?").run(req.params.id);
+  res.json({ success: true });
 });
 
 // Toggle quote visibility (admin only)

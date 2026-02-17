@@ -120,6 +120,8 @@ async function renderDisambiguationTab() {
 
 let _adminQuotePage = 1;
 let _adminQuoteSearch = '';
+let _adminQuoteTimeFilter = '';
+let _adminQuoteCustomDate = '';
 
 async function renderQuoteManagementTab() {
   const container = document.getElementById('review-tab-content');
@@ -127,10 +129,22 @@ async function renderQuoteManagementTab() {
 
   container.innerHTML = `
     <p class="page-subtitle">View, edit, and manage extracted quotes.</p>
-    <div style="display:flex;gap:0.5rem;margin-bottom:1rem">
+    <div style="display:flex;gap:0.5rem;margin-bottom:0.75rem">
       <input type="search" id="admin-quote-search" placeholder="Search quotes, authors..." class="input-text" style="flex:1;width:auto" value="${escapeHtml(_adminQuoteSearch)}" onkeydown="if(event.key==='Enter')searchAdminQuotes()">
       <button class="btn btn-primary btn-sm" onclick="searchAdminQuotes()">Search</button>
       <button class="btn btn-secondary btn-sm" onclick="clearAdminSearch()">Clear</button>
+    </div>
+    <div class="review-time-filters">
+      <span class="review-time-label">Published:</span>
+      <button class="review-time-btn ${_adminQuoteTimeFilter === '1h' ? 'active' : ''}" onclick="setQuoteTimeFilter('1h')">Last Hour</button>
+      <button class="review-time-btn ${_adminQuoteTimeFilter === '12h' ? 'active' : ''}" onclick="setQuoteTimeFilter('12h')">Last 12 Hours</button>
+      <button class="review-time-btn ${_adminQuoteTimeFilter === '1d' ? 'active' : ''}" onclick="setQuoteTimeFilter('1d')">Last Day</button>
+      <button class="review-time-btn ${_adminQuoteTimeFilter === '1w' ? 'active' : ''}" onclick="setQuoteTimeFilter('1w')">Last Week</button>
+      <button class="review-time-btn ${_adminQuoteTimeFilter === 'custom' ? 'active' : ''}" onclick="toggleCustomDatePicker()">Custom</button>
+      ${_adminQuoteTimeFilter ? '<button class="review-time-btn review-time-clear" onclick="setQuoteTimeFilter(\\'\\')">Clear</button>' : ''}
+      <div id="custom-date-picker" style="display:${_adminQuoteTimeFilter === 'custom' ? 'flex' : 'none'};gap:0.5rem;align-items:center;margin-left:0.5rem">
+        <input type="date" id="custom-date-input" class="input-text" style="width:auto;font-size:0.8rem" value="${escapeHtml(_adminQuoteCustomDate)}" onchange="applyCustomDate()">
+      </div>
     </div>
     <div id="admin-quotes-list">
       <div class="loading">Loading quotes...</div>
@@ -150,10 +164,70 @@ function searchAdminQuotes() {
 
 function clearAdminSearch() {
   _adminQuoteSearch = '';
+  _adminQuoteTimeFilter = '';
+  _adminQuoteCustomDate = '';
   const input = document.getElementById('admin-quote-search');
   if (input) input.value = '';
   _adminQuotePage = 1;
   loadAdminQuotes();
+}
+
+function setQuoteTimeFilter(filter) {
+  _adminQuoteTimeFilter = filter;
+  _adminQuotePage = 1;
+  if (filter !== 'custom') _adminQuoteCustomDate = '';
+  renderQuoteManagementTab();
+}
+
+function toggleCustomDatePicker() {
+  if (_adminQuoteTimeFilter === 'custom') {
+    _adminQuoteTimeFilter = '';
+    _adminQuoteCustomDate = '';
+    renderQuoteManagementTab();
+  } else {
+    _adminQuoteTimeFilter = 'custom';
+    renderQuoteManagementTab();
+  }
+}
+
+function applyCustomDate() {
+  const input = document.getElementById('custom-date-input');
+  if (input && input.value) {
+    _adminQuoteCustomDate = input.value;
+    _adminQuotePage = 1;
+    loadAdminQuotes();
+  }
+}
+
+function getTimeFilterISO() {
+  const now = new Date();
+  if (_adminQuoteTimeFilter === '1h') {
+    return new Date(now.getTime() - 60 * 60 * 1000).toISOString();
+  } else if (_adminQuoteTimeFilter === '12h') {
+    return new Date(now.getTime() - 12 * 60 * 60 * 1000).toISOString();
+  } else if (_adminQuoteTimeFilter === '1d') {
+    return new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+  } else if (_adminQuoteTimeFilter === '1w') {
+    return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  } else if (_adminQuoteTimeFilter === 'custom' && _adminQuoteCustomDate) {
+    return _adminQuoteCustomDate + 'T00:00:00.000Z';
+  }
+  return '';
+}
+
+async function markQuoteReviewed(quoteId) {
+  try {
+    await API.post(`/quotes/${quoteId}/reviewed`);
+    const card = document.getElementById('aqc-' + quoteId);
+    if (card) {
+      card.style.transition = 'opacity 0.3s';
+      card.style.opacity = '0';
+      setTimeout(() => card.remove(), 300);
+    }
+    showToast('Quote marked as reviewed', 'success');
+  } catch (err) {
+    showToast('Error: ' + err.message, 'error');
+  }
 }
 
 async function loadAdminQuotes(page) {
@@ -163,8 +237,10 @@ async function loadAdminQuotes(page) {
   if (!container) return;
 
   try {
-    let url = `/quotes?page=${_adminQuotePage}&limit=20`;
+    let url = `/quotes?page=${_adminQuotePage}&limit=20&excludeReviewed=1`;
     if (_adminQuoteSearch) url += `&search=${encodeURIComponent(_adminQuoteSearch)}`;
+    const publishedAfter = getTimeFilterISO();
+    if (publishedAfter) url += `&publishedAfter=${encodeURIComponent(publishedAfter)}`;
     const data = await API.get(url);
     if (data.quotes.length === 0) {
       container.innerHTML = '<p class="empty-message">No quotes found.</p>';
@@ -218,6 +294,9 @@ async function loadAdminQuotes(page) {
                 personCategory: q.personCategory, personCategoryContext: q.personCategoryContext,
                 disambiguation: q.personDisambiguation
               }) : ''}
+              <div style="margin-top:0.4rem">
+                <button class="btn btn-success btn-sm review-mark-btn" onclick="markQuoteReviewed(${q.id})">Reviewed</button>
+              </div>
             </div>
           </div>
         </div>

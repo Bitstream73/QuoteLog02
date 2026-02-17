@@ -2896,6 +2896,58 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
 }
 
 /* ===================================
+   Review Time Filters
+   =================================== */
+.review-time-filters {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.review-time-label {
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  margin-right: 0.25rem;
+}
+
+.review-time-btn {
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  padding: 0.3rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.review-time-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.review-time-btn.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.review-time-clear {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+}
+
+.review-mark-btn {
+  font-size: 0.7rem !important;
+  padding: 0.2rem 0.6rem !important;
+}
+
+/* ===================================
    Admin Quote Management Cards
    =================================== */
 .admin-quote-card {
