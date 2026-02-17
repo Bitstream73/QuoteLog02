@@ -1,9 +1,10 @@
 import config from '../config/index.js';
 
 /**
- * CSRF protection middleware using Origin header verification.
- * Skips safe methods (GET, HEAD, OPTIONS) and checks that the
- * Origin header matches the app's own origin or allowed CORS origins.
+ * CSRF protection middleware.
+ * Uses Sec-Fetch-Site header (most reliable), then falls back to
+ * Origin/Referer verification. The auth cookie's sameSite: 'strict'
+ * provides the primary CSRF defense; this is an additional layer.
  */
 export function csrfProtection(req, res, next) {
   // Safe methods don't need CSRF protection
@@ -12,10 +13,17 @@ export function csrfProtection(req, res, next) {
     return next();
   }
 
+  // Sec-Fetch-Site is sent by all modern browsers and is the most
+  // reliable way to detect same-origin requests (not spoofable by JS).
+  const fetchSite = req.get('sec-fetch-site');
+  if (fetchSite === 'same-origin') {
+    return next();
+  }
+
   const origin = req.get('origin');
 
   // If no Origin header, check Referer as fallback
-  if (!origin) {
+  if (!origin || origin === 'null') {
     const referer = req.get('referer');
     if (!referer) {
       // No origin info at all — allow the request since same-origin
@@ -27,7 +35,7 @@ export function csrfProtection(req, res, next) {
     // Validate referer against allowed origins
     try {
       const refererOrigin = new URL(referer).origin;
-      if (isAllowedOrigin(refererOrigin, req)) {
+      if (isAllowedOrigin(refererOrigin)) {
         return next();
       }
     } catch {
@@ -38,31 +46,17 @@ export function csrfProtection(req, res, next) {
   }
 
   // Validate Origin header
-  if (isAllowedOrigin(origin, req)) {
+  if (isAllowedOrigin(origin)) {
     return next();
   }
 
   return res.status(403).json({ error: 'CSRF validation failed' });
 }
 
-function isAllowedOrigin(origin, req) {
+function isAllowedOrigin(origin) {
   // In dev mode with wildcard CORS, allow everything
   if (config.corsOrigins.includes('*')) {
     return true;
-  }
-
-  // Check against the request's own Host header — this handles reverse
-  // proxies (Railway, nginx, etc.) without requiring APP_URL to be set.
-  const host = req.get('host');
-  if (host) {
-    try {
-      const originHost = new URL(origin).host;
-      if (originHost === host) {
-        return true;
-      }
-    } catch {
-      // Invalid origin URL
-    }
   }
 
   // Check against app URL origin
