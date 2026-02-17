@@ -53,7 +53,12 @@ vi.mock('../../src/services/logger.js', () => ({
   },
 }));
 
+vi.mock('../../src/services/classificationPipeline.js', () => ({
+  classifyQuote: vi.fn(() => ({ matched: [], unmatched: [], flagged: [] })),
+}));
+
 import gemini from '../../src/services/ai/gemini.js';
+import { classifyQuote } from '../../src/services/classificationPipeline.js';
 import { extractQuotesFromArticle } from '../../src/services/quoteExtractor.js';
 
 describe('Entity Extraction', () => {
@@ -88,7 +93,7 @@ describe('Entity Extraction', () => {
     vi.clearAllMocks();
   });
 
-  it('should return extracted_entities from Gemini response', async () => {
+  it('should build extracted_entities from per-quote keywords', async () => {
     gemini.generateJSON.mockResolvedValueOnce({
       quotes: [
         {
@@ -105,26 +110,15 @@ describe('Entity Extraction', () => {
           significance: 8,
         },
       ],
-      extracted_entities: [
-        { name: 'Donald Trump', type: 'person' },
-        { name: 'China', type: 'place' },
-        { name: 'tariffs', type: 'theme' },
-        { name: 'Republican Party', type: 'organization' },
-        { name: 'White House', type: 'place' },
-        { name: 'European Union', type: 'organization' },
-        { name: 'Federal Reserve', type: 'organization' },
-      ],
     });
 
     const result = await extractQuotesFromArticle(sampleArticleText, sampleArticle, mockDb, null);
 
     expect(result).toHaveProperty('extracted_entities');
     expect(result.extracted_entities).toBeInstanceOf(Array);
-    expect(result.extracted_entities.length).toBe(7);
-    expect(result.extracted_entities[0]).toEqual({ name: 'Donald Trump', type: 'person' });
-    expect(result.extracted_entities).toContainEqual({ name: 'China', type: 'place' });
-    expect(result.extracted_entities).toContainEqual({ name: 'tariffs', type: 'theme' });
-    expect(result.extracted_entities).toContainEqual({ name: 'Republican Party', type: 'organization' });
+    expect(result.extracted_entities.length).toBe(2);
+    expect(result.extracted_entities).toContainEqual({ name: 'China', type: 'keyword' });
+    expect(result.extracted_entities).toContainEqual({ name: 'tariffs', type: 'keyword' });
   });
 
   it('should return quotes alongside entities', async () => {
@@ -139,12 +133,9 @@ describe('Entity Extraction', () => {
           context: 'Trump announces tariffs',
           quote_date: '2025-01-15',
           topics: ['Trade & Tariffs'],
-          keywords: [],
+          keywords: ['China'],
           significance: 8,
         },
-      ],
-      extracted_entities: [
-        { name: 'China', type: 'place' },
       ],
     });
 
@@ -157,7 +148,7 @@ describe('Entity Extraction', () => {
     expect(result.extracted_entities.length).toBe(1);
   });
 
-  it('should return empty extracted_entities when Gemini omits them', async () => {
+  it('should return empty extracted_entities when quotes have no keywords', async () => {
     gemini.generateJSON.mockResolvedValueOnce({
       quotes: [
         {
@@ -172,7 +163,6 @@ describe('Entity Extraction', () => {
           significance: 7,
         },
       ],
-      // No extracted_entities field
     });
 
     const result = await extractQuotesFromArticle(sampleArticleText, sampleArticle, mockDb, null);
@@ -181,20 +171,15 @@ describe('Entity Extraction', () => {
     expect(result.extracted_entities).toEqual([]);
   });
 
-  it('should return entities even when no quotes are found', async () => {
+  it('should return empty entities when no quotes are found', async () => {
     gemini.generateJSON.mockResolvedValueOnce({
       quotes: [],
-      extracted_entities: [
-        { name: 'Federal Reserve', type: 'organization' },
-        { name: 'inflation', type: 'theme' },
-      ],
     });
 
     const result = await extractQuotesFromArticle(sampleArticleText, sampleArticle, mockDb, null);
 
     expect(result.quotes).toEqual([]);
-    expect(result.extracted_entities.length).toBe(2);
-    expect(result.extracted_entities).toContainEqual({ name: 'Federal Reserve', type: 'organization' });
+    expect(result.extracted_entities).toEqual([]);
   });
 
   it('should return empty arrays when article fails pre-filter', async () => {
@@ -208,27 +193,128 @@ describe('Entity Extraction', () => {
     expect(gemini.generateJSON).not.toHaveBeenCalled();
   });
 
-  it('should validate entity type values', async () => {
+  it('should set type to keyword for all extracted entities', async () => {
     gemini.generateJSON.mockResolvedValueOnce({
-      quotes: [],
-      extracted_entities: [
-        { name: 'Donald Trump', type: 'person' },
-        { name: 'NATO', type: 'organization' },
-        { name: 'Beijing', type: 'place' },
-        { name: 'G7 Summit', type: 'event' },
-        { name: 'climate change', type: 'theme' },
+      quotes: [
+        {
+          quote_text: 'We are going to impose massive tariffs on China',
+          speaker: 'Donald Trump',
+          speaker_title: 'President',
+          quote_type: 'direct',
+          context: 'Tariff announcement',
+          quote_date: '2025-01-15',
+          topics: [],
+          keywords: ['NATO', 'Beijing', 'climate change'],
+          significance: 8,
+        },
       ],
     });
 
     const result = await extractQuotesFromArticle(sampleArticleText, sampleArticle, mockDb, null);
 
-    const validTypes = ['person', 'organization', 'place', 'event', 'theme'];
     for (const entity of result.extracted_entities) {
-      expect(validTypes).toContain(entity.type);
+      expect(entity.type).toBe('keyword');
       expect(entity).toHaveProperty('name');
       expect(typeof entity.name).toBe('string');
       expect(entity.name.length).toBeGreaterThan(0);
     }
+    expect(result.extracted_entities.length).toBe(3);
+  });
+
+  it('should call classifyQuote with per-quote keywords', async () => {
+    gemini.generateJSON.mockResolvedValueOnce({
+      quotes: [
+        {
+          quote_text: 'We are going to impose massive tariffs on China',
+          speaker: 'Donald Trump',
+          speaker_title: 'President',
+          quote_type: 'direct',
+          context: 'Trump announces tariffs on China',
+          quote_date: '2025-01-15',
+          topics: ['Trade & Tariffs'],
+          keywords: ['China', 'tariffs'],
+          significance: 8,
+        },
+      ],
+    });
+
+    await extractQuotesFromArticle(sampleArticleText, sampleArticle, mockDb, null);
+
+    expect(classifyQuote).toHaveBeenCalledTimes(1);
+    expect(classifyQuote).toHaveBeenCalledWith(
+      1,
+      '2025-01-15',
+      [
+        { name: 'China', type: 'keyword' },
+        { name: 'tariffs', type: 'keyword' },
+      ]
+    );
+  });
+
+  it('should not call classifyQuote when quote has no keywords', async () => {
+    gemini.generateJSON.mockResolvedValueOnce({
+      quotes: [
+        {
+          quote_text: 'We are going to impose massive tariffs on China',
+          speaker: 'Donald Trump',
+          speaker_title: 'President',
+          quote_type: 'direct',
+          context: 'Tariff announcement',
+          quote_date: '2025-01-15',
+          topics: [],
+          keywords: [],
+          significance: 8,
+        },
+      ],
+    });
+
+    await extractQuotesFromArticle(sampleArticleText, sampleArticle, mockDb, null);
+
+    expect(classifyQuote).not.toHaveBeenCalled();
+  });
+
+  it('should deduplicate keywords across multiple quotes', async () => {
+    const { insertAndDeduplicateQuote } = await import('../../src/services/quoteDeduplicator.js');
+    let callCount = 0;
+    insertAndDeduplicateQuote.mockImplementation((quoteData) => {
+      callCount++;
+      return { id: callCount, text: quoteData.text };
+    });
+
+    gemini.generateJSON.mockResolvedValueOnce({
+      quotes: [
+        {
+          quote_text: 'We are going to impose massive tariffs on China',
+          speaker: 'Donald Trump',
+          speaker_title: 'President',
+          quote_type: 'direct',
+          context: 'Tariff announcement',
+          quote_date: '2025-01-15',
+          topics: [],
+          keywords: ['China', 'tariffs'],
+          significance: 8,
+        },
+        {
+          quote_text: 'This is reckless and will hurt American families',
+          speaker: 'Nancy Pelosi',
+          speaker_title: 'House Speaker',
+          quote_type: 'direct',
+          context: 'Pelosi response',
+          quote_date: '2025-01-15',
+          topics: [],
+          keywords: ['China', 'Congress'],
+          significance: 7,
+        },
+      ],
+    });
+
+    const result = await extractQuotesFromArticle(sampleArticleText, sampleArticle, mockDb, null);
+
+    // extracted_entities should deduplicate 'China' across both quotes
+    expect(result.extracted_entities.length).toBe(3);
+    expect(result.extracted_entities).toContainEqual({ name: 'China', type: 'keyword' });
+    expect(result.extracted_entities).toContainEqual({ name: 'tariffs', type: 'keyword' });
+    expect(result.extracted_entities).toContainEqual({ name: 'Congress', type: 'keyword' });
   });
 
   it('should handle Gemini API failure gracefully', async () => {

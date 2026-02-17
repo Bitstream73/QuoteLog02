@@ -39,11 +39,11 @@ function isQuoteFragment(text) {
   const trimmed = text.trim();
   if (!trimmed) return true;
 
-  // Starts or ends with ellipsis → truncated excerpt
+  // Starts or ends with ellipsis \u2192 truncated excerpt
   if (/^\.{3}|^\u2026/.test(trimmed)) return true;
   if (/\.{3}$|\u2026$/.test(trimmed)) return true;
 
-  // Starts with lowercase letter → mid-sentence fragment
+  // Starts with lowercase letter \u2192 mid-sentence fragment
   // Only check when the very first non-whitespace character is a letter
   // (quotes starting with numbers, punctuation, etc. are fine)
   const firstChar = trimmed[0];
@@ -94,7 +94,7 @@ function verifySpeakerInArticle(speaker, articleText) {
 async function extractQuotesWithGemini(articleText, article) {
   if (!config.geminiApiKey) {
     logger.warn('extractor', 'no_gemini_key', {});
-    return { quotes: [], extracted_entities: [] };
+    return { quotes: [] };
   }
 
   // Load prompt template from DB (falls back to hardcoded default)
@@ -111,7 +111,6 @@ async function extractQuotesWithGemini(articleText, article) {
       const parsed = await gemini.generateJSON(prompt);
       return {
         quotes: parsed.quotes || [],
-        extracted_entities: parsed.extracted_entities || [],
       };
     } catch (err) {
       lastError = err;
@@ -129,7 +128,7 @@ async function extractQuotesWithGemini(articleText, article) {
   }
 
   logger.error('extractor', 'gemini_extraction_failed', { error: lastError?.message });
-  return { quotes: [], extracted_entities: [] };
+  return { quotes: [] };
 }
 
 /**
@@ -159,13 +158,12 @@ export async function extractQuotesFromArticle(articleText, article, db, io) {
     return { quotes: [], extracted_entities: [] };
   }
 
-  // Step 2: Extract quotes and entities with Gemini
+  // Step 2: Extract quotes with Gemini
   const extractionResult = await extractQuotesWithGemini(articleText, article);
   const rawQuotes = extractionResult.quotes;
-  const extractedEntities = extractionResult.extracted_entities;
 
   if (rawQuotes.length === 0) {
-    return { quotes: [], extracted_entities: extractedEntities };
+    return { quotes: [], extracted_entities: [] };
   }
 
   // Step 3: Verify and filter quotes (direct only)
@@ -233,7 +231,7 @@ export async function extractQuotesFromArticle(articleText, article, db, io) {
         domain: article.domain || null,
       };
 
-      // Determine quote date — normalize to ISO format (YYYY-MM-DD)
+      // Determine quote date \u2014 normalize to ISO format (YYYY-MM-DD)
       const rawDate = q.quote_date === 'unknown' ? null : (q.quote_date || article.published_at || null);
       const quoteDate = normalizeToIsoDate(rawDate);
 
@@ -263,21 +261,24 @@ export async function extractQuotesFromArticle(articleText, article, db, io) {
       if (quoteResult) {
         insertedQuotes.push(quoteResult);
 
-        // Classify new (non-duplicate) quotes using taxonomy pipeline
-        if (!quoteResult.isDuplicate && extractedEntities.length > 0) {
-          try {
-            const classification = classifyQuote(quoteResult.id, quoteDate, extractedEntities);
-            logger.debug('extractor', 'quote_classified', {
-              quoteId: quoteResult.id,
-              matched: classification.matched.length,
-              unmatched: classification.unmatched.length,
-              flagged: classification.flagged.length,
-            });
-          } catch (classifyErr) {
-            logger.error('extractor', 'quote_classification_failed', {
-              quoteId: quoteResult.id,
-              error: classifyErr.message,
-            });
+        // Classify new (non-duplicate) quotes using per-quote keywords from Gemini
+        if (!quoteResult.isDuplicate) {
+          const quoteEntities = (q.keywords || []).map(k => ({ name: k, type: 'keyword' }));
+          if (quoteEntities.length > 0) {
+            try {
+              const classification = classifyQuote(quoteResult.id, quoteDate, quoteEntities);
+              logger.debug('extractor', 'quote_classified', {
+                quoteId: quoteResult.id,
+                matched: classification.matched.length,
+                unmatched: classification.unmatched.length,
+                flagged: classification.flagged.length,
+              });
+            } catch (classifyErr) {
+              logger.error('extractor', 'quote_classification_failed', {
+                quoteId: quoteResult.id,
+                error: classifyErr.message,
+              });
+            }
           }
         }
 
@@ -308,7 +309,19 @@ export async function extractQuotesFromArticle(articleText, article, db, io) {
     io.emit('new_quotes', { quotes: insertedQuotes });
   }
 
-  return { quotes: insertedQuotes, extracted_entities: extractedEntities };
+  // Aggregate per-quote keywords into extracted_entities for backward compatibility
+  const seenKeywords = new Set();
+  const allEntities = [];
+  for (const q of verifiedQuotes) {
+    for (const k of (q.keywords || [])) {
+      if (!seenKeywords.has(k)) {
+        seenKeywords.add(k);
+        allEntities.push({ name: k, type: 'keyword' });
+      }
+    }
+  }
+
+  return { quotes: insertedQuotes, extracted_entities: allEntities };
 }
 
 // Legacy export for compatibility
