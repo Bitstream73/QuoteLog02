@@ -593,8 +593,8 @@ describe('Frontend JS files', () => {
   describe('author.js Important? integration', () => {
     const authorJs = fs.readFileSync(path.join(process.cwd(), 'public/js/author.js'), 'utf-8');
 
-    it('should use renderImportantButton instead of renderVoteControls', () => {
-      expect(authorJs).toContain('renderImportantButton');
+    it('should use buildQuoteBlockHtml (which includes Important?) instead of renderVoteControls', () => {
+      expect(authorJs).toContain('buildQuoteBlockHtml');
       expect(authorJs).not.toContain('renderVoteControls');
     });
   });

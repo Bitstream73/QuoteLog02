@@ -1,94 +1,29 @@
 // Author Detail Page
 
-// Build quote HTML for author page (matches homepage metadata)
-function buildAuthorQuoteHtml(q, authorName, authorCategoryContext) {
-  const isLong = q.text.length > 280;
-  const truncatedText = isLong ? q.text.substring(0, 280) + '...' : q.text;
-
-  // Store full text for show more toggle
-  if (typeof _quoteTexts !== 'undefined') {
-    _quoteTexts[q.id] = q.text;
-  }
-
-  // Quote type indicator (direct vs indirect)
-  const quoteTypeHtml = q.quoteType === 'indirect'
-    ? `<span class="quote-type-badge quote-type-indirect">Indirect</span>`
-    : '';
-
-  // Publish date
-  const dateStr = formatDateTime(q.articlePublishedAt || q.createdAt);
-  const dateHtml = dateStr ? `<span class="quote-date-inline">${dateStr}</span>` : '';
-
-  // Primary source display — links to article page when available
-  const primarySource = q.primarySourceName || q.primarySourceDomain || '';
-  const primarySourceHtml = primarySource
-    ? (q.articleId
-      ? `<a href="/article/${q.articleId}" onclick="navigate(event, '/article/${q.articleId}')" class="quote-primary-source quote-primary-source-link">${escapeHtml(primarySource)}</a>`
-      : `<span class="quote-primary-source">${escapeHtml(primarySource)}</span>`)
-    : '';
-
-  // Article title — clickable link to article detail page
-  const articleTitleHtml = q.articleTitle && q.articleId
-    ? `<a href="/article/${q.articleId}" onclick="navigate(event, '/article/${q.articleId}')" class="quote-article-title-link">${escapeHtml(q.articleTitle)}</a>`
-    : q.articleTitle
-    ? `<span class="quote-article-title">${escapeHtml(q.articleTitle)}</span>`
-    : '';
-
-  // Context section
-  const contextHtml = q.context
-    ? `<div class="quote-context">${escapeHtml(q.context)}</div>`
-    : '';
-
-  // Share buttons
-  const shareHtml = typeof buildShareButtonsHtml === 'function'
-    ? buildShareButtonsHtml('quote', q.id, q.text, authorName)
-    : '';
-
-  // Important? button
-  const importantHtml = typeof renderImportantButton === 'function'
-    ? renderImportantButton('quote', q.id, q.importantsCount || q.importants_count || q.voteScore || 0, false)
-    : '';
-
-  // Author portrait
-  const photoUrl = q.photoUrl || q.photo_url || '';
-  const authorInitial = (authorName || '?').charAt(0).toUpperCase();
-  const authorAvatarHtml = photoUrl
-    ? `<img src="${escapeHtml(photoUrl)}" alt="${escapeHtml(authorName)}" class="quote-hero__avatar" onerror="this.outerHTML='<div class=\\'quote-hero__avatar-placeholder\\'>${authorInitial}</div>'" loading="lazy">`
-    : `<div class="quote-hero__avatar-placeholder">${authorInitial}</div>`;
-
-  return `
-    <div class="quote-entry" id="qe-${q.id}">
-      <div class="quote-entry-content">
-        <!-- 1. Quote text — left-justified, entire text clickable -->
-        <a href="/quote/${q.id}" onclick="navigate(event, '/quote/${q.id}')" class="author-quote-text-link">
-          <p class="quote-text" id="qt-${q.id}">${escapeHtml(truncatedText)}</p>
-          ${isLong ? `<span class="show-more-toggle">show more</span>` : ''}
-        </a>
-        <!-- 2. Context — date + context text -->
-        <div class="author-quote__context">
-          ${quoteTypeHtml}
-          ${dateHtml}
-          ${contextHtml}
-        </div>
-        <!-- 3. Share buttons + IMPORTANT -->
-        <div style="display:flex;gap:1rem;align-items:center;margin-top:0.5rem">
-          ${shareHtml}
-          ${importantHtml}
-        </div>
-        <!-- 4. Source — article title + org + date -->
-        ${articleTitleHtml || primarySourceHtml ? `<div class="author-quote__source" style="margin-top:0.5rem">
-          ${articleTitleHtml}
-          ${primarySourceHtml}
-        </div>` : ''}
-        ${typeof buildAdminActionsHtml === 'function' ? buildAdminActionsHtml({
-          id: q.id, personId: q.personId, personName: authorName,
-          text: q.text, context: q.context, isVisible: q.isVisible,
-          personCategory: null, personCategoryContext: authorCategoryContext,
-          disambiguation: authorCategoryContext
-        }) : ''}
-      </div>
-    </div>
-  `;
+// Build quote HTML for author page — reuses homepage buildQuoteBlockHtml
+function buildAuthorQuoteHtml(q, authorName, authorCategoryContext, authorId, authorPhotoUrl) {
+  // Map author-endpoint fields to the format buildQuoteBlockHtml expects
+  const mapped = {
+    id: q.id,
+    text: q.text,
+    context: q.context,
+    person_name: authorName,
+    person_id: authorId,
+    photo_url: authorPhotoUrl || '',
+    person_category_context: authorCategoryContext || '',
+    article_id: q.articleId || '',
+    article_title: q.articleTitle || '',
+    article_url: q.articleUrl || '',
+    source_domain: q.primarySourceDomain || '',
+    source_name: q.primarySourceName || '',
+    quote_datetime: q.articlePublishedAt || q.createdAt || '',
+    importants_count: q.importantsCount || q.importants_count || q.voteScore || 0,
+    share_count: q.shareCount || q.share_count || 0,
+    view_count: q.viewCount || q.view_count || 0,
+    is_visible: q.isVisible,
+  };
+  const isImp = typeof _importantStatuses !== 'undefined' ? (_importantStatuses[`quote:${q.id}`] || false) : false;
+  return buildQuoteBlockHtml(mapped, isImp);
 }
 
 async function renderAuthor(id) {
@@ -161,8 +96,12 @@ async function renderAuthor(id) {
     if (quotesData.quotes.length === 0) {
       html += '<p style="color:var(--text-muted);font-family:var(--font-ui)">No quotes found for this author.</p>';
     } else {
+      // Fetch important statuses for all quotes
+      if (typeof fetchImportantStatuses === 'function') {
+        await fetchImportantStatuses(quotesData.quotes.map(q => `quote:${q.id}`));
+      }
       for (const q of quotesData.quotes) {
-        html += buildAuthorQuoteHtml(q, a.name, a.categoryContext);
+        html += buildAuthorQuoteHtml(q, a.name, a.categoryContext, a.id, a.photoUrl);
       }
 
       // Pagination
@@ -271,9 +210,20 @@ async function loadAuthorQuotesPage(authorId, page) {
     const existingQuotes = quotesContainer.querySelectorAll('.quote-entry, .pagination');
     existingQuotes.forEach(el => el.remove());
 
+    // Fetch important statuses
+    if (typeof fetchImportantStatuses === 'function') {
+      await fetchImportantStatuses(quotesData.quotes.map(q => `quote:${q.id}`));
+    }
+
+    // Get author id and photo from the page
+    const avatarImg = document.querySelector('.author-avatar-img');
+    const authorPhotoUrl = avatarImg ? avatarImg.src : '';
+    const authorIdMatch = window.location.pathname.match(/\/author\/(\d+)/);
+    const authorId = authorIdMatch ? authorIdMatch[1] : '';
+
     let html = '';
     for (const q of quotesData.quotes) {
-      html += buildAuthorQuoteHtml(q, authorName, authorCategoryContext);
+      html += buildAuthorQuoteHtml(q, authorName, authorCategoryContext, authorId, authorPhotoUrl);
     }
 
     // Pagination
