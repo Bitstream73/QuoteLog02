@@ -141,7 +141,7 @@ async function renderQuoteManagementTab() {
       <button class="review-time-btn ${_adminQuoteTimeFilter === '1d' ? 'active' : ''}" onclick="setQuoteTimeFilter('1d')">Last Day</button>
       <button class="review-time-btn ${_adminQuoteTimeFilter === '1w' ? 'active' : ''}" onclick="setQuoteTimeFilter('1w')">Last Week</button>
       <button class="review-time-btn ${_adminQuoteTimeFilter === 'custom' ? 'active' : ''}" onclick="toggleCustomDatePicker()">Custom</button>
-      ${_adminQuoteTimeFilter ? '<button class="review-time-btn review-time-clear" onclick="setQuoteTimeFilter(\\'\\')">Clear</button>' : ''}
+      ${_adminQuoteTimeFilter ? `<button class="review-time-btn review-time-clear" onclick="setQuoteTimeFilter('')">Clear</button>` : ''}
       <div id="custom-date-picker" style="display:${_adminQuoteTimeFilter === 'custom' ? 'flex' : 'none'};gap:0.5rem;align-items:center;margin-left:0.5rem">
         <input type="date" id="custom-date-input" class="input-text" style="width:auto;font-size:0.8rem" value="${escapeHtml(_adminQuoteCustomDate)}" onchange="applyCustomDate()">
       </div>
