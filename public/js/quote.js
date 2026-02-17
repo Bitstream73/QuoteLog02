@@ -93,22 +93,9 @@ async function renderQuote(id) {
       html += '</div>';
     }
 
-    // 5. AI Analysis — no header, no rerun button; truth badge at top
+    // 5. Fact Check section
     html += `
-      <div id="context-container" style="margin-top:2rem;padding-top:1.5rem;border-top:1px solid var(--divider-light)">
-        <div id="truth-badge-slot"></div>
-        <div id="context-content">
-          <div class="context-loading">
-            <div class="context-loading-spinner"></div>
-            <span style="font-family:var(--font-ui);font-size:var(--text-sm);color:var(--text-muted)">Analyzing quote...</span>
-          </div>
-        </div>
-      </div>
-    `;
-
-    // Fact Check section (renders into truth badge + inline content)
-    html += `
-      <div id="fact-check-container" style="margin-top:1.5rem">
+      <div id="fact-check-container" style="margin-top:2rem;padding-top:1.5rem;border-top:1px solid var(--divider-light)">
         <div id="fact-check-content">
           <div class="context-loading">
             <div class="context-loading-spinner"></div>
@@ -146,7 +133,6 @@ async function renderQuote(id) {
 
     // Auto-load all sections in parallel
     loadSmartRelated(q.id);
-    loadQuoteContext(q.id);
     runFactCheck(q.id);
   } catch (err) {
     content.innerHTML = `<div class="empty-state"><h3>Error</h3><p>${escapeHtml(err.message)}</p></div>`;
@@ -235,110 +221,6 @@ function buildSmartRelatedQuoteBlock(item) {
 }
 
 /**
- * Load AI context analysis for a quote (auto-loads on page render).
- */
-async function loadQuoteContext(quoteId, force) {
-  const container = document.getElementById('context-content');
-  if (!container) return;
-
-  // Check client-side cache (skip if force refresh)
-  if (!force) {
-    try {
-      const raw = sessionStorage.getItem(CTX_CACHE_PREFIX + quoteId);
-      if (raw) {
-        const cached = JSON.parse(raw);
-        if (Date.now() - cached.timestamp < CTX_CACHE_TTL_MS) {
-          renderContextResult(container, cached.data);
-          return;
-        }
-        sessionStorage.removeItem(CTX_CACHE_PREFIX + quoteId);
-      }
-    } catch { /* ignore */ }
-  }
-
-  // Show loading spinner
-  container.innerHTML = `
-    <div class="context-loading">
-      <div class="context-loading-spinner"></div>
-      <span style="font-family:var(--font-ui);font-size:var(--text-sm);color:var(--text-muted)">Analyzing quote...</span>
-    </div>
-  `;
-
-  try {
-    const data = await API.post(`/quotes/${quoteId}/context${force ? '?force=true' : ''}`);
-
-    // Cache result
-    try {
-      sessionStorage.setItem(CTX_CACHE_PREFIX + quoteId, JSON.stringify({
-        data,
-        timestamp: Date.now(),
-      }));
-    } catch { /* sessionStorage full */ }
-
-    renderContextResult(container, data);
-  } catch (err) {
-    container.innerHTML = `<div class="context-error"><p>Analysis unavailable. ${escapeHtml(err.message)}</p><button class="context-btn" onclick="loadQuoteContext(${quoteId}, false)">Try Again</button></div>`;
-  }
-}
-
-/**
- * Render context analysis result into a container.
- */
-function renderContextResult(container, data) {
-  let html = '';
-
-  // "Referenced in this Quote" section
-  const hasEvidence = data.claims && data.claims.some(c =>
-    (c.supporting && c.supporting.length) || (c.contradicting && c.contradicting.length) || (c.addingContext && c.addingContext.length)
-  );
-  if (hasEvidence) {
-    html += '<h3 class="quote-section-label" style="margin-top:0">Referenced in this Quote</h3>';
-  }
-
-  // Claims with cited quotes at 0.5em
-  if (data.claims && data.claims.length > 0) {
-    for (const claim of data.claims) {
-      html += '<div class="context-claim">';
-      html += `<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem">`;
-      html += buildClaimTypeBadge(claim.type);
-      html += `<span style="font-family:var(--font-headline);font-weight:600">${escapeHtml(claim.claim)}</span>`;
-      html += '</div>';
-
-      if (claim.supporting && claim.supporting.length > 0) {
-        html += '<div class="context-evidence context-evidence-supporting">';
-        html += '<div class="context-evidence-label">Supporting</div>';
-        for (const ev of claim.supporting) {
-          html += buildEvidenceItem(ev);
-        }
-        html += '</div>';
-      }
-
-      if (claim.contradicting && claim.contradicting.length > 0) {
-        html += '<div class="context-evidence context-evidence-contradicting">';
-        html += '<div class="context-evidence-label">Contradicting</div>';
-        for (const ev of claim.contradicting) {
-          html += buildEvidenceItem(ev);
-        }
-        html += '</div>';
-      }
-
-      if (claim.addingContext && claim.addingContext.length > 0) {
-        html += '<div class="context-evidence context-evidence-context">';
-        html += '<div class="context-evidence-label">Additional Context</div>';
-        for (const ev of claim.addingContext) {
-          html += buildEvidenceItem(ev);
-        }
-        html += '</div>';
-      }
-
-      html += '</div>';
-    }
-  }
-
-  container.innerHTML = html;
-}
-
-/**
  * Show a refresh button by ID.
  */
 function showRefreshBtn(btnId) {
@@ -346,55 +228,9 @@ function showRefreshBtn(btnId) {
   if (btn) btn.style.display = '';
 }
 
-/**
- * Build a claim type badge.
- */
-function buildClaimTypeBadge(type) {
-  const colors = {
-    factual: 'var(--accent, #2563eb)',
-    opinion: '#d97706',
-    prediction: '#7c3aed',
-    promise: '#059669',
-    accusation: '#dc2626',
-  };
-  const color = colors[type] || 'var(--text-muted)';
-  return `<span class="claim-type-badge" style="background:${color}">${escapeHtml(type)}</span>`;
-}
-
-/**
- * Build an evidence item (supporting/contradicting/context) with source citation.
- */
-function buildEvidenceItem(ev) {
-  let html = '<div class="context-evidence-item">';
-
-  // Cited quote with link — half font size, clickable to /quote/:id
-  if (ev.quoteId && ev.quoteText) {
-    html += `<a href="/quote/${ev.quoteId}" onclick="navigate(event, '/quote/${ev.quoteId}')" class="evidence-quote-link">"${escapeHtml(ev.quoteText)}"</a>`;
-    if (ev.authorName) {
-      html += `<span class="evidence-author"> — ${escapeHtml(ev.authorName)}</span>`;
-    }
-  }
-
-  html += `<div class="evidence-explanation">${escapeHtml(ev.explanation)}</div>`;
-
-  // Source citation with hyperlink
-  if (ev.sourceUrl) {
-    const label = ev.sourceName || 'Source';
-    html += `<a href="${escapeHtml(ev.sourceUrl)}" target="_blank" rel="noopener" class="evidence-source-cite">Source: ${escapeHtml(label)} &rarr;</a>`;
-  } else if (ev.sourceName) {
-    html += `<span class="evidence-source-cite">Source: ${escapeHtml(ev.sourceName)}</span>`;
-  }
-
-  html += '</div>';
-  return html;
-}
-
 // ---------------------------------------------------------------------------
 // Client-side caching
 // ---------------------------------------------------------------------------
-
-const CTX_CACHE_PREFIX = 'ctx_cache_';
-const CTX_CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
 
 const FC_CACHE_PREFIX = 'fc_cache_';
 const FC_CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
@@ -476,32 +312,6 @@ async function runFactCheck(quoteId, force) {
 
 function renderFactCheckResult(container, result) {
   container.innerHTML = result.combinedHtml || result.html || '';
-
-  // Extract verdict badge and place it at top of analysis section
-  const badgeSlot = document.getElementById('truth-badge-slot');
-  if (badgeSlot && result.verdict) {
-    const verdictColors = {
-      TRUE: 'var(--success, #16a34a)',
-      FALSE: 'var(--error, #c41e3a)',
-      MOSTLY_TRUE: '#059669',
-      MOSTLY_FALSE: '#d97706',
-      MISLEADING: '#d97706',
-      LACKS_CONTEXT: 'var(--info, #2563eb)',
-      UNVERIFIABLE: 'var(--text-muted)',
-    };
-    const verdictLabels = {
-      TRUE: 'True',
-      FALSE: 'False',
-      MOSTLY_TRUE: 'Mostly True',
-      MOSTLY_FALSE: 'Mostly False',
-      MISLEADING: 'Misleading',
-      LACKS_CONTEXT: 'Lacks Context',
-      UNVERIFIABLE: 'Unverifiable',
-    };
-    const color = verdictColors[result.verdict] || 'var(--text-muted)';
-    const label = verdictLabels[result.verdict] || result.verdict;
-    badgeSlot.innerHTML = `<div class="truth-badge" style="background:${color}">${escapeHtml(label)}</div>`;
-  }
 }
 
 /**

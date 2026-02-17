@@ -4862,7 +4862,7 @@ span.evidence-source-cite {
 
 .quote-hero__text {
   font-family: var(--font-headline);
-  font-size: var(--text-2xl);
+  font-size: calc(var(--text-2xl) * 0.75);
   font-weight: 400;
   font-style: italic;
   color: var(--text-primary);
