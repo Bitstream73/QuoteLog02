@@ -417,6 +417,38 @@ function buildPortraitLayout(data) {
 
   const children = [];
 
+  // Verdict badge at top (standalone, centered)
+  if (verdictLabel) {
+    children.push({
+      type: 'div',
+      props: {
+        style: {
+          display: 'flex',
+          justifyContent: 'center',
+          marginBottom: 16,
+        },
+        children: [
+          {
+            type: 'div',
+            props: {
+              style: {
+                backgroundColor: verdictColor,
+                color: '#fff',
+                fontFamily: 'DM Sans',
+                fontSize: 14,
+                fontWeight: 700,
+                padding: '6px 18px',
+                borderRadius: 4,
+                letterSpacing: 1,
+              },
+              children: verdictLabel,
+            },
+          },
+        ],
+      },
+    });
+  }
+
   // Quote text
   children.push({
     type: 'div',
@@ -445,7 +477,7 @@ function buildPortraitLayout(data) {
     },
   });
 
-  // Author section (centered)
+  // Author section (centered, larger name)
   children.push({
     type: 'div',
     props: {
@@ -453,23 +485,23 @@ function buildPortraitLayout(data) {
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        marginTop: 20,
-        gap: 8,
+        marginTop: 16,
+        gap: 10,
       },
       children: [
         {
           type: 'div',
           props: {
             style: {
-              width: 52,
-              height: 52,
-              borderRadius: 26,
+              width: 60,
+              height: 60,
+              borderRadius: 30,
               backgroundColor: COLORS.accent,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               fontFamily: 'DM Sans',
-              fontSize: 22,
+              fontSize: 26,
               fontWeight: 700,
               color: '#fff',
             },
@@ -480,8 +512,8 @@ function buildPortraitLayout(data) {
           type: 'div',
           props: {
             style: {
-              fontFamily: 'DM Sans',
-              fontSize: 16,
+              fontFamily: 'Playfair Display',
+              fontSize: 22,
               fontWeight: 700,
               color: COLORS.text,
               textAlign: 'center',
@@ -493,30 +525,12 @@ function buildPortraitLayout(data) {
     },
   });
 
-  // Verdict section
-  if (verdictLabel) {
-    const verdictChildren = [
-      {
-        type: 'div',
-        props: {
-          style: {
-            backgroundColor: verdictColor,
-            color: '#fff',
-            fontFamily: 'DM Sans',
-            fontSize: 11,
-            fontWeight: 700,
-            padding: '4px 10px',
-            borderRadius: 3,
-            letterSpacing: 0.5,
-            alignSelf: 'flex-start',
-          },
-          children: verdictLabel,
-        },
-      },
-    ];
+  // Fact check card (claim + explanation only, no badge inside)
+  if (verdictLabel && (claimText || explanationText)) {
+    const cardChildren = [];
 
     if (claimText) {
-      verdictChildren.push({
+      cardChildren.push({
         type: 'div',
         props: {
           style: {
@@ -524,7 +538,6 @@ function buildPortraitLayout(data) {
             fontSize: 13,
             fontWeight: 700,
             color: COLORS.text,
-            marginTop: 8,
           },
           children: claimText,
         },
@@ -532,7 +545,7 @@ function buildPortraitLayout(data) {
     }
 
     if (explanationText) {
-      verdictChildren.push({
+      cardChildren.push({
         type: 'div',
         props: {
           style: {
@@ -560,12 +573,12 @@ function buildPortraitLayout(data) {
           borderRadius: 6,
           borderLeft: `3px solid ${verdictColor}`,
         },
-        children: verdictChildren,
+        children: cardChildren,
       },
     });
   }
 
-  // Branding footer
+  // Branding footer (larger)
   children.push({
     type: 'div',
     props: {
@@ -574,7 +587,7 @@ function buildPortraitLayout(data) {
         flexDirection: 'column',
         alignItems: 'center',
         marginTop: 'auto',
-        paddingTop: 20,
+        paddingTop: 24,
         gap: 4,
       },
       children: [
@@ -583,7 +596,7 @@ function buildPortraitLayout(data) {
           props: {
             style: {
               fontFamily: 'Playfair Display',
-              fontSize: 16,
+              fontSize: 28,
               fontWeight: 700,
               color: COLORS.brandGold,
             },
@@ -595,7 +608,7 @@ function buildPortraitLayout(data) {
           props: {
             style: {
               fontFamily: 'DM Sans',
-              fontSize: 11,
+              fontSize: 14,
               color: COLORS.textMuted,
               fontStyle: 'italic',
             },
