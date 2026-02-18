@@ -140,11 +140,11 @@ function getQuoteFontSize(text, format) {
     if (len < 300) return 20;
     return 18;
   }
-  // landscape
-  if (len < 80) return 30;
-  if (len < 150) return 26;
-  if (len < 250) return 22;
-  return 19;
+  // landscape — must be large enough to read when Facebook scales down the 1200×630 image
+  if (len < 80) return 42;
+  if (len < 150) return 36;
+  if (len < 250) return 30;
+  return 26;
 }
 
 // ---------------------------------------------------------------------------
@@ -152,7 +152,7 @@ function getQuoteFontSize(text, format) {
 // ---------------------------------------------------------------------------
 
 function buildLandscapeLayout(data) {
-  const quoteText = truncate(data.quoteText, 280);
+  const quoteText = truncate(data.quoteText, 220);
   const fontSize = getQuoteFontSize(quoteText, 'landscape');
 
   const verdictLabel = data.verdict ? getVerdictLabel(data.verdict) : getCategoryLabel(data.category);
@@ -179,9 +179,9 @@ function buildLandscapeLayout(data) {
           props: {
             style: {
               fontFamily: 'Playfair Display',
-              fontSize: 48,
+              fontSize: 64,
               color: COLORS.brandGold,
-              marginBottom: -12,
+              marginBottom: -16,
               lineHeight: 1,
             },
             children: '\u201C',
@@ -210,8 +210,8 @@ function buildLandscapeLayout(data) {
       style: {
         display: 'flex',
         alignItems: 'center',
-        marginTop: 16,
-        gap: 12,
+        marginTop: 20,
+        gap: 14,
       },
       children: [
         // Avatar circle
@@ -219,15 +219,15 @@ function buildLandscapeLayout(data) {
           type: 'div',
           props: {
             style: {
-              width: 40,
-              height: 40,
-              borderRadius: 20,
+              width: 48,
+              height: 48,
+              borderRadius: 24,
               backgroundColor: COLORS.accent,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               fontFamily: 'DM Sans',
-              fontSize: 18,
+              fontSize: 22,
               fontWeight: 700,
               color: '#fff',
               flexShrink: 0,
@@ -245,7 +245,7 @@ function buildLandscapeLayout(data) {
                 props: {
                   style: {
                     fontFamily: 'DM Sans',
-                    fontSize: 16,
+                    fontSize: 22,
                     fontWeight: 700,
                     color: COLORS.text,
                   },
@@ -257,7 +257,7 @@ function buildLandscapeLayout(data) {
                 props: {
                   style: {
                     fontFamily: 'DM Sans',
-                    fontSize: 13,
+                    fontSize: 17,
                     color: COLORS.textMuted,
                   },
                   children: truncate(data.disambiguation, 60),
@@ -289,10 +289,10 @@ function buildLandscapeLayout(data) {
                   backgroundColor: verdictColor,
                   color: '#fff',
                   fontFamily: 'DM Sans',
-                  fontSize: 12,
+                  fontSize: 16,
                   fontWeight: 700,
-                  padding: '4px 10px',
-                  borderRadius: 3,
+                  padding: '5px 12px',
+                  borderRadius: 4,
                   letterSpacing: 0.5,
                 },
                 children: verdictLabel,
@@ -303,7 +303,7 @@ function buildLandscapeLayout(data) {
               props: {
                 style: {
                   fontFamily: 'DM Sans',
-                  fontSize: 13,
+                  fontSize: 17,
                   color: COLORS.text,
                   fontWeight: 700,
                 },
@@ -321,10 +321,10 @@ function buildLandscapeLayout(data) {
         props: {
           style: {
             fontFamily: 'DM Sans',
-            fontSize: 12,
+            fontSize: 15,
             fontStyle: 'italic',
             color: COLORS.textMuted,
-            marginTop: 4,
+            marginTop: 6,
             lineHeight: 1.4,
           },
           children: explanationText,
@@ -338,8 +338,8 @@ function buildLandscapeLayout(data) {
         style: {
           display: 'flex',
           flexDirection: 'column',
-          marginTop: 16,
-          padding: '12px 16px',
+          marginTop: 18,
+          padding: '14px 18px',
           backgroundColor: COLORS.bgCard,
           borderRadius: 6,
           borderLeft: `3px solid ${verdictColor}`,
@@ -366,7 +366,7 @@ function buildLandscapeLayout(data) {
           props: {
             style: {
               fontFamily: 'Playfair Display',
-              fontSize: 16,
+              fontSize: 22,
               fontWeight: 700,
               color: COLORS.brandGold,
             },
@@ -378,7 +378,7 @@ function buildLandscapeLayout(data) {
           props: {
             style: {
               fontFamily: 'DM Sans',
-              fontSize: 12,
+              fontSize: 16,
               color: COLORS.textMuted,
               fontStyle: 'italic',
             },
