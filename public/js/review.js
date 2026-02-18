@@ -146,12 +146,14 @@ async function renderQuoteManagementTab() {
         <input type="date" id="custom-date-input" class="input-text" style="width:auto;font-size:0.8rem" value="${escapeHtml(_adminQuoteCustomDate)}" onchange="applyCustomDate()">
       </div>
     </div>
+    <div id="category-bulk-actions"></div>
     <div id="admin-quotes-list">
       <div class="loading">Loading quotes...</div>
     </div>
     <div id="admin-quotes-pagination"></div>
   `;
 
+  loadCategoryBulkActions();
   await loadAdminQuotes();
 }
 
@@ -213,6 +215,88 @@ function getTimeFilterISO() {
     return _adminQuoteCustomDate + 'T00:00:00.000Z';
   }
   return '';
+}
+
+async function loadCategoryBulkActions() {
+  const container = document.getElementById('category-bulk-actions');
+  if (!container) return;
+
+  try {
+    const data = await API.get('/quotes/category-counts');
+    const counts = (data.counts || []).filter(c => c.count > 0);
+
+    if (counts.length === 0) {
+      container.innerHTML = '';
+      return;
+    }
+
+    let html = '<div class="category-bulk-section">';
+    html += '<div class="category-bulk-header">Bulk Actions by Author Type</div>';
+    html += '<div class="category-bulk-list">';
+    for (const item of counts) {
+      const cat = escapeHtml(item.category);
+      html += `
+        <div class="category-bulk-row">
+          <span class="category-bulk-name">${cat}</span>
+          <span class="category-bulk-count">${item.count}</span>
+          <button class="btn btn-success btn-sm category-bulk-btn" onclick="bulkReviewCategory('${cat}', this)">Review All</button>
+          <button class="btn btn-sm category-bulk-btn category-bulk-delete-btn" onclick="bulkDeleteCategory('${cat}', this)">Delete All</button>
+        </div>
+      `;
+    }
+    html += '</div></div>';
+    container.innerHTML = html;
+  } catch {
+    container.innerHTML = '';
+  }
+}
+
+async function bulkReviewCategory(category, btn) {
+  if (!btn) return;
+  if (btn._confirmPending) {
+    clearTimeout(btn._confirmTimer);
+    btn._confirmPending = false;
+    btn.textContent = 'Review All';
+    try {
+      const result = await API.post('/quotes/bulk-review', { category });
+      showToast(`Reviewed ${result.count} ${category} quotes`, 'success');
+      loadCategoryBulkActions();
+      loadAdminQuotes();
+    } catch (err) {
+      showToast('Error: ' + err.message, 'error');
+    }
+    return;
+  }
+  btn._confirmPending = true;
+  btn.textContent = 'Are you sure?';
+  btn._confirmTimer = setTimeout(() => {
+    btn._confirmPending = false;
+    btn.textContent = 'Review All';
+  }, 3000);
+}
+
+async function bulkDeleteCategory(category, btn) {
+  if (!btn) return;
+  if (btn._confirmPending) {
+    clearTimeout(btn._confirmTimer);
+    btn._confirmPending = false;
+    btn.textContent = 'Delete All';
+    try {
+      const result = await API.post('/quotes/bulk-delete', { category });
+      showToast(`Deleted ${result.count} ${category} quotes`, 'success');
+      loadCategoryBulkActions();
+      loadAdminQuotes();
+    } catch (err) {
+      showToast('Error: ' + err.message, 'error');
+    }
+    return;
+  }
+  btn._confirmPending = true;
+  btn.textContent = 'Are you sure?';
+  btn._confirmTimer = setTimeout(() => {
+    btn._confirmPending = false;
+    btn.textContent = 'Delete All';
+  }, 3000);
 }
 
 async function markQuoteReviewed(quoteId, btn) {

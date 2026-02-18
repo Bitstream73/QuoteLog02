@@ -3025,6 +3025,71 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   padding: 0.2rem 0.6rem !important;
 }
 
+/* Category Bulk Actions */
+.category-bulk-section {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.category-bulk-header {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.category-bulk-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.category-bulk-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0.5rem;
+  border-radius: 0.25rem;
+  background: var(--bg);
+}
+
+.category-bulk-name {
+  font-size: 0.8rem;
+  font-weight: 500;
+  min-width: 140px;
+}
+
+.category-bulk-count {
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  min-width: 1.5rem;
+  text-align: center;
+}
+
+.category-bulk-btn {
+  font-size: 0.65rem !important;
+  padding: 0.15rem 0.5rem !important;
+  margin-left: auto;
+}
+
+.category-bulk-btn + .category-bulk-btn {
+  margin-left: 0;
+}
+
+.category-bulk-delete-btn {
+  color: var(--danger, #dc2626) !important;
+  border-color: var(--danger, #dc2626) !important;
+}
+
 /* ===================================
    Admin Quote Management Cards
    =================================== */

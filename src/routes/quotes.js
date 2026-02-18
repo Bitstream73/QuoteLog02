@@ -320,6 +320,125 @@ function formatQuoteResult(q) {
   };
 }
 
+// Get unreviewed quote counts grouped by person category (admin only)
+router.get('/category-counts', requireAdmin, (req, res) => {
+  const db = getDb();
+  const counts = db.prepare(`
+    SELECT p.category, COUNT(*) as count
+    FROM quotes q
+    JOIN persons p ON q.person_id = p.id
+    WHERE q.reviewed_at IS NULL AND q.canonical_quote_id IS NULL AND q.is_visible = 1
+    GROUP BY p.category
+    ORDER BY count DESC
+  `).all();
+
+  res.json({ counts: counts.map(c => ({ category: c.category || 'Other', count: c.count })) });
+});
+
+// Bulk mark all unreviewed quotes for a category as reviewed (admin only)
+router.post('/bulk-review', requireAdmin, (req, res) => {
+  const db = getDb();
+  const { category } = req.body;
+
+  if (!category) {
+    return res.status(400).json({ error: 'category is required' });
+  }
+
+  // Find all unreviewed quote IDs matching this category
+  const categoryFilter = category === 'Other'
+    ? 'AND (p.category IS NULL OR p.category = ?)'
+    : 'AND p.category = ?';
+  const categoryParam = category === 'Other' ? 'Other' : category;
+
+  const quotes = db.prepare(`
+    SELECT q.id FROM quotes q
+    JOIN persons p ON q.person_id = p.id
+    WHERE q.reviewed_at IS NULL AND q.canonical_quote_id IS NULL AND q.is_visible = 1
+    ${categoryFilter}
+  `).all(categoryParam);
+
+  if (quotes.length === 0) {
+    return res.json({ success: true, count: 0 });
+  }
+
+  // Bulk update reviewed_at
+  const bulkReview = db.transaction(() => {
+    const stmt = db.prepare("UPDATE quotes SET reviewed_at = datetime('now') WHERE id = ?");
+    for (const q of quotes) {
+      stmt.run(q.id);
+    }
+  });
+  bulkReview();
+
+  // Auto-approve keywords for each quote (non-fatal)
+  for (const q of quotes) {
+    try {
+      autoApproveQuoteKeywords(q.id);
+    } catch {
+      // Non-fatal
+    }
+  }
+
+  res.json({ success: true, count: quotes.length });
+});
+
+// Bulk delete all unreviewed quotes for a category (admin only)
+router.post('/bulk-delete', requireAdmin, (req, res) => {
+  const db = getDb();
+  const { category } = req.body;
+
+  if (!category) {
+    return res.status(400).json({ error: 'category is required' });
+  }
+
+  const categoryFilter = category === 'Other'
+    ? 'AND (p.category IS NULL OR p.category = ?)'
+    : 'AND p.category = ?';
+  const categoryParam = category === 'Other' ? 'Other' : category;
+
+  const quotes = db.prepare(`
+    SELECT q.id, q.person_id FROM quotes q
+    JOIN persons p ON q.person_id = p.id
+    WHERE q.reviewed_at IS NULL AND q.canonical_quote_id IS NULL AND q.is_visible = 1
+    ${categoryFilter}
+  `).all(categoryParam);
+
+  if (quotes.length === 0) {
+    return res.json({ success: true, count: 0 });
+  }
+
+  const affectedPersonIds = new Set(quotes.map(q => q.person_id));
+
+  const bulkDelete = db.transaction(() => {
+    for (const q of quotes) {
+      const quoteId = q.id;
+      db.prepare('UPDATE quotes SET canonical_quote_id = NULL WHERE canonical_quote_id = ?').run(quoteId);
+      db.prepare('DELETE FROM quote_relationships WHERE quote_id_a = ? OR quote_id_b = ?').run(quoteId, quoteId);
+      db.prepare("DELETE FROM importants WHERE entity_type = 'quote' AND entity_id = ?").run(quoteId);
+      db.prepare("DELETE FROM noteworthy_items WHERE entity_type = 'quote' AND entity_id = ?").run(quoteId);
+      db.prepare('UPDATE disambiguation_queue SET quote_id = NULL WHERE quote_id = ?').run(quoteId);
+      db.prepare('DELETE FROM quote_articles WHERE quote_id = ?').run(quoteId);
+      db.prepare('DELETE FROM votes WHERE quote_id = ?').run(quoteId);
+      db.prepare('DELETE FROM quote_context_cache WHERE quote_id = ?').run(quoteId);
+      db.prepare('DELETE FROM quote_smart_related WHERE quote_id = ? OR related_quote_id = ?').run(quoteId, quoteId);
+      db.prepare('DELETE FROM quotes WHERE id = ?').run(quoteId);
+    }
+
+    // Recalculate quote_count for all affected persons
+    for (const personId of affectedPersonIds) {
+      db.prepare(`
+        UPDATE persons SET quote_count = (
+          SELECT COUNT(*) FROM quotes WHERE person_id = ? AND is_visible = 1 AND canonical_quote_id IS NULL
+        ) WHERE id = ?
+      `).run(personId, personId);
+    }
+  });
+
+  bulkDelete();
+
+  res.json({ success: true, count: quotes.length });
+});
+
 // 1x1 transparent JPEG for 404 fallback (prevents broken images in social crawlers)
 const FALLBACK_JPEG = Buffer.from(
   '/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////2wBDAf//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/xAAUAQEAAAAAAAAAAAAAAAAAAAAA/8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAwDAQACEQMRAD8AKwA//9k=',
