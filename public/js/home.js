@@ -1000,6 +1000,11 @@ function buildNoteworthySectionHtml(items) {
         <span class="noteworthy-card__type">Author</span>
         <p class="noteworthy-card__title">${escapeHtml(item.entity_label || 'Unknown Author')}</p>
       </div>`;
+    } else if (item.entity_type === 'category') {
+      cardsHtml += `<div class="noteworthy-card noteworthy-card--category">
+        <span class="noteworthy-card__type">Category</span>
+        <p class="noteworthy-card__title">${escapeHtml(item.entity_label || 'Unknown Category')}</p>
+      </div>`;
     }
   }
 
