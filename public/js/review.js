@@ -215,19 +215,32 @@ function getTimeFilterISO() {
   return '';
 }
 
-async function markQuoteReviewed(quoteId) {
-  try {
-    await API.post(`/quotes/${quoteId}/reviewed`);
-    const card = document.getElementById('aqc-' + quoteId);
-    if (card) {
-      card.style.transition = 'opacity 0.3s';
-      card.style.opacity = '0';
-      setTimeout(() => card.remove(), 300);
+async function markQuoteReviewed(quoteId, btn) {
+  if (!btn) return;
+  if (btn._confirmPending) {
+    clearTimeout(btn._confirmTimer);
+    btn._confirmPending = false;
+    btn.textContent = 'Reviewed';
+    try {
+      await API.post(`/quotes/${quoteId}/reviewed`);
+      const card = document.getElementById('aqc-' + quoteId);
+      if (card) {
+        card.style.transition = 'opacity 0.3s';
+        card.style.opacity = '0';
+        setTimeout(() => card.remove(), 300);
+      }
+      showToast('Quote marked as reviewed', 'success');
+    } catch (err) {
+      showToast('Error: ' + err.message, 'error');
     }
-    showToast('Quote marked as reviewed', 'success');
-  } catch (err) {
-    showToast('Error: ' + err.message, 'error');
+    return;
   }
+  btn._confirmPending = true;
+  btn.textContent = 'Are you sure?';
+  btn._confirmTimer = setTimeout(() => {
+    btn._confirmPending = false;
+    btn.textContent = 'Reviewed';
+  }, 3000);
 }
 
 async function loadAdminQuotes(page) {
@@ -304,7 +317,7 @@ async function loadAdminQuotes(page) {
               </details>
               ` : ''}
               <div style="margin-top:0.4rem">
-                <button class="btn btn-success btn-sm review-mark-btn" onclick="markQuoteReviewed(${q.id})">Reviewed</button>
+                <button class="btn btn-success btn-sm review-mark-btn" onclick="markQuoteReviewed(${q.id}, this)">Reviewed</button>
               </div>
             </div>
           </div>
@@ -654,8 +667,8 @@ async function renderTaxonomyTab() {
         </div>
         <div class="tax-actions-bar">
           <button class="btn btn-secondary btn-sm" onclick="toggleTaxonomySelectAll()">Select All</button>
-          <button class="btn btn-success btn-sm" onclick="batchApproveSuggestions()">Approve Selected</button>
-          <button class="btn btn-danger btn-sm" onclick="batchRejectSuggestions()">Reject Selected</button>
+          <button class="btn btn-success btn-sm" onclick="batchApproveSuggestions(event)">Approve Selected</button>
+          <button class="btn btn-danger btn-sm" onclick="batchRejectSuggestions(event)">Reject Selected</button>
           <button class="btn btn-primary btn-sm" onclick="triggerEvolution()" style="margin-left:auto">Run Evolution</button>
         </div>
       </div>
@@ -873,7 +886,8 @@ function toggleTaxonomySelectAll() {
   checkboxes.forEach(cb => cb.checked = !allChecked);
 }
 
-async function batchApproveSuggestions() {
+async function batchApproveSuggestions(evt) {
+  const btn = evt ? evt.target || evt.srcElement : null;
   const checked = document.querySelectorAll('.tax-select-cb:checked');
   const ids = Array.from(checked).map(cb => parseInt(cb.value));
 
@@ -882,7 +896,11 @@ async function batchApproveSuggestions() {
     return;
   }
 
-  showConfirmToast(`Approve ${ids.length} suggestion(s)?`, async () => {
+  if (!btn) return;
+  if (btn._confirmPending) {
+    clearTimeout(btn._confirmTimer);
+    btn._confirmPending = false;
+    btn.textContent = 'Approve Selected';
     let success = 0;
     let errors = 0;
     for (const id of ids) {
@@ -895,10 +913,18 @@ async function batchApproveSuggestions() {
     }
     showToast(`Approved ${success}, errors ${errors}`, success > 0 ? 'success' : 'error');
     loadTaxonomyBadgeCount();
-  });
+    return;
+  }
+  btn._confirmPending = true;
+  btn.textContent = 'Are you sure?';
+  btn._confirmTimer = setTimeout(() => {
+    btn._confirmPending = false;
+    btn.textContent = 'Approve Selected';
+  }, 3000);
 }
 
-async function batchRejectSuggestions() {
+async function batchRejectSuggestions(evt) {
+  const btn = evt ? evt.target || evt.srcElement : null;
   const checked = document.querySelectorAll('.tax-select-cb:checked');
   const ids = Array.from(checked).map(cb => parseInt(cb.value));
 
@@ -907,7 +933,11 @@ async function batchRejectSuggestions() {
     return;
   }
 
-  showConfirmToast(`Reject ${ids.length} suggestion(s)?`, async () => {
+  if (!btn) return;
+  if (btn._confirmPending) {
+    clearTimeout(btn._confirmTimer);
+    btn._confirmPending = false;
+    btn.textContent = 'Reject Selected';
     let success = 0;
     let errors = 0;
     for (const id of ids) {
@@ -920,7 +950,14 @@ async function batchRejectSuggestions() {
     }
     showToast(`Rejected ${success}, errors ${errors}`, success > 0 ? 'info' : 'error');
     loadTaxonomyBadgeCount();
-  });
+    return;
+  }
+  btn._confirmPending = true;
+  btn.textContent = 'Are you sure?';
+  btn._confirmTimer = setTimeout(() => {
+    btn._confirmPending = false;
+    btn.textContent = 'Reject Selected';
+  }, 3000);
 }
 
 async function triggerEvolution() {

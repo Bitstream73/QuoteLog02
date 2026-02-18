@@ -1438,6 +1438,7 @@ function renderTopicDetails(topicId, topic, aliases, keywords) {
   html += '</div>';
   html += `
     <div class="keyword-alias-add">
+      <input type="text" id="topic-keyword-filter-${topicId}" class="input-text" placeholder="Filter keywords..." style="width:200px" oninput="filterTopicKeywordOptions(${topicId})">
       <select id="topic-keyword-select-${topicId}" class="input-select" style="width:200px">
         <option value="">Select a keyword...</option>
       </select>
@@ -1451,6 +1452,8 @@ function renderTopicDetails(topicId, topic, aliases, keywords) {
   return html;
 }
 
+const _topicKeywordCache = {};
+
 async function loadTopicKeywordOptions(topicId, linkedKeywordIds) {
   try {
     const data = await API.get('/admin/keywords');
@@ -1459,11 +1462,23 @@ async function loadTopicKeywordOptions(topicId, linkedKeywordIds) {
     if (!select) return;
     const linkedSet = new Set(linkedKeywordIds);
     const available = allKeywords.filter(kw => !linkedSet.has(kw.id));
+    _topicKeywordCache[topicId] = available;
     select.innerHTML = '<option value="">Select a keyword...</option>' +
       available.map(kw => `<option value="${kw.id}">${escapeHtml(kw.name)}</option>`).join('');
   } catch (err) {
     console.error('Failed to load keywords for dropdown:', err);
   }
+}
+
+function filterTopicKeywordOptions(topicId) {
+  const filterInput = document.getElementById(`topic-keyword-filter-${topicId}`);
+  const select = document.getElementById(`topic-keyword-select-${topicId}`);
+  if (!filterInput || !select) return;
+  const query = filterInput.value.toLowerCase().trim();
+  const available = _topicKeywordCache[topicId] || [];
+  const filtered = query ? available.filter(kw => kw.name.toLowerCase().includes(query)) : available;
+  select.innerHTML = '<option value="">Select a keyword...</option>' +
+    filtered.map(kw => `<option value="${kw.id}">${escapeHtml(kw.name)}</option>`).join('');
 }
 
 async function addTopic() {

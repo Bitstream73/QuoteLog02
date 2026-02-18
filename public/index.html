@@ -158,11 +158,14 @@
       const box = document.getElementById('search-box-expanded');
       const input = document.getElementById('header-search-input');
       const dropdown = document.getElementById('search-autocomplete-dropdown');
+      const navLinks = document.querySelector('.nav-links');
       if (box.style.display === 'none') {
         box.style.display = 'flex';
+        navLinks.classList.add('search-active');
         input.focus();
       } else {
         box.style.display = 'none';
+        navLinks.classList.remove('search-active');
         input.value = '';
         dropdown.innerHTML = '';
         dropdown.style.display = 'none';

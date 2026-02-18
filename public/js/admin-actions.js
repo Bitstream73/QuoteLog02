@@ -101,8 +101,12 @@ async function adminEditAuthorName(personId, currentName, currentDisambiguation,
   }
 }
 
-async function adminDeleteQuote(quoteId, onUpdate) {
-  showConfirmToast('Permanently delete this quote?', async () => {
+async function adminDeleteQuote(quoteId, onUpdate, btn) {
+  if (!btn) return;
+  if (btn._confirmPending) {
+    clearTimeout(btn._confirmTimer);
+    btn._confirmPending = false;
+    btn.textContent = 'Delete';
     try {
       await API.delete(`/quotes/${quoteId}`);
       showToast('Quote deleted', 'success');
@@ -110,7 +114,14 @@ async function adminDeleteQuote(quoteId, onUpdate) {
     } catch (err) {
       showToast('Error: ' + err.message, 'error', 5000);
     }
-  });
+    return;
+  }
+  btn._confirmPending = true;
+  btn.textContent = 'Are you sure?';
+  btn._confirmTimer = setTimeout(() => {
+    btn._confirmPending = false;
+    btn.textContent = 'Delete';
+  }, 3000);
 }
 
 async function adminChangeHeadshot(personId, personName, onUpdate) {
@@ -146,7 +157,7 @@ function buildAdminActionsHtml(q) {
       <button onclick="adminEditCategory(${q.personId}, '${safeName}')" title="Edit category">Category</button>
       <button onclick="adminEditAuthorName(${q.personId}, '${safeName}', '${safeDisambig}')" title="Edit author">Author</button>
       <button onclick="adminChangeHeadshot(${q.personId}, '${safeName}')" title="Change photo">Photo</button>
-      <button onclick="adminDeleteQuote(${q.id}, function(){ loadAdminQuotes ? loadAdminQuotes() : location.reload(); })" title="Delete quote" style="color:var(--danger,#dc2626)">Delete</button>
+      <button onclick="adminDeleteQuote(${q.id}, function(){ loadAdminQuotes ? loadAdminQuotes() : location.reload(); }, this)" title="Delete quote" style="color:var(--danger,#dc2626)">Delete</button>
     </div>
   `;
 }

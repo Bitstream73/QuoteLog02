@@ -103,10 +103,6 @@ async function renderQuote(id) {
     html += `
       <div id="fact-check-container" style="margin-top:2rem;padding-top:1.5rem;border-top:1px solid var(--divider-light)">
         <div id="fact-check-content">
-          <div class="context-loading">
-            <div class="context-loading-spinner"></div>
-            <span style="font-family:var(--font-ui);font-size:var(--text-sm);color:var(--text-muted)">Checking facts...</span>
-          </div>
         </div>
       </div>
     `;
@@ -249,6 +245,95 @@ const FC_CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
 // Guard against double annotation of quote text
 let quoteTextAnnotated = false;
 
+// ---------------------------------------------------------------------------
+// Fact-check loading animation
+// ---------------------------------------------------------------------------
+
+const FACT_CHECK_LOADING_MESSAGES = [
+  'Pulling the original document\u2026',
+  'Fetching primary sources\u2026',
+  'Checking the public record\u2026',
+  'Retrieving filings and transcripts\u2026',
+  'Verifying dates, names, and numbers\u2026',
+  'Cross-referencing multiple sources\u2026',
+  'Comparing official statements over time\u2026',
+  'Triangulating claims with data\u2026',
+  'Confirming the chain of custody\u2026',
+  'Checking archived versions for edits\u2026',
+  'Matching quotes to the earliest known appearance\u2026',
+  'Checking whether a clip is missing context\u2026',
+  'Searching the archives\u2026',
+  'Dusting off the microfilm\u2026',
+  'Paging through old editions\u2026',
+  'Hunting for buried PDFs\u2026',
+  'Following the paper trail\u2026',
+  'Digging through meeting minutes\u2026',
+  'Scanning footnotes and appendices\u2026',
+  'Pulling records from the stacks\u2026',
+  'Sifting through decades of coverage\u2026',
+  'Revisiting prior reporting\u2026',
+  'Comparing revisions across snapshots\u2026',
+  'Mapping citations back to the source\u2026',
+  'Tracking a story across years, not hours\u2026',
+  'Cleaning the dataset\u2026',
+  'Standardizing messy numbers\u2026',
+  'Running a sanity check on the stats\u2026',
+  'Rebuilding the timeline\u2026',
+  'Plotting key events\u2026',
+  'Looking for outliers and inconsistencies\u2026',
+  'Checking denominators (because they matter)\u2026',
+  'Translating jargon into plain English\u2026',
+  'Comparing claims to historical baselines\u2026',
+  'Looking for what\u2019s missing, not just what\u2019s there\u2026',
+  'Compiling evidence packets\u2026',
+  'Building a source map\u2026',
+  'Logging what we know\u2014and what we don\u2019t\u2026',
+  'Marking unverified details as unverified\u2026',
+  'Separating reporting from speculation\u2026',
+  'Updating the working notes\u2026',
+  'Putting on the \u201Cdocument detective\u201D hat\u2026',
+  'Following the breadcrumbs\u2026',
+  'Doing a quick \u201Ctrust, but verify\u201D pass\u2026',
+  'Asking the archives nicely to cooperate\u2026',
+  'Making the timeline behave\u2026',
+  'Chasing citations down rabbit holes\u2026',
+  'Squinting at fine print so you don\u2019t have to\u2026',
+  'Holding a magnifying glass to the details\u2026',
+  'Turning \u201Csomeone said\u201D into \u201Chere\u2019s the source\u201D\u2026',
+  'Watching for the classic \u201Cchart without axes\u201D move\u2026',
+  'Checking if the numbers are doing that thing where they lie\u2026',
+  'Staying up late to comb the archives (so you can sleep)\u2026',
+];
+
+let _fcLoadingTimer = null;
+
+function startFactCheckLoadingAnimation(container) {
+  stopFactCheckLoadingAnimation();
+  container.innerHTML = `
+    <div class="context-loading" style="flex-direction:column;align-items:flex-start;gap:0.5rem">
+      <div style="font-family:var(--font-ui);font-size:var(--text-sm);color:var(--text-muted);margin-bottom:0.25rem">
+        Thank you for your patience. We strive to be as thorough as possible.
+      </div>
+      <div style="display:flex;align-items:center;gap:0.5rem">
+        <div class="context-loading-spinner"></div>
+        <span id="fc-loading-msg" style="font-family:var(--font-ui);font-size:var(--text-sm);color:var(--text-muted)"></span>
+      </div>
+    </div>
+  `;
+  function cycle() {
+    const el = document.getElementById('fc-loading-msg');
+    if (!el) { _fcLoadingTimer = null; return; }
+    el.textContent = FACT_CHECK_LOADING_MESSAGES[Math.floor(Math.random() * FACT_CHECK_LOADING_MESSAGES.length)];
+    const delay = (Math.floor(Math.random() * 3) + 1) * 1000;
+    _fcLoadingTimer = setTimeout(cycle, delay);
+  }
+  cycle();
+}
+
+function stopFactCheckLoadingAnimation() {
+  if (_fcLoadingTimer) { clearTimeout(_fcLoadingTimer); _fcLoadingTimer = null; }
+}
+
 /**
  * Run fact-check + reference enrichment for a quote (auto-loads on page render).
  */
@@ -272,13 +357,8 @@ async function runFactCheck(quoteId, force) {
     } catch { /* ignore */ }
   }
 
-  // Show loading spinner
-  container.innerHTML = `
-    <div class="context-loading">
-      <div class="context-loading-spinner"></div>
-      <span style="font-family:var(--font-ui);font-size:var(--text-sm);color:var(--text-muted)">Checking facts...</span>
-    </div>
-  `;
+  // Show animated loading messages
+  startFactCheckLoadingAnimation(container);
 
   // Gather quote data from the DOM
   const heroText = document.querySelector('.quote-page__text') || document.querySelector('.quote-hero__text');
@@ -317,11 +397,13 @@ async function runFactCheck(quoteId, force) {
     annotateQuoteText(result);
 
   } catch (err) {
+    stopFactCheckLoadingAnimation();
     container.innerHTML = `<div class="context-error"><p>Fact check unavailable.</p><button class="context-btn" onclick="runFactCheck(${quoteId}, false)">Try Again</button></div>`;
   }
 }
 
 function renderFactCheckResult(container, result) {
+  stopFactCheckLoadingAnimation();
   container.innerHTML = result.combinedHtml || result.html || '';
 }
 
