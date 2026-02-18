@@ -89,6 +89,24 @@ describe('Share Image Service', () => {
     expect(buffer[0]).toBe(0xFF);
   });
 
+  it('generates portrait with photoUrl null (graceful fallback)', async () => {
+    const buffer = await generateShareImage({
+      quoteText: 'Testing photo fallback in portrait mode.',
+      authorName: 'Photo Test',
+      photoUrl: null,
+      verdict: 'TRUE',
+      category: 'A',
+      claim: 'Test claim',
+      explanation: 'Test explanation',
+    }, 'portrait');
+
+    expect(buffer).toBeInstanceOf(Buffer);
+    expect(buffer.length).toBeGreaterThan(1000);
+    expect(buffer[0]).toBe(0xFF);
+    expect(buffer[1]).toBe(0xD8);
+    expect(buffer[2]).toBe(0xFF);
+  });
+
   it('caches images by quoteId', async () => {
     const data = {
       quoteId: 99999,

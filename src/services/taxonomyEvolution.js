@@ -56,9 +56,38 @@ export function suggestAliasExpansions() {
  * @param {number} days - look back period for unmatched entity analysis
  * @returns {{ keywordProposals: number, aliasExpansions: number }}
  */
+/**
+ * Analyze recent unmatched topics and generate topic proposals.
+ * @param {number} days - look back period (default 7)
+ * @returns {Array} proposals with name and occurrence_count
+ */
+export function analyzeUnmatchedTopics(days = 7) {
+  const db = getDb();
+
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - days);
+
+  const suggestions = db.prepare(`
+    SELECT suggested_data, COUNT(*) as occurrence_count
+    FROM taxonomy_suggestions
+    WHERE source = 'ai_extraction'
+    AND suggestion_type = 'new_topic'
+    AND status = 'pending'
+    AND created_at >= ?
+    GROUP BY json_extract(suggested_data, '$.name')
+    HAVING COUNT(*) >= 3
+    ORDER BY occurrence_count DESC
+  `).all(cutoff.toISOString());
+
+  return suggestions.map(s => ({
+    ...JSON.parse(s.suggested_data),
+    occurrence_count: s.occurrence_count,
+  }));
+}
+
 export function runTaxonomyEvolution(days = 7) {
   const db = getDb();
-  const results = { keywordProposals: 0, aliasExpansions: 0 };
+  const results = { keywordProposals: 0, aliasExpansions: 0, topicProposals: 0 };
 
   // 1. Keyword proposals from frequent unmatched entities
   const proposals = analyzeUnmatchedEntities(days);
@@ -96,6 +125,27 @@ export function runTaxonomyEvolution(days = 7) {
       match_count: expansion.match_count,
     }));
     results.aliasExpansions++;
+  }
+
+  // 3. Topic proposals from frequent unmatched topics
+  const topicProposals = analyzeUnmatchedTopics(days);
+  for (const proposal of topicProposals) {
+    const existing = db.prepare(`
+      SELECT id FROM taxonomy_suggestions
+      WHERE source = 'batch_evolution'
+      AND suggestion_type = 'new_topic'
+      AND json_extract(suggested_data, '$.name') = ?
+      AND status = 'pending'
+    `).get(proposal.name);
+
+    if (!existing) {
+      insertSuggestion.run('new_topic', JSON.stringify({
+        name: proposal.name,
+        occurrence_count: proposal.occurrence_count,
+        suggested_aliases: proposal.suggested_aliases || [proposal.name],
+      }));
+      results.topicProposals++;
+    }
   }
 
   return results;

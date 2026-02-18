@@ -100,6 +100,18 @@ function setupTestDb() {
       PRIMARY KEY (quote_id, topic_id)
     )
   `);
+
+  // Topic aliases
+  testDb.exec(`
+    CREATE TABLE topic_aliases (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      topic_id INTEGER NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
+      alias TEXT NOT NULL,
+      alias_normalized TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(topic_id, alias)
+    )
+  `);
 }
 
 function seedKeywords() {
@@ -415,6 +427,128 @@ describe('Keyword Matcher', () => {
 
       const rows = testDb.prepare('SELECT * FROM quote_topics WHERE quote_id = ?').all(1);
       expect(rows).toHaveLength(2); // still only 2 unique topic links
+    });
+  });
+
+  describe('matchTopics', () => {
+    beforeEach(() => {
+      seedTopics();
+      // Add topic aliases
+      testDb.prepare('INSERT INTO topic_aliases (topic_id, alias, alias_normalized) VALUES (?, ?, ?)').run(1, 'US Politics', 'us politics');
+      testDb.prepare('INSERT INTO topic_aliases (topic_id, alias, alias_normalized) VALUES (?, ?, ?)').run(2, 'Election 2024', 'election 2024');
+    });
+
+    it('exact match on topic name', async () => {
+      const { matchTopics } = await import('../../src/services/keywordMatcher.js');
+      const result = matchTopics(['U.S. Presidential Politics']);
+
+      expect(result.matched).toHaveLength(1);
+      expect(result.matched[0].topicName).toBe('U.S. Presidential Politics');
+      expect(result.matched[0].topicId).toBe(1);
+      expect(result.unmatched).toHaveLength(0);
+    });
+
+    it('match via topic alias', async () => {
+      const { matchTopics } = await import('../../src/services/keywordMatcher.js');
+      const result = matchTopics(['US Politics']);
+
+      expect(result.matched).toHaveLength(1);
+      expect(result.matched[0].topicName).toBe('U.S. Presidential Politics');
+      expect(result.matched[0].topicId).toBe(1);
+    });
+
+    it('unmatched goes to unmatched array', async () => {
+      const { matchTopics } = await import('../../src/services/keywordMatcher.js');
+      const result = matchTopics(['Nonexistent Topic']);
+
+      expect(result.matched).toHaveLength(0);
+      expect(result.unmatched).toHaveLength(1);
+      expect(result.unmatched[0].topicName).toBe('Nonexistent Topic');
+    });
+
+    it('ignores archived topics', async () => {
+      const { matchTopics } = await import('../../src/services/keywordMatcher.js');
+      const result = matchTopics(['Old Topic']);
+
+      expect(result.matched).toHaveLength(0);
+      expect(result.unmatched).toHaveLength(1);
+    });
+
+    it('case-insensitive matching', async () => {
+      const { matchTopics } = await import('../../src/services/keywordMatcher.js');
+      const result = matchTopics(['u.s. presidential politics']);
+
+      expect(result.matched).toHaveLength(1);
+      expect(result.matched[0].topicId).toBe(1);
+    });
+
+    it('skips empty/null entries', async () => {
+      const { matchTopics } = await import('../../src/services/keywordMatcher.js');
+      const result = matchTopics(['', null, undefined, 'U.S. Presidential Politics']);
+
+      expect(result.matched).toHaveLength(1);
+      expect(result.unmatched).toHaveLength(0);
+    });
+
+    it('returns empty for empty input', async () => {
+      const { matchTopics } = await import('../../src/services/keywordMatcher.js');
+      const result = matchTopics([]);
+
+      expect(result.matched).toHaveLength(0);
+      expect(result.unmatched).toHaveLength(0);
+    });
+  });
+
+  describe('storeQuoteTopicsDirect', () => {
+    beforeEach(() => {
+      seedTopics();
+    });
+
+    it('inserts into quote_topics', async () => {
+      const { storeQuoteTopicsDirect } = await import('../../src/services/keywordMatcher.js');
+      storeQuoteTopicsDirect(1, [{ topicName: 'U.S. Presidential Politics', topicId: 1 }], '2024-06-15');
+
+      const rows = testDb.prepare('SELECT * FROM quote_topics WHERE quote_id = 1').all();
+      expect(rows).toHaveLength(1);
+      expect(rows[0].topic_id).toBe(1);
+    });
+
+    it('respects temporal scoping — excludes out-of-range topics', async () => {
+      const { storeQuoteTopicsDirect } = await import('../../src/services/keywordMatcher.js');
+      // 2024 Election topic has date range 2024-01-01 to 2024-12-31
+      storeQuoteTopicsDirect(1, [{ topicName: '2024 Election', topicId: 2 }], '2023-06-15');
+
+      const rows = testDb.prepare('SELECT * FROM quote_topics WHERE quote_id = 1').all();
+      expect(rows).toHaveLength(0);
+    });
+
+    it('includes in-range topics', async () => {
+      const { storeQuoteTopicsDirect } = await import('../../src/services/keywordMatcher.js');
+      storeQuoteTopicsDirect(1, [{ topicName: '2024 Election', topicId: 2 }], '2024-06-15');
+
+      const rows = testDb.prepare('SELECT * FROM quote_topics WHERE quote_id = 1').all();
+      expect(rows).toHaveLength(1);
+      expect(rows[0].topic_id).toBe(2);
+    });
+
+    it('handles null quoteDate — includes all topics', async () => {
+      const { storeQuoteTopicsDirect } = await import('../../src/services/keywordMatcher.js');
+      storeQuoteTopicsDirect(1, [
+        { topicName: 'U.S. Presidential Politics', topicId: 1 },
+        { topicName: '2024 Election', topicId: 2 },
+      ], null);
+
+      const rows = testDb.prepare('SELECT * FROM quote_topics WHERE quote_id = 1').all();
+      expect(rows).toHaveLength(2);
+    });
+
+    it('ignores duplicate insertions', async () => {
+      const { storeQuoteTopicsDirect } = await import('../../src/services/keywordMatcher.js');
+      storeQuoteTopicsDirect(1, [{ topicName: 'U.S. Presidential Politics', topicId: 1 }], '2024-06-15');
+      storeQuoteTopicsDirect(1, [{ topicName: 'U.S. Presidential Politics', topicId: 1 }], '2024-06-15');
+
+      const rows = testDb.prepare('SELECT * FROM quote_topics WHERE quote_id = 1').all();
+      expect(rows).toHaveLength(1);
     });
   });
 });

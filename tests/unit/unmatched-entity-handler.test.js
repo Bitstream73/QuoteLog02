@@ -61,6 +61,7 @@ function setupTestDb() {
       quote_datetime TEXT,
       is_visible INTEGER DEFAULT 1,
       extracted_keywords TEXT,
+      extracted_topics TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
@@ -82,6 +83,7 @@ function setupTestDb() {
     CREATE TABLE topics (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
+      slug TEXT UNIQUE,
       status TEXT DEFAULT 'active',
       start_date TEXT,
       end_date TEXT
@@ -99,6 +101,16 @@ function setupTestDb() {
       quote_id INTEGER NOT NULL,
       topic_id INTEGER NOT NULL,
       PRIMARY KEY (quote_id, topic_id)
+    )
+  `);
+  testDb.exec(`
+    CREATE TABLE topic_aliases (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      topic_id INTEGER NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
+      alias TEXT NOT NULL,
+      alias_normalized TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(topic_id, alias)
     )
   `);
 }
@@ -509,6 +521,180 @@ describe('Unmatched Entity Handler', () => {
       const keywords = testDb.prepare('SELECT * FROM keywords').all();
       expect(keywords).toHaveLength(2);
       expect(keywords.map(k => k.name).sort()).toEqual(['China', 'tariffs']);
+    });
+
+    it('also processes extracted_topics and links them', async () => {
+      const { autoApproveQuoteKeywords } = await import('../../src/services/unmatchedEntityHandler.js');
+
+      testDb.prepare(`INSERT INTO quotes (text, extracted_keywords, extracted_topics) VALUES (?, ?, ?)`).run(
+        'Test quote', JSON.stringify(['China']), JSON.stringify(['Trade War', 'Foreign Policy'])
+      );
+
+      autoApproveQuoteKeywords(1, testDb);
+
+      const topics = testDb.prepare('SELECT * FROM topics').all();
+      expect(topics).toHaveLength(2);
+      expect(topics.map(t => t.name).sort()).toEqual(['Foreign Policy', 'Trade War']);
+
+      const quoteTopics = testDb.prepare('SELECT * FROM quote_topics WHERE quote_id = 1').all();
+      expect(quoteTopics).toHaveLength(2);
+    });
+
+    it('links existing topics without creating duplicates', async () => {
+      const { autoApproveQuoteKeywords } = await import('../../src/services/unmatchedEntityHandler.js');
+
+      testDb.prepare("INSERT INTO topics (name, slug, status) VALUES (?, ?, 'active')").run('Trade War', 'trade-war');
+
+      testDb.prepare(`INSERT INTO quotes (text, extracted_keywords, extracted_topics) VALUES (?, ?, ?)`).run(
+        'Test quote', JSON.stringify([]), JSON.stringify(['Trade War'])
+      );
+
+      autoApproveQuoteKeywords(1, testDb);
+
+      const topics = testDb.prepare('SELECT * FROM topics').all();
+      expect(topics).toHaveLength(1); // No duplicate
+
+      const quoteTopics = testDb.prepare('SELECT * FROM quote_topics WHERE quote_id = 1').all();
+      expect(quoteTopics).toHaveLength(1);
+    });
+
+    it('approves pending new_topic suggestions during auto-approve', async () => {
+      const { autoApproveQuoteKeywords } = await import('../../src/services/unmatchedEntityHandler.js');
+
+      testDb.prepare(`
+        INSERT INTO taxonomy_suggestions (suggestion_type, suggested_data, source, status)
+        VALUES ('new_topic', ?, 'ai_extraction', 'pending')
+      `).run(JSON.stringify({ name: 'Trade War', suggested_aliases: ['Trade War'] }));
+
+      testDb.prepare(`INSERT INTO quotes (text, extracted_keywords, extracted_topics) VALUES (?, ?, ?)`).run(
+        'Test quote', JSON.stringify([]), JSON.stringify(['Trade War'])
+      );
+
+      autoApproveQuoteKeywords(1, testDb);
+
+      const suggestion = testDb.prepare('SELECT * FROM taxonomy_suggestions WHERE id = 1').get();
+      expect(suggestion.status).toBe('approved');
+
+      const topic = testDb.prepare("SELECT * FROM topics WHERE LOWER(name) = 'trade war'").get();
+      expect(topic).toBeTruthy();
+
+      const quoteTopics = testDb.prepare('SELECT * FROM quote_topics WHERE quote_id = 1').all();
+      expect(quoteTopics).toHaveLength(1);
+    });
+  });
+
+  describe('queueUnmatchedTopics', () => {
+    it('creates new_topic suggestions for unmatched topics', async () => {
+      const { queueUnmatchedTopics } = await import('../../src/services/unmatchedEntityHandler.js');
+
+      queueUnmatchedTopics([
+        { topicName: 'Healthcare' },
+        { topicName: 'Immigration' },
+      ]);
+
+      const rows = testDb.prepare('SELECT * FROM taxonomy_suggestions').all();
+      expect(rows).toHaveLength(2);
+      expect(rows[0].suggestion_type).toBe('new_topic');
+      expect(rows[0].source).toBe('ai_extraction');
+
+      const data0 = JSON.parse(rows[0].suggested_data);
+      expect(data0.name).toBe('Healthcare');
+      expect(data0.suggested_aliases).toEqual(['Healthcare']);
+    });
+
+    it('deduplicates within batch', async () => {
+      const { queueUnmatchedTopics } = await import('../../src/services/unmatchedEntityHandler.js');
+
+      queueUnmatchedTopics([
+        { topicName: 'Healthcare' },
+        { topicName: 'Healthcare' },
+      ]);
+
+      const rows = testDb.prepare('SELECT * FROM taxonomy_suggestions').all();
+      expect(rows).toHaveLength(1);
+    });
+
+    it('deduplicates against existing pending new_topic suggestions', async () => {
+      const { queueUnmatchedTopics } = await import('../../src/services/unmatchedEntityHandler.js');
+
+      queueUnmatchedTopics([{ topicName: 'Healthcare' }]);
+      queueUnmatchedTopics([{ topicName: 'healthcare' }]); // case-insensitive dup
+
+      const rows = testDb.prepare('SELECT * FROM taxonomy_suggestions').all();
+      expect(rows).toHaveLength(1);
+    });
+
+    it('skips topics that already exist in topics table', async () => {
+      const { queueUnmatchedTopics } = await import('../../src/services/unmatchedEntityHandler.js');
+
+      testDb.prepare("INSERT INTO topics (name, slug, status) VALUES (?, ?, 'active')").run('Healthcare', 'healthcare');
+
+      queueUnmatchedTopics([{ topicName: 'Healthcare' }]);
+
+      const rows = testDb.prepare('SELECT * FROM taxonomy_suggestions').all();
+      expect(rows).toHaveLength(0);
+    });
+
+    it('does nothing for empty/null input', async () => {
+      const { queueUnmatchedTopics } = await import('../../src/services/unmatchedEntityHandler.js');
+
+      queueUnmatchedTopics([]);
+      queueUnmatchedTopics(null);
+      queueUnmatchedTopics(undefined);
+
+      const rows = testDb.prepare('SELECT * FROM taxonomy_suggestions').all();
+      expect(rows).toHaveLength(0);
+    });
+  });
+
+  describe('approveSuggestion — new_topic', () => {
+    it('creates topic and aliases when new_topic suggestion is approved', async () => {
+      const { approveSuggestion } = await import('../../src/services/unmatchedEntityHandler.js');
+
+      testDb.prepare(`
+        INSERT INTO taxonomy_suggestions (suggestion_type, suggested_data, source, status)
+        VALUES ('new_topic', ?, 'ai_extraction', 'pending')
+      `).run(JSON.stringify({
+        name: 'Healthcare',
+        suggested_aliases: ['Healthcare', 'Health Care'],
+      }));
+
+      approveSuggestion(1);
+
+      const topic = testDb.prepare('SELECT * FROM topics WHERE name = ?').get('Healthcare');
+      expect(topic).toBeTruthy();
+      expect(topic.slug).toBe('healthcare');
+      expect(topic.status).toBe('active');
+
+      const aliases = testDb.prepare('SELECT * FROM topic_aliases WHERE topic_id = ?').all(topic.id);
+      expect(aliases).toHaveLength(2);
+      expect(aliases.map(a => a.alias).sort()).toEqual(['Health Care', 'Healthcare']);
+
+      const suggestion = testDb.prepare('SELECT * FROM taxonomy_suggestions WHERE id = 1').get();
+      expect(suggestion.status).toBe('approved');
+    });
+
+    it('uses edited data when provided for new_topic', async () => {
+      const { approveSuggestion } = await import('../../src/services/unmatchedEntityHandler.js');
+
+      testDb.prepare(`
+        INSERT INTO taxonomy_suggestions (suggestion_type, suggested_data, source, status)
+        VALUES ('new_topic', ?, 'ai_extraction', 'pending')
+      `).run(JSON.stringify({
+        name: 'Helthcare',
+        suggested_aliases: ['Helthcare'],
+      }));
+
+      approveSuggestion(1, {
+        name: 'Healthcare',
+        suggested_aliases: ['Healthcare'],
+      });
+
+      const topic = testDb.prepare('SELECT * FROM topics WHERE name = ?').get('Healthcare');
+      expect(topic).toBeTruthy();
+
+      const suggestion = testDb.prepare('SELECT * FROM taxonomy_suggestions WHERE id = 1').get();
+      expect(suggestion.status).toBe('edited');
     });
   });
 });

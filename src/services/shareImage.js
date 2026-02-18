@@ -148,6 +148,26 @@ function getQuoteFontSize(text, format) {
 }
 
 // ---------------------------------------------------------------------------
+// Image Fetch Helper
+// ---------------------------------------------------------------------------
+
+async function fetchImageAsDataUri(url) {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    const resp = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeout);
+    if (!resp.ok) return null;
+    const contentType = resp.headers.get('content-type') || 'image/jpeg';
+    const arrayBuffer = await resp.arrayBuffer();
+    const base64 = Buffer.from(arrayBuffer).toString('base64');
+    return `data:${contentType};base64,${base64}`;
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Layout Builders (satori element trees)
 // ---------------------------------------------------------------------------
 
@@ -160,33 +180,49 @@ function buildLandscapeLayout(data) {
   const claimText = truncate(data.claim || '', 120);
   const explanationText = truncate(data.explanation || '', 180);
 
-  const children = [];
+  const contentChildren = [];
 
-  // Quote text
-  children.push({
+  // Verdict badge at top (centered)
+  if (verdictLabel) {
+    contentChildren.push({
+      type: 'div',
+      props: {
+        style: {
+          display: 'flex',
+          justifyContent: 'center',
+          marginBottom: 12,
+        },
+        children: [
+          {
+            type: 'div',
+            props: {
+              style: {
+                backgroundColor: verdictColor,
+                color: '#fff',
+                fontFamily: 'DM Sans',
+                fontSize: 16,
+                fontWeight: 700,
+                padding: '6px 18px',
+                borderRadius: 4,
+                letterSpacing: 1,
+              },
+              children: verdictLabel,
+            },
+          },
+        ],
+      },
+    });
+  }
+
+  // Quote text (centered, NO flex: 1)
+  contentChildren.push({
     type: 'div',
     props: {
       style: {
         display: 'flex',
         flexDirection: 'column',
-        flex: 1,
-        justifyContent: 'center',
-        padding: '0',
       },
       children: [
-        {
-          type: 'div',
-          props: {
-            style: {
-              fontFamily: 'Playfair Display',
-              fontSize: 64,
-              color: COLORS.brandGold,
-              marginBottom: -16,
-              lineHeight: 1,
-            },
-            children: '\u201C',
-          },
-        },
         {
           type: 'div',
           props: {
@@ -195,133 +231,107 @@ function buildLandscapeLayout(data) {
               fontSize,
               color: COLORS.text,
               lineHeight: 1.35,
+              textAlign: 'center',
             },
-            children: quoteText,
+            children: `\u201C${quoteText}\u201D`,
           },
         },
       ],
     },
   });
 
-  // Author row
-  children.push({
+  // Author section — centered avatar + name
+  const avatarSize = 80;
+  const avatarElement = data.photoDataUri
+    ? {
+        type: 'img',
+        props: {
+          src: data.photoDataUri,
+          width: avatarSize,
+          height: avatarSize,
+          style: {
+            width: avatarSize,
+            height: avatarSize,
+            borderRadius: avatarSize / 2,
+            objectFit: 'cover',
+          },
+        },
+      }
+    : {
+        type: 'div',
+        props: {
+          style: {
+            width: avatarSize,
+            height: avatarSize,
+            borderRadius: avatarSize / 2,
+            backgroundColor: COLORS.accent,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontFamily: 'DM Sans',
+            fontSize: 34,
+            fontWeight: 700,
+            color: '#fff',
+          },
+          children: (data.authorName || '?').charAt(0).toUpperCase(),
+        },
+      };
+
+  contentChildren.push({
     type: 'div',
     props: {
       style: {
         display: 'flex',
+        flexDirection: 'column',
         alignItems: 'center',
-        marginTop: 20,
-        gap: 14,
+        marginTop: 14,
+        gap: 8,
       },
       children: [
-        // Avatar circle
+        avatarElement,
         {
           type: 'div',
           props: {
             style: {
-              width: 48,
-              height: 48,
-              borderRadius: 24,
-              backgroundColor: COLORS.accent,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontFamily: 'DM Sans',
-              fontSize: 22,
+              fontFamily: 'Playfair Display',
+              fontSize: 24,
               fontWeight: 700,
-              color: '#fff',
-              flexShrink: 0,
+              color: COLORS.text,
+              textAlign: 'center',
             },
-            children: (data.authorName || '?').charAt(0).toUpperCase(),
-          },
-        },
-        {
-          type: 'div',
-          props: {
-            style: { display: 'flex', flexDirection: 'column' },
-            children: [
-              {
-                type: 'div',
-                props: {
-                  style: {
-                    fontFamily: 'DM Sans',
-                    fontSize: 22,
-                    fontWeight: 700,
-                    color: COLORS.text,
-                  },
-                  children: data.authorName || 'Unknown',
-                },
-              },
-              ...(data.disambiguation ? [{
-                type: 'div',
-                props: {
-                  style: {
-                    fontFamily: 'DM Sans',
-                    fontSize: 17,
-                    color: COLORS.textMuted,
-                  },
-                  children: truncate(data.disambiguation, 60),
-                },
-              }] : []),
-            ],
+            children: data.authorName || 'Unknown',
           },
         },
       ],
     },
   });
 
-  // Verdict / category badge section
-  if (verdictLabel) {
-    const verdictChildren = [
-      {
-        type: 'div',
-        props: {
-          style: {
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-          },
-          children: [
-            {
-              type: 'div',
-              props: {
-                style: {
-                  backgroundColor: verdictColor,
-                  color: '#fff',
-                  fontFamily: 'DM Sans',
-                  fontSize: 16,
-                  fontWeight: 700,
-                  padding: '5px 12px',
-                  borderRadius: 4,
-                  letterSpacing: 0.5,
-                },
-                children: verdictLabel,
-              },
-            },
-            ...(claimText ? [{
-              type: 'div',
-              props: {
-                style: {
-                  fontFamily: 'DM Sans',
-                  fontSize: 17,
-                  color: COLORS.text,
-                  fontWeight: 700,
-                },
-                children: claimText,
-              },
-            }] : []),
-          ],
-        },
-      },
-    ];
+  // Fact check card (claim + explanation)
+  if (verdictLabel && (claimText || explanationText)) {
+    const cardChildren = [];
 
-    if (explanationText) {
-      verdictChildren.push({
+    if (claimText) {
+      cardChildren.push({
         type: 'div',
         props: {
           style: {
             fontFamily: 'DM Sans',
-            fontSize: 15,
+            fontSize: 14,
+            fontWeight: 700,
+            color: COLORS.text,
+          },
+          children: claimText,
+        },
+      });
+    }
+
+    if (explanationText) {
+      cardChildren.push({
+        type: 'div',
+        props: {
+          style: {
+            fontFamily: 'DM Sans',
+            fontSize: 13,
             fontStyle: 'italic',
             color: COLORS.textMuted,
             marginTop: 6,
@@ -332,33 +342,33 @@ function buildLandscapeLayout(data) {
       });
     }
 
-    children.push({
+    contentChildren.push({
       type: 'div',
       props: {
         style: {
           display: 'flex',
           flexDirection: 'column',
-          marginTop: 18,
-          padding: '14px 18px',
+          marginTop: 16,
+          padding: '12px 16px',
           backgroundColor: COLORS.bgCard,
           borderRadius: 6,
           borderLeft: `3px solid ${verdictColor}`,
         },
-        children: verdictChildren,
+        children: cardChildren,
       },
     });
   }
 
-  // Branding footer
-  children.push({
+  // Branding (centered with content)
+  contentChildren.push({
     type: 'div',
     props: {
       style: {
         display: 'flex',
-        justifyContent: 'space-between',
+        flexDirection: 'column',
         alignItems: 'center',
-        marginTop: 'auto',
-        paddingTop: 16,
+        marginTop: 18,
+        gap: 4,
       },
       children: [
         {
@@ -366,9 +376,9 @@ function buildLandscapeLayout(data) {
           props: {
             style: {
               fontFamily: 'Playfair Display',
-              fontSize: 22,
+              fontSize: 24,
               fontWeight: 700,
-              color: COLORS.brandGold,
+              color: '#FFFFFF',
             },
             children: 'WhatTheySaid.News',
           },
@@ -378,7 +388,7 @@ function buildLandscapeLayout(data) {
           props: {
             style: {
               fontFamily: 'DM Sans',
-              fontSize: 16,
+              fontSize: 14,
               color: COLORS.textMuted,
               fontStyle: 'italic',
             },
@@ -398,10 +408,24 @@ function buildLandscapeLayout(data) {
         width: 1200,
         height: 630,
         backgroundColor: COLORS.bg,
-        padding: '40px 50px',
+        padding: '30px 50px',
         fontFamily: 'DM Sans',
       },
-      children,
+      children: [
+        // Content wrapper: centers everything as a group
+        {
+          type: 'div',
+          props: {
+            style: {
+              display: 'flex',
+              flexDirection: 'column',
+              flex: 1,
+              justifyContent: 'center',
+            },
+            children: contentChildren,
+          },
+        },
+      ],
     },
   };
 }
@@ -415,11 +439,12 @@ function buildPortraitLayout(data) {
   const claimText = truncate(data.claim || '', 100);
   const explanationText = truncate(data.explanation || '', 180);
 
-  const children = [];
+  // Content items (badge + quote + author + fact check) — centered as a group
+  const contentChildren = [];
 
   // Verdict badge at top (standalone, centered)
   if (verdictLabel) {
-    children.push({
+    contentChildren.push({
       type: 'div',
       props: {
         style: {
@@ -449,15 +474,13 @@ function buildPortraitLayout(data) {
     });
   }
 
-  // Quote text
-  children.push({
+  // Quote text (NO flex: 1)
+  contentChildren.push({
     type: 'div',
     props: {
       style: {
         display: 'flex',
         flexDirection: 'column',
-        flex: 1,
-        justifyContent: 'center',
       },
       children: [
         {
@@ -477,8 +500,43 @@ function buildPortraitLayout(data) {
     },
   });
 
-  // Author section (centered, larger name)
-  children.push({
+  // Author section — 100px photo circle or initial fallback
+  const avatarElement = data.photoDataUri
+    ? {
+        type: 'img',
+        props: {
+          src: data.photoDataUri,
+          width: 100,
+          height: 100,
+          style: {
+            width: 100,
+            height: 100,
+            borderRadius: 50,
+            objectFit: 'cover',
+          },
+        },
+      }
+    : {
+        type: 'div',
+        props: {
+          style: {
+            width: 100,
+            height: 100,
+            borderRadius: 50,
+            backgroundColor: COLORS.accent,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontFamily: 'DM Sans',
+            fontSize: 42,
+            fontWeight: 700,
+            color: '#fff',
+          },
+          children: (data.authorName || '?').charAt(0).toUpperCase(),
+        },
+      };
+
+  contentChildren.push({
     type: 'div',
     props: {
       style: {
@@ -489,31 +547,13 @@ function buildPortraitLayout(data) {
         gap: 10,
       },
       children: [
-        {
-          type: 'div',
-          props: {
-            style: {
-              width: 60,
-              height: 60,
-              borderRadius: 30,
-              backgroundColor: COLORS.accent,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontFamily: 'DM Sans',
-              fontSize: 26,
-              fontWeight: 700,
-              color: '#fff',
-            },
-            children: (data.authorName || '?').charAt(0).toUpperCase(),
-          },
-        },
+        avatarElement,
         {
           type: 'div',
           props: {
             style: {
               fontFamily: 'Playfair Display',
-              fontSize: 22,
+              fontSize: 24,
               fontWeight: 700,
               color: COLORS.text,
               textAlign: 'center',
@@ -561,7 +601,7 @@ function buildPortraitLayout(data) {
       });
     }
 
-    children.push({
+    contentChildren.push({
       type: 'div',
       props: {
         style: {
@@ -578,16 +618,15 @@ function buildPortraitLayout(data) {
     });
   }
 
-  // Branding footer (larger)
-  children.push({
+  // Branding (centered with content)
+  contentChildren.push({
     type: 'div',
     props: {
       style: {
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        marginTop: 'auto',
-        paddingTop: 24,
+        marginTop: 24,
         gap: 4,
       },
       children: [
@@ -598,7 +637,7 @@ function buildPortraitLayout(data) {
               fontFamily: 'Playfair Display',
               fontSize: 28,
               fontWeight: 700,
-              color: COLORS.brandGold,
+              color: '#FFFFFF',
             },
             children: 'WhatTheySaid.News',
           },
@@ -631,7 +670,21 @@ function buildPortraitLayout(data) {
         padding: '40px 36px',
         fontFamily: 'DM Sans',
       },
-      children,
+      children: [
+        // Content wrapper: centers everything as a group
+        {
+          type: 'div',
+          props: {
+            style: {
+              display: 'flex',
+              flexDirection: 'column',
+              flex: 1,
+              justifyContent: 'center',
+            },
+            children: contentChildren,
+          },
+        },
+      ],
     },
   };
 }
@@ -649,6 +702,7 @@ function buildPortraitLayout(data) {
  * @param {string} [quoteData.disambiguation]
  * @param {string} [quoteData.verdict]       — e.g. 'TRUE', 'FALSE', 'MISLEADING'
  * @param {string} [quoteData.category]      — 'A', 'B', or 'C'
+ * @param {string} [quoteData.photoUrl]      — author photo URL
  * @param {string} [quoteData.claim]
  * @param {string} [quoteData.explanation]
  * @param {string} format — 'landscape' (1200×630) or 'portrait' (600×900)
@@ -670,16 +724,30 @@ export async function generateShareImage(quoteData, format = 'landscape') {
   const width = isPortrait ? 600 : 1200;
   const height = isPortrait ? 900 : 630;
 
-  const element = isPortrait
-    ? buildPortraitLayout(quoteData)
-    : buildLandscapeLayout(quoteData);
+  // Fetch author photo
+  let photoDataUri = null;
+  if (quoteData.photoUrl) {
+    photoDataUri = await fetchImageAsDataUri(quoteData.photoUrl);
+  }
 
-  // satori → SVG
-  const svg = await satori(element, {
-    width,
-    height,
-    fonts: fontData,
-  });
+  const layoutData = { ...quoteData, photoDataUri };
+  const buildLayout = isPortrait ? buildPortraitLayout : buildLandscapeLayout;
+
+  const element = buildLayout(layoutData);
+
+  // satori → SVG (retry without photo if it fails)
+  let svg;
+  try {
+    svg = await satori(element, { width, height, fonts: fontData });
+  } catch (err) {
+    if (photoDataUri) {
+      layoutData.photoDataUri = null;
+      const fallbackElement = buildLayout(layoutData);
+      svg = await satori(fallbackElement, { width, height, fonts: fontData });
+    } else {
+      throw err;
+    }
+  }
 
   // resvg → PNG
   const resvg = new Resvg(svg, {

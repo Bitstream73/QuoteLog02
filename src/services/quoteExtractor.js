@@ -265,6 +265,7 @@ export async function extractQuotesFromArticle(articleText, article, db, io) {
           quoteDate,
           isVisible,
           extractedKeywords: JSON.stringify(q.keywords || []),
+          extractedTopics: JSON.stringify(q.topics || []),
         },
         personId,
         article,
@@ -277,9 +278,10 @@ export async function extractQuotesFromArticle(articleText, article, db, io) {
         // Classify new (non-duplicate) quotes using per-quote keywords from Gemini
         if (!quoteResult.isDuplicate) {
           const quoteEntities = (q.keywords || []).map(k => ({ name: k, type: 'keyword' }));
-          if (quoteEntities.length > 0) {
+          const quoteTopics = q.topics || [];
+          if (quoteEntities.length > 0 || quoteTopics.length > 0) {
             try {
-              const classification = classifyQuote(quoteResult.id, quoteDate, quoteEntities);
+              const classification = classifyQuote(quoteResult.id, quoteDate, quoteEntities, quoteTopics);
               logger.debug('extractor', 'quote_classified', {
                 quoteId: quoteResult.id,
                 matched: classification.matched.length,

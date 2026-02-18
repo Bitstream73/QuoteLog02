@@ -59,6 +59,51 @@ export function queueUnmatchedEntities(unmatchedEntities) {
 }
 
 /**
+ * Handle unmatched topics from topic matching.
+ * Creates new_topic taxonomy suggestions for admin review.
+ * @param {Array<{topicName: string}>} unmatchedTopics
+ */
+export function queueUnmatchedTopics(unmatchedTopics) {
+  if (!unmatchedTopics || unmatchedTopics.length === 0) return;
+
+  const db = getDb();
+  const insert = db.prepare(`
+    INSERT INTO taxonomy_suggestions (suggestion_type, suggested_data, source, status)
+    VALUES (?, ?, ?, 'pending')
+  `);
+
+  const existingPending = db.prepare(`
+    SELECT id FROM taxonomy_suggestions
+    WHERE suggestion_type = 'new_topic' AND status = 'pending'
+      AND LOWER(json_extract(suggested_data, '$.name')) = ?
+    LIMIT 1
+  `);
+
+  const existingTopic = db.prepare(`
+    SELECT id FROM topics WHERE LOWER(name) = ? LIMIT 1
+  `);
+
+  const seenInBatch = new Set();
+
+  for (const item of unmatchedTopics) {
+    const normalized = item.topicName.toLowerCase().trim();
+
+    if (seenInBatch.has(normalized)) continue;
+    seenInBatch.add(normalized);
+
+    if (existingTopic.get(normalized)) continue;
+    if (existingPending.get(normalized)) continue;
+
+    const suggestedData = JSON.stringify({
+      name: item.topicName,
+      suggested_aliases: [item.topicName],
+    });
+
+    insert.run('new_topic', suggestedData, 'ai_extraction');
+  }
+}
+
+/**
  * Get pending taxonomy suggestions for admin review.
  * @param {Object} options - { type?, status?, limit?, offset? }
  * @returns {Array} suggestions
@@ -100,6 +145,18 @@ export function approveSuggestion(suggestionId, editedData = null) {
         insertAlias.run(keywordId, alias, alias.toLowerCase().trim());
       }
     }
+  } else if (suggestion.suggestion_type === 'new_topic') {
+    const name = data.name.trim();
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    const result = db.prepare('INSERT INTO topics (name, slug, status) VALUES (?, ?, ?)').run(name, slug, 'active');
+    const topicId = result.lastInsertRowid;
+
+    if (data.suggested_aliases) {
+      const insertAlias = db.prepare('INSERT OR IGNORE INTO topic_aliases (topic_id, alias, alias_normalized) VALUES (?, ?, ?)');
+      for (const alias of data.suggested_aliases) {
+        insertAlias.run(topicId, alias, alias.toLowerCase().trim());
+      }
+    }
   }
 
   const status = editedData ? 'edited' : 'approved';
@@ -128,66 +185,121 @@ export function rejectSuggestion(suggestionId) {
 export function autoApproveQuoteKeywords(quoteId, dbOverride) {
   const db = dbOverride || getDb();
 
-  const quote = db.prepare('SELECT extracted_keywords, quote_datetime FROM quotes WHERE id = ?').get(quoteId);
-  if (!quote || !quote.extracted_keywords) return;
+  const quote = db.prepare('SELECT extracted_keywords, extracted_topics, quote_datetime FROM quotes WHERE id = ?').get(quoteId);
+  if (!quote) return;
 
-  let keywordStrings;
-  try {
-    keywordStrings = JSON.parse(quote.extracted_keywords);
-  } catch {
-    return;
+  // Process keywords
+  let keywordStrings = [];
+  if (quote.extracted_keywords) {
+    try {
+      const parsed = JSON.parse(quote.extracted_keywords);
+      if (Array.isArray(parsed)) keywordStrings = parsed;
+    } catch {
+      // ignore parse errors
+    }
   }
-  if (!Array.isArray(keywordStrings) || keywordStrings.length === 0) return;
-
-  const findKeyword = db.prepare('SELECT id FROM keywords WHERE name_normalized = ? LIMIT 1');
-  const findPendingSuggestion = db.prepare(`
-    SELECT id FROM taxonomy_suggestions
-    WHERE suggestion_type = 'new_keyword' AND status = 'pending'
-      AND LOWER(json_extract(suggested_data, '$.name')) = ?
-    LIMIT 1
-  `);
-  const insertKeyword = db.prepare('INSERT INTO keywords (name, name_normalized) VALUES (?, ?)');
-  const insertAlias = db.prepare('INSERT OR IGNORE INTO keyword_aliases (keyword_id, alias, alias_normalized) VALUES (?, ?, ?)');
-  const linkQuoteKeyword = db.prepare('INSERT OR IGNORE INTO quote_keywords (quote_id, keyword_id, confidence) VALUES (?, ?, ?)');
-  const approveSugg = db.prepare("UPDATE taxonomy_suggestions SET status = 'approved', reviewed_at = CURRENT_TIMESTAMP WHERE id = ?");
 
   const linkedKeywordIds = [];
 
-  for (const kwString of keywordStrings) {
-    if (!kwString || typeof kwString !== 'string') continue;
-    const normalized = kwString.toLowerCase().trim();
-    if (!normalized) continue;
+  if (keywordStrings.length > 0) {
+    const findKeyword = db.prepare('SELECT id FROM keywords WHERE name_normalized = ? LIMIT 1');
+    const findPendingSuggestion = db.prepare(`
+      SELECT id FROM taxonomy_suggestions
+      WHERE suggestion_type = 'new_keyword' AND status = 'pending'
+        AND LOWER(json_extract(suggested_data, '$.name')) = ?
+      LIMIT 1
+    `);
+    const insertKeyword = db.prepare('INSERT INTO keywords (name, name_normalized) VALUES (?, ?)');
+    const insertAlias = db.prepare('INSERT OR IGNORE INTO keyword_aliases (keyword_id, alias, alias_normalized) VALUES (?, ?, ?)');
+    const linkQuoteKeyword = db.prepare('INSERT OR IGNORE INTO quote_keywords (quote_id, keyword_id, confidence) VALUES (?, ?, ?)');
+    const approveSugg = db.prepare("UPDATE taxonomy_suggestions SET status = 'approved', reviewed_at = CURRENT_TIMESTAMP WHERE id = ?");
 
-    let keywordId;
+    for (const kwString of keywordStrings) {
+      if (!kwString || typeof kwString !== 'string') continue;
+      const normalized = kwString.toLowerCase().trim();
+      if (!normalized) continue;
 
-    // 1. Check if keyword already exists
-    const existing = findKeyword.get(normalized);
-    if (existing) {
-      keywordId = existing.id;
-    } else {
-      // 2. Check for pending taxonomy suggestion
-      const suggestion = findPendingSuggestion.get(normalized);
-      if (suggestion) {
-        // Approve the suggestion and create the keyword
-        const result = insertKeyword.run(kwString, normalized);
-        keywordId = result.lastInsertRowid;
-        insertAlias.run(keywordId, kwString, normalized);
-        approveSugg.run(suggestion.id);
+      let keywordId;
+
+      // 1. Check if keyword already exists
+      const existing = findKeyword.get(normalized);
+      if (existing) {
+        keywordId = existing.id;
       } else {
-        // 3. Create keyword directly
-        const result = insertKeyword.run(kwString, normalized);
-        keywordId = result.lastInsertRowid;
-        insertAlias.run(keywordId, kwString, normalized);
+        // 2. Check for pending taxonomy suggestion
+        const suggestion = findPendingSuggestion.get(normalized);
+        if (suggestion) {
+          // Approve the suggestion and create the keyword
+          const result = insertKeyword.run(kwString, normalized);
+          keywordId = result.lastInsertRowid;
+          insertAlias.run(keywordId, kwString, normalized);
+          approveSugg.run(suggestion.id);
+        } else {
+          // 3. Create keyword directly
+          const result = insertKeyword.run(kwString, normalized);
+          keywordId = result.lastInsertRowid;
+          insertAlias.run(keywordId, kwString, normalized);
+        }
       }
-    }
 
-    // Link to quote
-    linkQuoteKeyword.run(quoteId, keywordId, 'high');
-    linkedKeywordIds.push({ keyword: { keyword_id: keywordId } });
+      // Link to quote
+      linkQuoteKeyword.run(quoteId, keywordId, 'high');
+      linkedKeywordIds.push({ keyword: { keyword_id: keywordId } });
+    }
   }
 
   // Resolve topics based on linked keywords
   if (linkedKeywordIds.length > 0) {
     resolveTopicsAndCategories(quoteId, linkedKeywordIds, quote.quote_datetime || null);
+  }
+
+  // Also process extracted topics (direct topic matching)
+  let topicStrings;
+  try {
+    topicStrings = JSON.parse(quote.extracted_topics || '[]');
+  } catch {
+    topicStrings = [];
+  }
+  if (Array.isArray(topicStrings) && topicStrings.length > 0) {
+    const findTopic = db.prepare('SELECT id FROM topics WHERE LOWER(name) = ? LIMIT 1');
+    const findPendingTopicSugg = db.prepare(`
+      SELECT id FROM taxonomy_suggestions
+      WHERE suggestion_type = 'new_topic' AND status = 'pending'
+        AND LOWER(json_extract(suggested_data, '$.name')) = ?
+      LIMIT 1
+    `);
+    const insertTopic = db.prepare('INSERT INTO topics (name, slug, status) VALUES (?, ?, ?)');
+    const insertTopicAlias = db.prepare('INSERT OR IGNORE INTO topic_aliases (topic_id, alias, alias_normalized) VALUES (?, ?, ?)');
+    const linkQuoteTopic = db.prepare('INSERT OR IGNORE INTO quote_topics (quote_id, topic_id) VALUES (?, ?)');
+    const approveTopicSugg = db.prepare("UPDATE taxonomy_suggestions SET status = 'approved', reviewed_at = CURRENT_TIMESTAMP WHERE id = ?");
+
+    for (const topicString of topicStrings) {
+      if (!topicString || typeof topicString !== 'string') continue;
+      const normalized = topicString.toLowerCase().trim();
+      if (!normalized) continue;
+
+      let topicId;
+
+      const existing = findTopic.get(normalized);
+      if (existing) {
+        topicId = existing.id;
+      } else {
+        const suggestion = findPendingTopicSugg.get(normalized);
+        if (suggestion) {
+          const slug = normalized.replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+          const result = insertTopic.run(topicString, slug, 'active');
+          topicId = result.lastInsertRowid;
+          insertTopicAlias.run(topicId, topicString, normalized);
+          approveTopicSugg.run(suggestion.id);
+        } else {
+          const slug = normalized.replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+          const result = insertTopic.run(topicString, slug, 'active');
+          topicId = result.lastInsertRowid;
+          insertTopicAlias.run(topicId, topicString, normalized);
+        }
+      }
+
+      linkQuoteTopic.run(quoteId, topicId);
+    }
   }
 }

@@ -613,6 +613,9 @@ function initializeTables(db) {
   if (!quoteCols2.includes('extracted_keywords')) {
     db.exec(`ALTER TABLE quotes ADD COLUMN extracted_keywords TEXT`);
   }
+  if (!quoteCols2.includes('extracted_topics')) {
+    db.exec(`ALTER TABLE quotes ADD COLUMN extracted_topics TEXT`);
+  }
   if (!quoteCols2.includes('fact_check_html')) {
     db.exec(`ALTER TABLE quotes ADD COLUMN fact_check_html TEXT`);
   }

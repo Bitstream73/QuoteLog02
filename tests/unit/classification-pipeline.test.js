@@ -112,6 +112,18 @@ function setupTestDb() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  // Topic aliases
+  testDb.exec(`
+    CREATE TABLE topic_aliases (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      topic_id INTEGER NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
+      alias TEXT NOT NULL,
+      alias_normalized TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(topic_id, alias)
+    )
+  `);
 }
 
 function seedData() {
@@ -305,6 +317,61 @@ describe('Classification Pipeline', () => {
       if (result.matched.length > 0 && result.matched[0].confidence === 'medium') {
         expect(result.flagged).toHaveLength(1);
       }
+    });
+
+    it('classifyQuote with topics matches and links directly', async () => {
+      const { classifyQuote } = await import('../../src/services/classificationPipeline.js');
+
+      const result = classifyQuote(1, '2024-06-15', [
+        { name: 'Donald Trump', type: 'person' },
+      ], ['U.S. Politics']);
+
+      expect(result.matched).toHaveLength(1);
+
+      // Topic linked directly via topic name match
+      const qt = testDb.prepare('SELECT * FROM quote_topics WHERE quote_id = 1').all();
+      const topicIds = qt.map(r => r.topic_id);
+      expect(topicIds).toContain(1); // U.S. Politics
+    });
+
+    it('classifyQuote with topics queues unmatched topics', async () => {
+      const { classifyQuote } = await import('../../src/services/classificationPipeline.js');
+
+      classifyQuote(1, '2024-06-15', [
+        { name: 'Donald Trump', type: 'person' },
+      ], ['Nonexistent Topic']);
+
+      const suggestions = testDb.prepare("SELECT * FROM taxonomy_suggestions WHERE suggestion_type = 'new_topic'").all();
+      expect(suggestions).toHaveLength(1);
+      const data = JSON.parse(suggestions[0].suggested_data);
+      expect(data.name).toBe('Nonexistent Topic');
+    });
+
+    it('classifyQuote without topics param works unchanged (backward compat)', async () => {
+      const { classifyQuote } = await import('../../src/services/classificationPipeline.js');
+
+      const result = classifyQuote(1, '2024-06-15', [
+        { name: 'Donald Trump', type: 'person' },
+      ]);
+
+      expect(result.matched).toHaveLength(1);
+
+      // No new_topic suggestions created
+      const suggestions = testDb.prepare("SELECT * FROM taxonomy_suggestions WHERE suggestion_type = 'new_topic'").all();
+      expect(suggestions).toHaveLength(0);
+    });
+
+    it('classifyQuote processes topics even with empty entities', async () => {
+      const { classifyQuote } = await import('../../src/services/classificationPipeline.js');
+
+      const result = classifyQuote(1, '2024-06-15', [], ['U.S. Politics']);
+
+      expect(result.matched).toHaveLength(0);
+
+      // Topic should still be linked
+      const qt = testDb.prepare('SELECT * FROM quote_topics WHERE quote_id = 1').all();
+      expect(qt).toHaveLength(1);
+      expect(qt[0].topic_id).toBe(1);
     });
   });
 });

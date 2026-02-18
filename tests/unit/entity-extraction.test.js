@@ -247,7 +247,8 @@ describe('Entity Extraction', () => {
       [
         { name: 'China', type: 'keyword' },
         { name: 'tariffs', type: 'keyword' },
-      ]
+      ],
+      ['Trade & Tariffs']
     );
   });
 

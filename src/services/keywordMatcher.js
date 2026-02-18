@@ -107,6 +107,89 @@ export function storeQuoteKeywords(quoteId, matches) {
  * @param {Array<{keyword}>} matches - matched keywords
  * @param {string} quoteDate - ISO date string of the quote
  */
+/**
+ * Match extracted topic names against existing topics and topic aliases.
+ * Uses exact case-insensitive matching only (no fuzzy matching).
+ * @param {Array<string>} topicNames - topic strings from Gemini extraction
+ * @returns {{ matched: Array<{topicName: string, topicId: number}>, unmatched: Array<{topicName: string}> }}
+ */
+export function matchTopics(topicNames) {
+  const db = getDb();
+
+  const topics = db.prepare(`SELECT id, name FROM topics WHERE status = 'active'`).all();
+  const aliases = db.prepare(`
+    SELECT ta.alias_normalized, ta.topic_id, t.name as topic_name
+    FROM topic_aliases ta
+    JOIN topics t ON t.id = ta.topic_id
+    WHERE t.status = 'active'
+  `).all();
+
+  const matched = [];
+  const unmatched = [];
+
+  for (const topicName of topicNames) {
+    if (!topicName || typeof topicName !== 'string') continue;
+    const normalized = topicName.toLowerCase().trim();
+    if (!normalized) continue;
+
+    let found = null;
+
+    // Exact match on topic name
+    for (const t of topics) {
+      if (t.name.toLowerCase() === normalized) {
+        found = { topicName: t.name, topicId: t.id };
+        break;
+      }
+    }
+
+    // Exact match on topic alias
+    if (!found) {
+      for (const a of aliases) {
+        if (a.alias_normalized === normalized) {
+          found = { topicName: a.topic_name, topicId: a.topic_id };
+          break;
+        }
+      }
+    }
+
+    if (found) {
+      matched.push(found);
+    } else {
+      unmatched.push({ topicName });
+    }
+  }
+
+  return { matched, unmatched };
+}
+
+/**
+ * Store direct topic-quote links for matched topics, respecting temporal scoping.
+ * @param {number} quoteId
+ * @param {Array<{topicName: string, topicId: number}>} matchedTopics
+ * @param {string} quoteDate - ISO date string
+ */
+export function storeQuoteTopicsDirect(quoteId, matchedTopics, quoteDate) {
+  const db = getDb();
+  const insertTopic = db.prepare(`INSERT OR IGNORE INTO quote_topics (quote_id, topic_id) VALUES (?, ?)`);
+
+  for (const { topicId } of matchedTopics) {
+    const topic = db.prepare(`SELECT start_date, end_date FROM topics WHERE id = ?`).get(topicId);
+    if (!topic) continue;
+
+    let inRange = true;
+    if (topic.start_date && quoteDate) {
+      if (quoteDate < topic.start_date) inRange = false;
+    }
+    if (topic.end_date && quoteDate) {
+      if (quoteDate > topic.end_date) inRange = false;
+    }
+
+    if (inRange) {
+      insertTopic.run(quoteId, topicId);
+    }
+  }
+}
+
 export function resolveTopicsAndCategories(quoteId, matches, quoteDate) {
   const db = getDb();
 

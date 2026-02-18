@@ -356,6 +356,7 @@ router.get('/:id/share-image', async (req, res) => {
       quoteText: quote.text,
       authorName: quote.canonical_name,
       disambiguation: quote.disambiguation,
+      photoUrl: quote.photo_url || null,
       verdict: quote.fact_check_verdict,
       category: quote.fact_check_category,
       claim: quote.fact_check_claim,
