@@ -484,4 +484,54 @@ describe('Topics API', () => {
       expect(res.body.slug).toBe('war');
     });
   });
+
+  describe('GET /api/admin/topics/:id categories', () => {
+    it('returns empty categories array when none linked', async () => {
+      // Create a topic
+      const createRes = await request(app)
+        .post('/api/admin/topics')
+        .set('Cookie', authCookie)
+        .send({ name: 'Cat Test Topic' });
+      expect(createRes.status).toBe(201);
+      const topicId = createRes.body.id;
+
+      const res = await request(app)
+        .get(`/api/admin/topics/${topicId}`)
+        .set('Cookie', authCookie);
+      expect(res.status).toBe(200);
+      expect(res.body.categories).toEqual([]);
+    });
+
+    it('includes linked categories after linking via category endpoint', async () => {
+      // Create a topic and a category
+      const topicRes = await request(app)
+        .post('/api/admin/topics')
+        .set('Cookie', authCookie)
+        .send({ name: 'Cat Link Topic' });
+      expect(topicRes.status).toBe(201);
+      const topicId = topicRes.body.id;
+
+      const catRes = await request(app)
+        .post('/api/admin/categories')
+        .set('Cookie', authCookie)
+        .send({ name: 'Test Category For Topic' });
+      expect(catRes.status).toBe(201);
+      const catId = catRes.body.id;
+
+      // Link topic to category
+      const linkRes = await request(app)
+        .post(`/api/admin/categories/${catId}/topics`)
+        .set('Cookie', authCookie)
+        .send({ topic_id: topicId });
+      expect(linkRes.status).toBe(201);
+
+      // Fetch topic and verify categories
+      const res = await request(app)
+        .get(`/api/admin/topics/${topicId}`)
+        .set('Cookie', authCookie);
+      expect(res.status).toBe(200);
+      expect(res.body.categories).toHaveLength(1);
+      expect(res.body.categories[0].name).toBe('Test Category For Topic');
+    });
+  });
 });

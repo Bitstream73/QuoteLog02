@@ -1374,15 +1374,16 @@ document.addEventListener('toggle', async (e) => {
     const data = await API.get(`/admin/topics/${topicId}`);
     const aliases = data.aliases || [];
     const keywords = data.keywords || [];
+    const categories = data.categories || [];
     const topic = data.topic || {};
     body.dataset.loaded = 'true';
-    body.innerHTML = renderTopicDetails(topicId, topic, aliases, keywords);
+    body.innerHTML = renderTopicDetails(topicId, topic, aliases, keywords, categories);
   } catch (err) {
     body.innerHTML = `<p class="empty-message">Error loading topic: ${escapeHtml(err.message)}</p>`;
   }
 }, true);
 
-function renderTopicDetails(topicId, topic, aliases, keywords) {
+function renderTopicDetails(topicId, topic, aliases, keywords, categories = []) {
   let html = '';
 
   // Inline edit fields
@@ -1462,6 +1463,32 @@ function renderTopicDetails(topicId, topic, aliases, keywords) {
   // Populate keyword dropdown asynchronously
   loadTopicKeywordOptions(topicId, keywords.map(kw => kw.id));
 
+  // Categories section
+  html += '<div style="margin-top:0.75rem;margin-bottom:0.5rem"><strong style="font-size:0.8rem">Linked Categories</strong></div>';
+  html += '<div class="keyword-aliases-list">';
+  if (categories.length === 0) {
+    html += '<p class="empty-message" style="padding:0.25rem 0;font-size:0.85rem">No categories linked.</p>';
+  } else {
+    html += categories.map(cat => `
+      <span class="keyword-alias-chip" data-category-id="${cat.id}">
+        ${escapeHtml(cat.name)}
+        <button class="keyword-alias-remove" onclick="unlinkTopicCategory(${topicId}, ${cat.id})" title="Unlink category">&times;</button>
+      </span>
+    `).join('');
+  }
+  html += '</div>';
+  html += `
+    <div class="keyword-alias-add">
+      <select id="topic-category-select-${topicId}" class="input-select" style="width:200px">
+        <option value="">Select a category...</option>
+      </select>
+      <button class="btn btn-secondary btn-sm" onclick="linkTopicCategory(${topicId})">Link Category</button>
+    </div>
+  `;
+
+  // Populate category dropdown asynchronously
+  loadTopicCategoryOptions(topicId, categories.map(cat => cat.id));
+
   return html;
 }
 
@@ -1492,6 +1519,47 @@ function filterTopicKeywordOptions(topicId) {
   const filtered = query ? available.filter(kw => kw.name.toLowerCase().includes(query)) : available;
   select.innerHTML = '<option value="">Select a keyword...</option>' +
     filtered.map(kw => `<option value="${kw.id}">${escapeHtml(kw.name)}</option>`).join('');
+}
+
+async function loadTopicCategoryOptions(topicId, linkedCategoryIds) {
+  try {
+    const data = await API.get('/admin/categories');
+    const allCategories = data.categories || [];
+    const select = document.getElementById(`topic-category-select-${topicId}`);
+    if (!select) return;
+    const linkedSet = new Set(linkedCategoryIds);
+    const available = allCategories.filter(cat => !linkedSet.has(cat.id));
+    select.innerHTML = '<option value="">Select a category...</option>' +
+      available.map(cat => `<option value="${cat.id}">${escapeHtml(cat.name)}</option>`).join('');
+  } catch (err) {
+    console.error('Failed to load categories for dropdown:', err);
+  }
+}
+
+async function linkTopicCategory(topicId) {
+  const select = document.getElementById(`topic-category-select-${topicId}`);
+  const catId = select?.value;
+  if (!catId) {
+    showToast('Please select a category', 'error');
+    return;
+  }
+  try {
+    await API.post(`/admin/categories/${catId}/topics`, { topic_id: topicId });
+    showToast('Category linked');
+    refreshTopicBody(topicId);
+  } catch (err) {
+    showToast('Failed to link category: ' + err.message, 'error');
+  }
+}
+
+async function unlinkTopicCategory(topicId, catId) {
+  try {
+    await API.delete(`/admin/categories/${catId}/topics/${topicId}`);
+    showToast('Category unlinked');
+    refreshTopicBody(topicId);
+  } catch (err) {
+    showToast('Failed to unlink category: ' + err.message, 'error');
+  }
 }
 
 async function addTopic() {
@@ -1633,7 +1701,7 @@ async function refreshTopicBody(topicId) {
   if (!body) return;
   try {
     const data = await API.get(`/admin/topics/${topicId}`);
-    body.innerHTML = renderTopicDetails(topicId, data.topic || {}, data.aliases || [], data.keywords || []);
+    body.innerHTML = renderTopicDetails(topicId, data.topic || {}, data.aliases || [], data.keywords || [], data.categories || []);
   } catch (err) {
     console.error('Failed to refresh topic body:', err);
   }

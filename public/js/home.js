@@ -136,8 +136,12 @@ async function shareEntity(event, entityType, entityId, platform) {
       break;
     case 'email': {
       const subject = encodeURIComponent(`Quote from ${authorName} - WhatTheySaid.News`);
-      const body = encodeURIComponent(`${fullText}\n\nRead more: ${url}\n\n---\nShared from WhatTheySaid.News`);
-      window.open(`mailto:?subject=${subject}&body=${body}`, '_self');
+      const imageUrl = entityType === 'quote' ? `${window.location.origin}/api/quotes/${entityId}/share-image?orientation=landscape` : '';
+      const bodyParts = [fullText, '', `Read more: ${url}`];
+      if (imageUrl) bodyParts.push(`View quote image: ${imageUrl}`);
+      bodyParts.push('', '---', 'Shared from WhatTheySaid.News');
+      const body = encodeURIComponent(bodyParts.join('\n'));
+      window.location.href = `mailto:?subject=${subject}&body=${body}`;
       break;
     }
     case 'copy':
@@ -392,6 +396,7 @@ function buildAdminQuoteBlockHtml(q, isImportant) {
         <button onclick="navigateTo('/article/${articleId}')">Sources</button>
         <button onclick="adminEditAuthorFromQuote(${q.person_id || q.personId})">Author</button>
         <button onclick="adminChangeHeadshotFromQuote(${q.person_id || q.personId})">Photo</button>
+        <button onclick="adminDeleteQuote(${q.id}, function(){ location.reload(); }, this)" title="Delete quote" style="color:var(--danger,#dc2626)">Delete</button>
       </div>
 
       <details class="admin-details-panel admin-details-panel--list" ontoggle="loadListAdminDetails(this, ${q.id})">

@@ -652,7 +652,13 @@ router.get('/topics/:id', (req, res) => {
       WHERE tk.topic_id = ?
       ORDER BY k.name
     `).all(req.params.id);
-    res.json({ topic, aliases, keywords });
+    const categories = db.prepare(`
+      SELECT c.* FROM categories c
+      JOIN category_topics ct ON ct.category_id = c.id
+      WHERE ct.topic_id = ?
+      ORDER BY c.sort_order, c.name
+    `).all(req.params.id);
+    res.json({ topic, aliases, keywords, categories });
   } catch (err) {
     res.status(500).json({ error: 'Failed to get topic: ' + err.message });
   }
