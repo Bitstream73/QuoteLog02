@@ -3090,6 +3090,30 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   border-color: var(--danger, #dc2626) !important;
 }
 
+/* Taxonomy Bulk Actions (reuses category-bulk-row styles) */
+.tax-bulk-section {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.tax-bulk-header {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.tax-bulk-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
 /* ===================================
    Admin Quote Management Cards
    =================================== */

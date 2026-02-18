@@ -735,10 +735,32 @@ async function renderTaxonomyTab() {
       }
     }
 
+    const topicCount = (pendingByType['new_topic'] || 0) + (pendingByType['topic_alias'] || 0);
+    const keywordCount = (pendingByType['new_keyword'] || 0) + (pendingByType['keyword_alias'] || 0);
+
     let html = `
       <p class="page-subtitle">Review AI-suggested taxonomy changes: new keywords, topics, aliases, and associations.</p>
       <div class="review-stats">
         <span class="stat"><strong>${pendingTotal}</strong> pending suggestions</span>
+      </div>
+      <div class="tax-bulk-section">
+        <div class="tax-bulk-header">Bulk Actions</div>
+        <div class="tax-bulk-list">
+          ${topicCount > 0 ? `
+          <div class="category-bulk-row">
+            <span class="category-bulk-name">Topics</span>
+            <span class="category-bulk-count">${topicCount}</span>
+            <button class="btn btn-success btn-sm category-bulk-btn" onclick="bulkTaxonomyAction('approve','topics',this)">Approve All</button>
+            <button class="btn btn-sm category-bulk-btn category-bulk-delete-btn" onclick="bulkTaxonomyAction('reject','topics',this)">Delete All</button>
+          </div>` : ''}
+          ${keywordCount > 0 ? `
+          <div class="category-bulk-row">
+            <span class="category-bulk-name">Keywords</span>
+            <span class="category-bulk-count">${keywordCount}</span>
+            <button class="btn btn-success btn-sm category-bulk-btn" onclick="bulkTaxonomyAction('approve','keywords',this)">Approve All</button>
+            <button class="btn btn-sm category-bulk-btn category-bulk-delete-btn" onclick="bulkTaxonomyAction('reject','keywords',this)">Delete All</button>
+          </div>` : ''}
+        </div>
       </div>
       <div class="tax-controls">
         <div class="tax-filters">
@@ -1042,6 +1064,31 @@ async function batchRejectSuggestions(evt) {
   btn._confirmTimer = setTimeout(() => {
     btn._confirmPending = false;
     btn.textContent = 'Reject Selected';
+  }, 3000);
+}
+
+async function bulkTaxonomyAction(action, group, btn) {
+  if (!btn) return;
+  const label = action === 'approve' ? 'Approve All' : 'Delete All';
+  if (btn._confirmPending) {
+    clearTimeout(btn._confirmTimer);
+    btn._confirmPending = false;
+    btn.textContent = label;
+    try {
+      const result = await API.post('/admin/taxonomy/suggestions/bulk', { action, group });
+      const verb = action === 'approve' ? 'Approved' : 'Deleted';
+      showToast(`${verb} ${result.count} ${group}${result.errors ? ` (${result.errors} errors)` : ''}`, 'success');
+      renderTaxonomyTab();
+    } catch (err) {
+      showToast('Error: ' + err.message, 'error');
+    }
+    return;
+  }
+  btn._confirmPending = true;
+  btn.textContent = 'Are you sure?';
+  btn._confirmTimer = setTimeout(() => {
+    btn._confirmPending = false;
+    btn.textContent = label;
   }, 3000);
 }
 

@@ -1093,6 +1093,53 @@ router.post('/taxonomy/suggestions/:id/reject', (req, res) => {
   }
 });
 
+// POST /api/admin/taxonomy/suggestions/bulk — bulk approve or reject by type group
+router.post('/taxonomy/suggestions/bulk', (req, res) => {
+  try {
+    const { action, group } = req.body;
+
+    if (!['approve', 'reject'].includes(action)) {
+      return res.status(400).json({ error: 'action must be "approve" or "reject"' });
+    }
+
+    const typeMap = {
+      topics: ['new_topic', 'topic_alias'],
+      keywords: ['new_keyword', 'keyword_alias'],
+    };
+    const types = typeMap[group];
+    if (!types) {
+      return res.status(400).json({ error: 'group must be "topics" or "keywords"' });
+    }
+
+    const db = getDb();
+    const placeholders = types.map(() => '?').join(',');
+    const ids = db.prepare(
+      `SELECT id FROM taxonomy_suggestions WHERE status = 'pending' AND suggestion_type IN (${placeholders})`
+    ).all(...types).map(r => r.id);
+
+    if (ids.length === 0) {
+      return res.json({ success: true, count: 0 });
+    }
+
+    const handler = action === 'approve' ? approveSuggestion : rejectSuggestion;
+    let success = 0;
+    let errors = 0;
+    for (const id of ids) {
+      try {
+        handler(id);
+        success++;
+      } catch {
+        errors++;
+      }
+    }
+
+    emitTaxonomySuggestionsUpdate(req);
+    res.json({ success: true, count: success, errors });
+  } catch (err) {
+    res.status(500).json({ error: 'Bulk operation failed: ' + err.message });
+  }
+});
+
 // --- Taxonomy Evolution ---
 
 // POST /api/admin/taxonomy/evolve — trigger batch taxonomy evolution
