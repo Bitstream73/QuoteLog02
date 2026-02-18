@@ -15,7 +15,34 @@ export function queueUnmatchedEntities(unmatchedEntities) {
     VALUES (?, ?, ?, 'pending')
   `);
 
+  // Check for existing pending suggestion with the same name (case-insensitive)
+  const existingPending = db.prepare(`
+    SELECT id FROM taxonomy_suggestions
+    WHERE suggestion_type = 'new_keyword' AND status = 'pending'
+      AND LOWER(json_extract(suggested_data, '$.name')) = ?
+    LIMIT 1
+  `);
+
+  // Check if keyword already exists in the keywords table
+  const existingKeyword = db.prepare(`
+    SELECT id FROM keywords WHERE name_normalized = ? LIMIT 1
+  `);
+
+  const seenInBatch = new Set();
+
   for (const item of unmatchedEntities) {
+    const normalized = item.entity.name.toLowerCase().trim();
+
+    // Skip duplicates within this batch
+    if (seenInBatch.has(normalized)) continue;
+    seenInBatch.add(normalized);
+
+    // Skip if keyword already exists
+    if (existingKeyword.get(normalized)) continue;
+
+    // Skip if an identical pending suggestion already exists
+    if (existingPending.get(normalized)) continue;
+
     const suggestedData = JSON.stringify({
       name: item.entity.name,
       type: item.entity.type,

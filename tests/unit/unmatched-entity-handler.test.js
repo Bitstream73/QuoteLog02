@@ -96,6 +96,83 @@ describe('Unmatched Entity Handler', () => {
       expect(data1.closest_match).toBeNull();
     });
 
+    it('skips duplicate pending suggestions with the same name', async () => {
+      const { queueUnmatchedEntities } = await import('../../src/services/unmatchedEntityHandler.js');
+
+      const entity = {
+        entity: { name: 'Cornwall Insight', type: 'keyword' },
+        bestMatch: null,
+        bestScore: 0,
+      };
+
+      // Queue twice
+      queueUnmatchedEntities([entity]);
+      queueUnmatchedEntities([entity]);
+
+      const rows = testDb.prepare('SELECT * FROM taxonomy_suggestions').all();
+      expect(rows).toHaveLength(1);
+    });
+
+    it('skips duplicate pending suggestions case-insensitively', async () => {
+      const { queueUnmatchedEntities } = await import('../../src/services/unmatchedEntityHandler.js');
+
+      queueUnmatchedEntities([
+        { entity: { name: 'Climate Change', type: 'concept' }, bestMatch: null, bestScore: 0 },
+      ]);
+      queueUnmatchedEntities([
+        { entity: { name: 'climate change', type: 'concept' }, bestMatch: null, bestScore: 0 },
+      ]);
+
+      const rows = testDb.prepare('SELECT * FROM taxonomy_suggestions').all();
+      expect(rows).toHaveLength(1);
+    });
+
+    it('allows suggestion after previous one was rejected', async () => {
+      const { queueUnmatchedEntities } = await import('../../src/services/unmatchedEntityHandler.js');
+
+      const entity = {
+        entity: { name: 'New Entity', type: 'keyword' },
+        bestMatch: null,
+        bestScore: 0,
+      };
+
+      queueUnmatchedEntities([entity]);
+      // Reject it
+      testDb.prepare("UPDATE taxonomy_suggestions SET status = 'rejected'").run();
+
+      // Queue again — should create a new one since previous was rejected
+      queueUnmatchedEntities([entity]);
+
+      const rows = testDb.prepare("SELECT * FROM taxonomy_suggestions WHERE status = 'pending'").all();
+      expect(rows).toHaveLength(1);
+    });
+
+    it('skips entities that already exist as keywords', async () => {
+      const { queueUnmatchedEntities } = await import('../../src/services/unmatchedEntityHandler.js');
+
+      // Add existing keyword
+      testDb.prepare('INSERT INTO keywords (name, name_normalized) VALUES (?, ?)').run('NATO', 'nato');
+
+      queueUnmatchedEntities([
+        { entity: { name: 'NATO', type: 'organization' }, bestMatch: null, bestScore: 0 },
+      ]);
+
+      const rows = testDb.prepare('SELECT * FROM taxonomy_suggestions').all();
+      expect(rows).toHaveLength(0);
+    });
+
+    it('deduplicates within a single batch', async () => {
+      const { queueUnmatchedEntities } = await import('../../src/services/unmatchedEntityHandler.js');
+
+      queueUnmatchedEntities([
+        { entity: { name: 'Same Entity', type: 'keyword' }, bestMatch: null, bestScore: 0 },
+        { entity: { name: 'Same Entity', type: 'keyword' }, bestMatch: null, bestScore: 0 },
+      ]);
+
+      const rows = testDb.prepare('SELECT * FROM taxonomy_suggestions').all();
+      expect(rows).toHaveLength(1);
+    });
+
     it('does nothing for empty array', async () => {
       const { queueUnmatchedEntities } = await import('../../src/services/unmatchedEntityHandler.js');
 
