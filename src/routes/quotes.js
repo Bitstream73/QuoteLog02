@@ -615,6 +615,13 @@ router.patch('/:id', requireAdmin, (req, res) => {
       return res.status(400).json({ error: 'Quote text cannot be empty' });
     }
     db.prepare('UPDATE quotes SET text = ? WHERE id = ?').run(text.trim(), req.params.id);
+    // Invalidate fact check cache — text changed, results are stale
+    db.prepare(`
+      UPDATE quotes
+      SET fact_check_html = NULL, fact_check_references_json = NULL,
+          fact_check_verdict = NULL, fact_check_claim = NULL, fact_check_explanation = NULL
+      WHERE id = ?
+    `).run(req.params.id);
   }
 
   if (context !== undefined) {
