@@ -613,6 +613,12 @@ function initializeTables(db) {
   if (!quoteCols2.includes('extracted_keywords')) {
     db.exec(`ALTER TABLE quotes ADD COLUMN extracted_keywords TEXT`);
   }
+  if (!quoteCols2.includes('fact_check_html')) {
+    db.exec(`ALTER TABLE quotes ADD COLUMN fact_check_html TEXT`);
+  }
+  if (!quoteCols2.includes('fact_check_references_json')) {
+    db.exec(`ALTER TABLE quotes ADD COLUMN fact_check_references_json TEXT`);
+  }
   db.exec(`CREATE INDEX IF NOT EXISTS idx_quotes_fact_check ON quotes(fact_check_category) WHERE fact_check_category IS NOT NULL`);
 
   // articles: importants_count, share_count, view_count, trending_score
@@ -672,8 +678,8 @@ function initializeTables(db) {
     CREATE TABLE IF NOT EXISTS quote_smart_related (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       quote_id INTEGER NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,
-      related_type TEXT NOT NULL CHECK(related_type IN ('contradiction', 'context', 'mention')),
-      related_quote_id INTEGER NOT NULL REFERENCES quotes(id),
+      related_type TEXT NOT NULL CHECK(related_type IN ('contradiction', 'context', 'mention', '_none')),
+      related_quote_id INTEGER NOT NULL,
       confidence REAL NOT NULL DEFAULT 0.0,
       explanation TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -681,6 +687,27 @@ function initializeTables(db) {
       UNIQUE(quote_id, related_quote_id, related_type)
     )
   `);
+
+  // Migration: update quote_smart_related CHECK constraint to allow '_none' sentinel
+  const qsrSchema = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='quote_smart_related'").get();
+  if (qsrSchema && !qsrSchema.sql.includes('_none')) {
+    db.exec(`
+      ALTER TABLE quote_smart_related RENAME TO quote_smart_related_old;
+      CREATE TABLE quote_smart_related (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        quote_id INTEGER NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,
+        related_type TEXT NOT NULL CHECK(related_type IN ('contradiction', 'context', 'mention', '_none')),
+        related_quote_id INTEGER NOT NULL,
+        confidence REAL NOT NULL DEFAULT 0.0,
+        explanation TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        expires_at TEXT NOT NULL DEFAULT (datetime('now', '+7 days')),
+        UNIQUE(quote_id, related_quote_id, related_type)
+      );
+      INSERT INTO quote_smart_related SELECT * FROM quote_smart_related_old;
+      DROP TABLE quote_smart_related_old;
+    `);
+  }
   db.exec(`CREATE INDEX IF NOT EXISTS idx_smart_related_quote ON quote_smart_related(quote_id)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_smart_related_type ON quote_smart_related(quote_id, related_type)`);
 
