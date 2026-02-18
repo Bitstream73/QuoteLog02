@@ -110,7 +110,7 @@ Rules:
   let analysis;
   try {
     const evidenceBlock = evidenceList.map((eq, i) =>
-      `[${i + 1}] (ID: ${eq.id}) "${eq.text.substring(0, 300)}" — ${eq.canonical_name}${eq.quote_datetime ? ` (${eq.quote_datetime})` : ''}`
+      `[${i + 1}] (ID: ${eq.id}) "${eq.text.substring(0, 300)}" \u2014 ${eq.canonical_name}${eq.quote_datetime ? ` (${eq.quote_datetime})` : ''}`
     ).join('\n');
 
     const analysisPrompt = `You are analyzing a political/news quote to provide context and fact-checking.
@@ -131,7 +131,7 @@ For each claim, find supporting evidence, contradicting evidence, and additional
 ONLY from the evidence quotes provided above. Do NOT include conclusions from your own
 training data or general knowledge.
 
-If no evidence quotes are relevant to a claim, leave its arrays empty — do not fabricate
+If no evidence quotes are relevant to a claim, leave its arrays empty \u2014 do not fabricate
 or assume evidence. Every evidence item MUST reference one of the numbered evidence quotes
 above by its ID.
 
@@ -149,15 +149,15 @@ Return a JSON object (no markdown, just raw JSON):
     }
   ],
   "summary": "2-3 sentence editorial summary of the overall context",
-  "confidenceNote": "Note: analysis is based solely on quotes in our database. Claims without evidence listed may still be true or false — we simply lack sourced quotes to confirm."
+  "confidenceNote": "Note: analysis is based solely on quotes in our database. Claims without evidence listed may still be true or false \u2014 we simply lack sourced quotes to confirm."
 }
 
 Rules:
-- ONLY cite evidence quotes from the numbered list above — never general knowledge
+- ONLY cite evidence quotes from the numbered list above \u2014 never general knowledge
 - Every evidence item MUST have a valid quoteId matching an evidence quote ID above
 - If a claim has no relevant evidence, leave supporting/contradicting/addingContext as empty arrays
 - Keep explanations concise (1-2 sentences each)
-- Be balanced — include both supporting and contradicting evidence when available
+- Be balanced \u2014 include both supporting and contradicting evidence when available
 - Maximum 3 items per category (supporting/contradicting/addingContext) per claim`;
 
     const analysisResponse = await gemini.generateText(analysisPrompt);
@@ -227,7 +227,7 @@ Rules:
 
 /**
  * Get smart related quotes: contradictions, supporting context (same author),
- * and mentions by other authors within ±7 days.
+ * and mentions by other authors within \u00B17 days.
  */
 export async function getSmartRelatedQuotes(quoteId) {
   const db = getDb();
@@ -238,7 +238,8 @@ export async function getSmartRelatedQuotes(quoteId) {
   ).all(quoteId);
 
   if (cachedRows.length > 0) {
-    return formatSmartRelated(db, cachedRows, true);
+    const realRows = cachedRows.filter(r => r.related_type !== '_none');
+    return formatSmartRelated(db, realRows, true);
   }
 
   // Load quote + person
@@ -310,9 +311,9 @@ CANDIDATE QUOTES (same author):
 ${candidateBlock}
 
 For each candidate, classify as one of:
-- "contradiction" — directly contradicts the original quote
-- "supporting_context" — supports, expands on, or adds context to the original
-- "unrelated" — no meaningful connection
+- "contradiction" \u2014 directly contradicts the original quote
+- "supporting_context" \u2014 supports, expands on, or adds context to the original
+- "unrelated" \u2014 no meaningful connection
 
 Return a JSON array (no markdown, just raw JSON):
 [
@@ -354,7 +355,7 @@ Rules:
     }
   }
 
-  // Section B: Mentions by others (±7 days)
+  // Section B: Mentions by others (\u00B17 days)
   const personName = quote.canonical_name;
   const lastName = personName.split(' ').pop();
   const refDate = quote.quote_datetime || quote.created_at;
@@ -422,9 +423,20 @@ Rules:
   });
   insertMany(results);
 
-  // Fetch fresh cache rows to return
+  // If no results, insert a sentinel row so cache knows "we looked and found nothing"
+  if (results.length === 0) {
+    db.prepare(`
+      INSERT INTO quote_smart_related (quote_id, related_type, related_quote_id, confidence, explanation)
+      VALUES (?, '_none', 0, 0, 'No related quotes found')
+      ON CONFLICT(quote_id, related_quote_id, related_type) DO UPDATE SET
+        created_at = datetime('now'),
+        expires_at = datetime('now', '+7 days')
+    `).run(quoteId);
+  }
+
+  // Fetch fresh cache rows to return (exclude sentinel rows)
   const freshRows = db.prepare(
-    `SELECT * FROM quote_smart_related WHERE quote_id = ? AND expires_at > datetime('now')`
+    `SELECT * FROM quote_smart_related WHERE quote_id = ? AND expires_at > datetime('now') AND related_type != '_none'`
   ).all(quoteId);
 
   logger.info('quote_context', 'smart_related_complete', {

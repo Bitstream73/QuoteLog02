@@ -33,12 +33,12 @@ const VERDICT_COLORS = {
 };
 
 const VERDICT_LABELS = {
-  TRUE:           '✓ Verified True',
-  MOSTLY_TRUE:    '≈ Mostly True',
-  FALSE:          '✗ False',
-  MOSTLY_FALSE:   '≈ Mostly False',
-  MISLEADING:     '⚠ Misleading',
-  LACKS_CONTEXT:  '⚠ Lacks Context',
+  TRUE:           '\u2713 Verified True',
+  MOSTLY_TRUE:    '\u2248 Mostly True',
+  FALSE:          '\u2717 False',
+  MOSTLY_FALSE:   '\u2248 Mostly False',
+  MISLEADING:     '\u26A0 Misleading',
+  LACKS_CONTEXT:  '\u26A0 Lacks Context',
   UNVERIFIABLE:   '? Unverifiable',
 };
 
@@ -116,9 +116,9 @@ async function renderHTML(result) {
 
 function renderCategoryLabel(type, title, reasoning, summaryLabel) {
   const iconMap = {
-    opinion:  '💬',
-    fragment: '—',
-    error:    '⚠',
+    opinion:  '\uD83D\uDCAC',
+    fragment: '\u2014',
+    error:    '\u26A0',
   };
 
   const colorMap = {
@@ -190,7 +190,7 @@ function renderVerdictTemplate(v) {
       <div class="fc-citation">
         <span class="fc-citation-text">${escapeHtml(v.citation.text)}</span>
         ${v.citation.url
-          ? `<a class="fc-citation-link" href="${escapeHtml(v.citation.url)}" target="_blank" rel="noopener">View source →</a>`
+          ? `<a class="fc-citation-link" href="${escapeHtml(v.citation.url)}" target="_blank" rel="noopener">View source \u2192</a>`
           : ''
         }
       </div>
@@ -213,7 +213,7 @@ function renderVerdictTemplate(v) {
 
 
 // ---------------------------------------------------------------------------
-// Reference Pipeline: Extract + Enrich (single grounded call) → Render
+// Reference Pipeline: Extract + Enrich (single grounded call) \u2192 Render
 // ---------------------------------------------------------------------------
 
 async function extractAndEnrichReferences(quoteData) {
@@ -242,7 +242,7 @@ function renderReferencesHTML(enrichedData) {
     mediaClipHTML = `
     <div class="fc-ref-media-clip">
       <div class="fc-ref-media-header">
-        <span class="fc-ref-type-badge fc-ref-type-badge--media_clip">📺 Watch the Clip</span>
+        <span class="fc-ref-type-badge fc-ref-type-badge--media_clip">\uD83D\uDCFA Watch the Clip</span>
         ${mediaClip.enrichment.date_context ? `<span class="fc-ref-date">${escapeHtml(mediaClip.enrichment.date_context)}</span>` : ''}
       </div>
       <div class="fc-ref-video-container">
@@ -258,7 +258,7 @@ function renderReferencesHTML(enrichedData) {
       ${mediaClip.enrichment.summary ? `<p class="fc-ref-summary">${escapeHtml(mediaClip.enrichment.summary)}</p>` : ''}
       ${mediaClip.enrichment.primary_url ? `
         <a class="fc-ref-primary-link" href="${escapeHtml(cleanUrl(mediaClip.enrichment.primary_url))}" target="_blank" rel="noopener">
-          Watch on ${escapeHtml(mediaClip.enrichment.primary_source_name || 'YouTube')} →
+          Watch on ${escapeHtml(mediaClip.enrichment.primary_source_name || 'YouTube')} \u2192
         </a>
       ` : ''}
     </div>`;
@@ -266,7 +266,7 @@ function renderReferencesHTML(enrichedData) {
     mediaClipHTML = `
     <div class="fc-ref-card fc-ref-card--media_clip">
       <div class="fc-ref-card-header">
-        <span class="fc-ref-type-badge fc-ref-type-badge--media_clip">📺 Clip</span>
+        <span class="fc-ref-type-badge fc-ref-type-badge--media_clip">\uD83D\uDCFA Clip</span>
         <a class="fc-ref-title" href="${escapeHtml(cleanUrl(mediaClip.enrichment.primary_url))}" target="_blank" rel="noopener">
           ${escapeHtml(mediaClip.enrichment.title || 'Watch the clip')}
         </a>
@@ -280,20 +280,20 @@ function renderReferencesHTML(enrichedData) {
   }
 
   const TYPE_ICONS = {
-    policy:         '📜',
-    organization:   '🏛',
-    person:         '👤',
-    event:          '📅',
-    concept:        '💡',
-    location:       '📍',
-    statistic:      '📊',
-    media_clip:     '📺',
-    legal_document: '⚖️',
+    policy:         '\uD83D\uDCDC',
+    organization:   '\uD83C\uDFDB',
+    person:         '\uD83D\uDC64',
+    event:          '\uD83D\uDCC5',
+    concept:        '\uD83D\uDCA1',
+    location:       '\uD83D\uDCCD',
+    statistic:      '\uD83D\uDCCA',
+    media_clip:     '\uD83D\uDCFA',
+    legal_document: '\u2696\uFE0F',
   };
 
   const refCardsHTML = found.map(ref => {
     const e = ref.enrichment;
-    const icon = TYPE_ICONS[ref.type] || '🔗';
+    const icon = TYPE_ICONS[ref.type] || '\uD83D\uDD17';
     const categoryTag = e.category_tag ? escapeHtml(e.category_tag) : ref.type;
 
     let additionalLinksHTML = '';
@@ -378,21 +378,41 @@ async function factCheckQuote(quoteData, options = {}) {
 
   const combinedHtml = [factCheckHtml, referencesHtml].filter(Boolean).join('\n');
 
-  // Persist verdict data to the quote record if quoteId was provided
-  if (quoteId && factCheckResult) {
+  // Persist verdict data + rendered HTML/references to the quote record
+  if (quoteId) {
     try {
       const { getDb } = await import('../config/database.js');
       const db = getDb();
-      const classification = factCheckResult.classification || {};
-      const verdict = factCheckResult.verdict || null;
-      const claim = classification.claims?.[0]?.claim_text || classification.summary_label || null;
-      const explanation = classification.verdict_explanation || classification.reasoning || null;
 
-      db.prepare(`
-        UPDATE quotes
-        SET fact_check_verdict = ?, fact_check_claim = ?, fact_check_explanation = ?
-        WHERE id = ?
-      `).run(verdict, claim, explanation, quoteId);
+      if (factCheckResult) {
+        const classification = factCheckResult.classification || {};
+        const verdict = factCheckResult.verdict || null;
+        const claim = classification.claims?.[0]?.claim_text || classification.summary_label || null;
+        const explanation = classification.verdict_explanation || classification.reasoning || null;
+
+        db.prepare(`
+          UPDATE quotes
+          SET fact_check_verdict = ?, fact_check_claim = ?, fact_check_explanation = ?,
+              fact_check_html = ?, fact_check_references_json = ?
+          WHERE id = ?
+        `).run(
+          verdict, claim, explanation,
+          combinedHtml || null,
+          referencesResult?.enriched ? JSON.stringify(referencesResult.enriched) : null,
+          quoteId
+        );
+      } else if (combinedHtml || referencesResult?.enriched) {
+        // References-only run (skipFactCheck=true) — still persist HTML + refs
+        db.prepare(`
+          UPDATE quotes
+          SET fact_check_html = ?, fact_check_references_json = ?
+          WHERE id = ?
+        `).run(
+          combinedHtml || null,
+          referencesResult?.enriched ? JSON.stringify(referencesResult.enriched) : null,
+          quoteId
+        );
+      }
     } catch (err) {
       logger.warn('factcheck', 'persist_verdict_failed', { quoteId, error: err.message });
     }
@@ -552,7 +572,7 @@ function escapeHtml(str) {
 /**
  * Decode HTML entities that AI models sometimes embed in URLs
  * (e.g. &amp; instead of &) before we HTML-escape for attributes.
- * Without this, escapeHtml double-encodes &amp; → &amp;amp; which
+ * Without this, escapeHtml double-encodes &amp; \u2192 &amp;amp; which
  * leaves a literal "&amp;" in the browser's resolved href.
  */
 function cleanUrl(url) {

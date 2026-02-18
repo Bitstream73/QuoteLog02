@@ -10,6 +10,7 @@
 
 import express from 'express';
 import { factCheckQuote, classifyAndVerify, extractAndEnrichReferences } from '../services/factCheck.js';
+import { getDb } from '../config/database.js';
 import config from '../config/index.js';
 import logger from '../services/logger.js';
 
@@ -42,11 +43,35 @@ router.post('/check', async (req, res) => {
       return res.status(400).json({ error: 'quoteText is required' });
     }
 
-    // Check cache
+    // Check in-memory cache
     const cacheKey = `check:${quoteId || quoteText.substring(0, 100)}`;
     const cached = cache.get(cacheKey);
     if (cached && (Date.now() - cached.timestamp < CACHE_TTL_MS)) {
       return res.json({ ...cached.data, fromCache: true });
+    }
+
+    // Check DB cache (survives server restarts)
+    if (quoteId) {
+      try {
+        const db = getDb();
+        const row = db.prepare(
+          `SELECT fact_check_html, fact_check_references_json, fact_check_verdict FROM quotes WHERE id = ?`
+        ).get(quoteId);
+
+        if (row && row.fact_check_html) {
+          const dbCached = {
+            combinedHtml: row.fact_check_html,
+            html: row.fact_check_html,
+            references: row.fact_check_references_json ? JSON.parse(row.fact_check_references_json) : null,
+            verdict: row.fact_check_verdict || null,
+            fromCache: true,
+          };
+          cache.set(cacheKey, { data: dbCached, timestamp: Date.now() });
+          return res.json(dbCached);
+        }
+      } catch (err) {
+        logger.warn('factcheck', 'db_cache_lookup_failed', { quoteId, error: err.message });
+      }
     }
 
     const result = await factCheckQuote(
