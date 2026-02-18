@@ -1,4 +1,5 @@
 import { getDb } from '../config/database.js';
+import { resolveTopicsAndCategories } from './keywordMatcher.js';
 
 /**
  * Handle unmatched entities from keyword matching.
@@ -112,4 +113,81 @@ export function approveSuggestion(suggestionId, editedData = null) {
 export function rejectSuggestion(suggestionId) {
   const db = getDb();
   db.prepare('UPDATE taxonomy_suggestions SET status = \'rejected\', reviewed_at = CURRENT_TIMESTAMP WHERE id = ?').run(suggestionId);
+}
+
+/**
+ * Auto-approve and link all extracted keywords for a quote.
+ * For each keyword string:
+ *   1. If it exists in keywords table → link via quote_keywords
+ *   2. If a pending taxonomy_suggestion exists → approve it, then link
+ *   3. Otherwise → create the keyword directly, then link
+ * After linking all keywords, resolve topics.
+ * @param {number} quoteId
+ * @param {Object} [dbOverride] - optional db override for testing
+ */
+export function autoApproveQuoteKeywords(quoteId, dbOverride) {
+  const db = dbOverride || getDb();
+
+  const quote = db.prepare('SELECT extracted_keywords, quote_datetime FROM quotes WHERE id = ?').get(quoteId);
+  if (!quote || !quote.extracted_keywords) return;
+
+  let keywordStrings;
+  try {
+    keywordStrings = JSON.parse(quote.extracted_keywords);
+  } catch {
+    return;
+  }
+  if (!Array.isArray(keywordStrings) || keywordStrings.length === 0) return;
+
+  const findKeyword = db.prepare('SELECT id FROM keywords WHERE name_normalized = ? LIMIT 1');
+  const findPendingSuggestion = db.prepare(`
+    SELECT id FROM taxonomy_suggestions
+    WHERE suggestion_type = 'new_keyword' AND status = 'pending'
+      AND LOWER(json_extract(suggested_data, '$.name')) = ?
+    LIMIT 1
+  `);
+  const insertKeyword = db.prepare('INSERT INTO keywords (name, name_normalized) VALUES (?, ?)');
+  const insertAlias = db.prepare('INSERT OR IGNORE INTO keyword_aliases (keyword_id, alias, alias_normalized) VALUES (?, ?, ?)');
+  const linkQuoteKeyword = db.prepare('INSERT OR IGNORE INTO quote_keywords (quote_id, keyword_id, confidence) VALUES (?, ?, ?)');
+  const approveSugg = db.prepare("UPDATE taxonomy_suggestions SET status = 'approved', reviewed_at = CURRENT_TIMESTAMP WHERE id = ?");
+
+  const linkedKeywordIds = [];
+
+  for (const kwString of keywordStrings) {
+    if (!kwString || typeof kwString !== 'string') continue;
+    const normalized = kwString.toLowerCase().trim();
+    if (!normalized) continue;
+
+    let keywordId;
+
+    // 1. Check if keyword already exists
+    const existing = findKeyword.get(normalized);
+    if (existing) {
+      keywordId = existing.id;
+    } else {
+      // 2. Check for pending taxonomy suggestion
+      const suggestion = findPendingSuggestion.get(normalized);
+      if (suggestion) {
+        // Approve the suggestion and create the keyword
+        const result = insertKeyword.run(kwString, normalized);
+        keywordId = result.lastInsertRowid;
+        insertAlias.run(keywordId, kwString, normalized);
+        approveSugg.run(suggestion.id);
+      } else {
+        // 3. Create keyword directly
+        const result = insertKeyword.run(kwString, normalized);
+        keywordId = result.lastInsertRowid;
+        insertAlias.run(keywordId, kwString, normalized);
+      }
+    }
+
+    // Link to quote
+    linkQuoteKeyword.run(quoteId, keywordId, 'high');
+    linkedKeywordIds.push({ keyword: { keyword_id: keywordId } });
+  }
+
+  // Resolve topics based on linked keywords
+  if (linkedKeywordIds.length > 0) {
+    resolveTopicsAndCategories(quoteId, linkedKeywordIds, quote.quote_datetime || null);
+  }
 }

@@ -325,4 +325,31 @@ describe('Entity Extraction', () => {
     expect(result.quotes).toEqual([]);
     expect(result.extracted_entities).toEqual([]);
   });
+
+  it('should pass extractedKeywords to insertAndDeduplicateQuote', async () => {
+    const { insertAndDeduplicateQuote } = await import('../../src/services/quoteDeduplicator.js');
+
+    gemini.generateJSON.mockResolvedValueOnce({
+      quotes: [
+        {
+          quote_text: 'We are going to impose massive tariffs on China',
+          speaker: 'Donald Trump',
+          speaker_title: 'President',
+          speaker_category: 'Politician',
+          quote_type: 'direct',
+          context: 'Trump announces tariffs',
+          quote_date: '2025-01-15',
+          topics: [],
+          keywords: ['China', 'tariffs'],
+          significance: 8,
+        },
+      ],
+    });
+
+    await extractQuotesFromArticle(sampleArticleText, sampleArticle, mockDb, null);
+
+    expect(insertAndDeduplicateQuote).toHaveBeenCalledTimes(1);
+    const callArgs = insertAndDeduplicateQuote.mock.calls[0][0];
+    expect(callArgs.extractedKeywords).toBe(JSON.stringify(['China', 'tariffs']));
+  });
 });

@@ -4,6 +4,7 @@ import { getDb } from '../config/database.js';
 import { requireAdmin } from '../middleware/auth.js';
 import { searchQuotes } from '../services/vectorDb.js';
 import { generateShareImage, invalidateShareImageCache } from '../services/shareImage.js';
+import { autoApproveQuoteKeywords } from '../services/unmatchedEntityHandler.js';
 import config from '../config/index.js';
 
 const router = Router();
@@ -513,6 +514,10 @@ router.get('/:id', (req, res) => {
       JOIN keywords k ON qk.keyword_id = k.id WHERE qk.quote_id = ? ORDER BY k.name
     `).all(quote.id);
     response.adminKeywords = keywords;
+
+    response.adminExtractedKeywords = quote.extracted_keywords
+      ? JSON.parse(quote.extracted_keywords)
+      : [];
   }
 
   res.json(response);
@@ -526,6 +531,14 @@ router.post('/:id/reviewed', requireAdmin, (req, res) => {
     return res.status(404).json({ error: 'Quote not found' });
   }
   db.prepare("UPDATE quotes SET reviewed_at = datetime('now') WHERE id = ?").run(req.params.id);
+
+  // Auto-approve extracted keywords and link to quote
+  try {
+    autoApproveQuoteKeywords(parseInt(req.params.id));
+  } catch {
+    // Non-fatal — reviewed status already saved
+  }
+
   res.json({ success: true });
 });
 

@@ -47,6 +47,60 @@ function setupTestDb() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  // Quotes table (minimal for autoApproveQuoteKeywords tests)
+  testDb.exec(`
+    CREATE TABLE quotes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      person_id INTEGER,
+      text TEXT,
+      quote_type TEXT DEFAULT 'direct',
+      context TEXT,
+      source_urls TEXT,
+      rss_metadata TEXT,
+      quote_datetime TEXT,
+      is_visible INTEGER DEFAULT 1,
+      extracted_keywords TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // quote_keywords join table
+  testDb.exec(`
+    CREATE TABLE quote_keywords (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      quote_id INTEGER NOT NULL,
+      keyword_id INTEGER NOT NULL,
+      confidence TEXT NOT NULL DEFAULT 'high',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(quote_id, keyword_id)
+    )
+  `);
+
+  // Topics + topic_keywords + quote_topics for resolveTopicsAndCategories
+  testDb.exec(`
+    CREATE TABLE topics (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      status TEXT DEFAULT 'active',
+      start_date TEXT,
+      end_date TEXT
+    )
+  `);
+  testDb.exec(`
+    CREATE TABLE topic_keywords (
+      topic_id INTEGER NOT NULL,
+      keyword_id INTEGER NOT NULL,
+      PRIMARY KEY (topic_id, keyword_id)
+    )
+  `);
+  testDb.exec(`
+    CREATE TABLE quote_topics (
+      quote_id INTEGER NOT NULL,
+      topic_id INTEGER NOT NULL,
+      PRIMARY KEY (quote_id, topic_id)
+    )
+  `);
 }
 
 describe('Unmatched Entity Handler', () => {
@@ -340,6 +394,121 @@ describe('Unmatched Entity Handler', () => {
       const suggestion = testDb.prepare('SELECT * FROM taxonomy_suggestions WHERE id = 1').get();
       expect(suggestion.status).toBe('rejected');
       expect(suggestion.reviewed_at).toBeTruthy();
+    });
+  });
+
+  describe('autoApproveQuoteKeywords', () => {
+    it('creates keywords and links them to the quote', async () => {
+      const { autoApproveQuoteKeywords } = await import('../../src/services/unmatchedEntityHandler.js');
+
+      testDb.prepare(`INSERT INTO quotes (text, extracted_keywords) VALUES (?, ?)`).run(
+        'Test quote', JSON.stringify(['China', 'tariffs'])
+      );
+
+      autoApproveQuoteKeywords(1, testDb);
+
+      const keywords = testDb.prepare('SELECT * FROM keywords').all();
+      expect(keywords).toHaveLength(2);
+      expect(keywords.map(k => k.name).sort()).toEqual(['China', 'tariffs']);
+
+      const links = testDb.prepare('SELECT * FROM quote_keywords WHERE quote_id = 1').all();
+      expect(links).toHaveLength(2);
+      expect(links[0].confidence).toBe('high');
+    });
+
+    it('links existing keywords without creating duplicates', async () => {
+      const { autoApproveQuoteKeywords } = await import('../../src/services/unmatchedEntityHandler.js');
+
+      testDb.prepare('INSERT INTO keywords (name, name_normalized) VALUES (?, ?)').run('China', 'china');
+
+      testDb.prepare(`INSERT INTO quotes (text, extracted_keywords) VALUES (?, ?)`).run(
+        'Test quote', JSON.stringify(['China', 'tariffs'])
+      );
+
+      autoApproveQuoteKeywords(1, testDb);
+
+      const keywords = testDb.prepare('SELECT * FROM keywords').all();
+      expect(keywords).toHaveLength(2); // China (existing) + tariffs (new)
+
+      const links = testDb.prepare('SELECT * FROM quote_keywords WHERE quote_id = 1').all();
+      expect(links).toHaveLength(2);
+    });
+
+    it('approves pending taxonomy suggestions', async () => {
+      const { autoApproveQuoteKeywords } = await import('../../src/services/unmatchedEntityHandler.js');
+
+      testDb.prepare(`
+        INSERT INTO taxonomy_suggestions (suggestion_type, suggested_data, source, status)
+        VALUES ('new_keyword', ?, 'ai_extraction', 'pending')
+      `).run(JSON.stringify({ name: 'China', type: 'keyword', suggested_aliases: ['China'] }));
+
+      testDb.prepare(`INSERT INTO quotes (text, extracted_keywords) VALUES (?, ?)`).run(
+        'Test quote', JSON.stringify(['China'])
+      );
+
+      autoApproveQuoteKeywords(1, testDb);
+
+      const suggestion = testDb.prepare('SELECT * FROM taxonomy_suggestions WHERE id = 1').get();
+      expect(suggestion.status).toBe('approved');
+
+      const keyword = testDb.prepare('SELECT * FROM keywords WHERE name_normalized = ?').get('china');
+      expect(keyword).toBeTruthy();
+
+      const links = testDb.prepare('SELECT * FROM quote_keywords WHERE quote_id = 1').all();
+      expect(links).toHaveLength(1);
+    });
+
+    it('does nothing for quotes without extracted_keywords', async () => {
+      const { autoApproveQuoteKeywords } = await import('../../src/services/unmatchedEntityHandler.js');
+
+      testDb.prepare(`INSERT INTO quotes (text) VALUES (?)`).run('Test quote');
+
+      autoApproveQuoteKeywords(1, testDb);
+
+      const keywords = testDb.prepare('SELECT * FROM keywords').all();
+      expect(keywords).toHaveLength(0);
+    });
+
+    it('does nothing for non-existent quotes', async () => {
+      const { autoApproveQuoteKeywords } = await import('../../src/services/unmatchedEntityHandler.js');
+
+      autoApproveQuoteKeywords(999, testDb);
+
+      const keywords = testDb.prepare('SELECT * FROM keywords').all();
+      expect(keywords).toHaveLength(0);
+    });
+
+    it('resolves topics for linked keywords', async () => {
+      const { autoApproveQuoteKeywords } = await import('../../src/services/unmatchedEntityHandler.js');
+
+      // Create a keyword and a topic linked to it
+      testDb.prepare('INSERT INTO keywords (name, name_normalized) VALUES (?, ?)').run('China', 'china');
+      testDb.prepare("INSERT INTO topics (name, status) VALUES (?, 'active')").run('Trade War');
+      testDb.prepare('INSERT INTO topic_keywords (topic_id, keyword_id) VALUES (1, 1)').run();
+
+      testDb.prepare(`INSERT INTO quotes (text, extracted_keywords, quote_datetime) VALUES (?, ?, ?)`).run(
+        'Test quote', JSON.stringify(['China']), '2025-01-15'
+      );
+
+      autoApproveQuoteKeywords(1, testDb);
+
+      const quoteTopics = testDb.prepare('SELECT * FROM quote_topics WHERE quote_id = 1').all();
+      expect(quoteTopics).toHaveLength(1);
+      expect(quoteTopics[0].topic_id).toBe(1);
+    });
+
+    it('skips empty/null keyword strings in the array', async () => {
+      const { autoApproveQuoteKeywords } = await import('../../src/services/unmatchedEntityHandler.js');
+
+      testDb.prepare(`INSERT INTO quotes (text, extracted_keywords) VALUES (?, ?)`).run(
+        'Test quote', JSON.stringify(['China', '', null, 'tariffs'])
+      );
+
+      autoApproveQuoteKeywords(1, testDb);
+
+      const keywords = testDb.prepare('SELECT * FROM keywords').all();
+      expect(keywords).toHaveLength(2);
+      expect(keywords.map(k => k.name).sort()).toEqual(['China', 'tariffs']);
     });
   });
 });

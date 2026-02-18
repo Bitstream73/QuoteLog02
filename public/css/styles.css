@@ -4533,6 +4533,11 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   border: 1px solid var(--border);
 }
 
+.admin-details-tag--pending {
+  opacity: 0.6;
+  border-style: dashed;
+}
+
 .admin-details-tag__status,
 .admin-details-tag__confidence {
   font-size: 0.6rem;

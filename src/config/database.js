@@ -610,6 +610,9 @@ function initializeTables(db) {
   if (!quoteCols2.includes('fact_check_explanation')) {
     db.exec(`ALTER TABLE quotes ADD COLUMN fact_check_explanation TEXT`);
   }
+  if (!quoteCols2.includes('extracted_keywords')) {
+    db.exec(`ALTER TABLE quotes ADD COLUMN extracted_keywords TEXT`);
+  }
   db.exec(`CREATE INDEX IF NOT EXISTS idx_quotes_fact_check ON quotes(fact_check_category) WHERE fact_check_category IS NOT NULL`);
 
   // articles: importants_count, share_count, view_count, trending_score

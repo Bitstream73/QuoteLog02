@@ -252,6 +252,7 @@ export async function extractQuotesFromArticle(articleText, article, db, io) {
           rssMetadata: JSON.stringify(rssMetadata),
           quoteDate,
           isVisible,
+          extractedKeywords: JSON.stringify(q.keywords || []),
         },
         personId,
         article,

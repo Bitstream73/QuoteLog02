@@ -394,6 +394,7 @@ function buildAdminQuoteDetailsPanel(data) {
   const sources = data.adminSources || [];
   const topics = data.adminTopics || [];
   const keywords = data.adminKeywords || [];
+  const extractedKeywords = data.adminExtractedKeywords || [];
 
   // Filter keywords that are NOT in any topic (topics have their own keywords)
   const topicNames = new Set(topics.map(t => t.name.toLowerCase()));
@@ -421,12 +422,18 @@ function buildAdminQuoteDetailsPanel(data) {
   html += '</div>';
 
   // --- Keywords section ---
+  const matchedNames = new Set(keywords.map(k => k.name.toLowerCase()));
+  const pendingExtracted = extractedKeywords.filter(ek => !matchedNames.has(ek.toLowerCase()));
+
   html += `<div class="admin-details-section">
     <h4 class="admin-details-section__title">Keywords</h4>`;
-  if (keywords.length > 0) {
+  if (keywords.length > 0 || pendingExtracted.length > 0) {
     html += '<div class="admin-details-tags">';
     for (const k of keywords) {
       html += `<span class="admin-details-tag admin-details-tag--keyword">${escapeHtml(k.name)}${k.confidence ? `<span class="admin-details-tag__confidence">${k.confidence}</span>` : ''}</span>`;
+    }
+    for (const ek of pendingExtracted) {
+      html += `<span class="admin-details-tag admin-details-tag--keyword admin-details-tag--pending">${escapeHtml(ek)}<span class="admin-details-tag__confidence">pending</span></span>`;
     }
     html += '</div>';
   } else {
