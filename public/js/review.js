@@ -316,8 +316,9 @@ async function loadAdminQuotes(page) {
                 </div>
               </details>
               ` : ''}
-              <div style="margin-top:0.4rem">
+              <div style="margin-top:0.4rem;display:flex;gap:0.5rem;align-items:center">
                 <button class="btn btn-success btn-sm review-mark-btn" onclick="markQuoteReviewed(${q.id}, this)">Reviewed</button>
+                <button class="btn btn-sm" onclick="adminDeleteQuote(${q.id}, function(){ loadAdminQuotes(); }, this)" title="Delete quote" style="color:var(--danger,#dc2626);border-color:var(--danger,#dc2626)">Delete</button>
               </div>
             </div>
           </div>

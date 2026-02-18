@@ -157,7 +157,6 @@ function buildAdminActionsHtml(q) {
       <button onclick="adminEditCategory(${q.personId}, '${safeName}')" title="Edit category">Category</button>
       <button onclick="adminEditAuthorName(${q.personId}, '${safeName}', '${safeDisambig}')" title="Edit author">Author</button>
       <button onclick="adminChangeHeadshot(${q.personId}, '${safeName}')" title="Change photo">Photo</button>
-      <button onclick="adminDeleteQuote(${q.id}, function(){ loadAdminQuotes ? loadAdminQuotes() : location.reload(); }, this)" title="Delete quote" style="color:var(--danger,#dc2626)">Delete</button>
     </div>
   `;
 }
