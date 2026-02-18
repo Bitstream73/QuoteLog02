@@ -364,11 +364,13 @@ router.get('/:id/share-image', async (req, res) => {
 
     res.set('Content-Type', 'image/jpeg');
     res.set('Cache-Control', 'public, max-age=3600');
+    res.set('Cross-Origin-Resource-Policy', 'cross-origin');
     res.send(jpegBuffer);
   } catch (err) {
     console.error('[share-image] Generation failed:', err.message);
     res.set('Content-Type', 'image/jpeg');
     res.set('Cache-Control', 'no-cache');
+    res.set('Cross-Origin-Resource-Policy', 'cross-origin');
     res.status(500).send(FALLBACK_JPEG);
   }
 });

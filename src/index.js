@@ -149,6 +149,7 @@ export function createApp({ skipDbInit = false } = {}) {
       'Allow: /article/*',
       'Allow: /analytics',
       '',
+      'Allow: /api/quotes/*/share-image',
       'Disallow: /api/',
       'Disallow: /login',
       'Disallow: /settings',
