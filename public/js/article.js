@@ -13,6 +13,11 @@ async function renderArticle(id) {
     const dateStr = formatDateTime(a.publishedAt);
     const sourceLabel = a.sourceName || a.sourceDomain || '';
 
+    // Update page metadata
+    if (typeof updatePageMeta === 'function') {
+      updatePageMeta(a.title || 'Untitled', `${sourceLabel}${dateStr ? ' | ' + dateStr : ''} | ${data.quotes.length} quotes`, `/article/${a.id}`);
+    }
+
     const shareHtml = typeof buildShareButtonsHtml === 'function'
       ? buildShareButtonsHtml('article', a.id, a.title, sourceLabel)
       : '';

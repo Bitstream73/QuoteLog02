@@ -51,8 +51,11 @@ router.get('/:id', (req, res) => {
   if (/^\d+$/.test(id)) {
     person = db.prepare('SELECT * FROM persons WHERE id = ?').get(id);
   } else {
-    // Search by name (for backwards compatibility with old URL format)
+    // Search by name — redirect to canonical numeric URL
     person = db.prepare('SELECT * FROM persons WHERE canonical_name = ?').get(decodeURIComponent(id));
+    if (person) {
+      return res.redirect(301, `/api/authors/${person.id}`);
+    }
   }
 
   if (!person) {

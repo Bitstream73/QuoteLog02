@@ -9,6 +9,12 @@ async function renderQuote(id) {
     }
     const q = data.quote;
 
+    // Update page metadata
+    if (typeof updatePageMeta === 'function') {
+      const metaText = q.text.length > 100 ? q.text.substring(0, 100) + '...' : q.text;
+      updatePageMeta(`"${metaText}" - ${q.personName}`, q.context || q.text.substring(0, 200), `/quote/${q.id}`);
+    }
+
     // Build main quote using homepage quote block layout
     const mainQuoteData = {
       id: q.id,

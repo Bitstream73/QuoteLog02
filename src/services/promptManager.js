@@ -80,6 +80,12 @@ For each quote, return:
   "C" - Vague platitude, procedural statement, meaningless fragment, or purely rhetorical with no substance
   Examples: "Unemployment is at 3.5%" = A, "This policy is a disaster for working families" = B, "We need to do better" = C
 - fact_check_score: Float 0.0-1.0 confidence in the fact_check_category assignment (1.0 = certain, 0.5 = borderline)
+- contains_claim: Boolean — does this quote contain at least one specific factual assertion,
+  substantive claim, concrete prediction, accusation, or policy position with specifics?
+  TRUE: "Inflation will hit 5% by Q3" (prediction), "They cut 2 million jobs" (assertion),
+        "This bill will devastate rural hospitals" (claim with specifics)
+  FALSE: "I think we're doing well" (vague opinion), "It was a great event" (pleasantry),
+         "We need to do better" (platitude), "I'm honored to be here" (courtesy)
 
 Rules:
 - Do NOT extract quotes that are purely rhetorical, procedural, or vague. A quote must contain at least one specific claim, assertion, opinion, accusation, or prediction to be worth extracting.

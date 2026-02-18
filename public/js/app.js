@@ -23,6 +23,27 @@ window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e)
   }
 });
 
+// Update page metadata for SPA navigation
+function updatePageMeta(title, description, canonicalPath) {
+  document.title = title ? title + ' | WhatTheySaid.News' : 'WhatTheySaid.News';
+  const descMeta = document.querySelector('meta[name="description"]');
+  if (descMeta && description) descMeta.setAttribute('content', description);
+  let canonical = document.querySelector('link[rel="canonical"]');
+  if (canonicalPath) {
+    const href = window.location.origin + canonicalPath;
+    if (canonical) {
+      canonical.setAttribute('href', href);
+    } else {
+      canonical = document.createElement('link');
+      canonical.setAttribute('rel', 'canonical');
+      canonical.setAttribute('href', href);
+      document.head.appendChild(canonical);
+    }
+  } else if (canonical) {
+    canonical.setAttribute('href', window.location.origin + window.location.pathname);
+  }
+}
+
 // Auth state
 let isAdmin = false;
 

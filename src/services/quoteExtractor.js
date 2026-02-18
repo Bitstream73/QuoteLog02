@@ -193,6 +193,19 @@ export async function extractQuotesFromArticle(articleText, article, db, io) {
       return false;
     }
 
+    // Reject quotes lacking factual assertions/claims/predictions
+    if (q.contains_claim === false) {
+      logger.debug('extractor', 'no_claim_skipped', { quote: q.quote_text?.substring(0, 50), speaker: q.speaker });
+      return false;
+    }
+
+    // Reject vague/rhetorical quotes (Category C)
+    const factCheckCat = (q.fact_check_category || '').toUpperCase();
+    if (factCheckCat === 'C') {
+      logger.debug('extractor', 'rhetorical_skipped', { quote: q.quote_text?.substring(0, 50) });
+      return false;
+    }
+
     return true;
   });
 
@@ -235,12 +248,11 @@ export async function extractQuotesFromArticle(articleText, article, db, io) {
       const rawDate = q.quote_date === 'unknown' ? null : (q.quote_date || article.published_at || null);
       const quoteDate = normalizeToIsoDate(rawDate);
 
-      // Determine visibility based on significance score, fragment detection, and fact-check category
+      // Determine visibility based on significance score and fragment detection
+      // (Category C quotes are already hard-filtered above)
       const significance = parseInt(q.significance, 10) || 5;
       const fragment = isQuoteFragment(q.quote_text);
-      const factCheckCat = (q.fact_check_category || '').toUpperCase();
-      const isRhetorical = factCheckCat === 'C';
-      const isVisible = (!fragment && !isRhetorical && significance >= minSignificance) ? 1 : 0;
+      const isVisible = (!fragment && significance >= minSignificance) ? 1 : 0;
 
       // Insert and deduplicate quote (use article summary as context fallback)
       const quoteResult = await insertAndDeduplicateQuote(
@@ -292,8 +304,8 @@ export async function extractQuotesFromArticle(articleText, article, db, io) {
           significance,
           isVisible,
           isFragment: fragment,
-          isRhetorical,
-          factCheckCategory: factCheckCat || null,
+          containsClaim: q.contains_claim,
+          factCheckCategory: (q.fact_check_category || '').toUpperCase() || null,
           articleUrl: article.url,
         });
       }

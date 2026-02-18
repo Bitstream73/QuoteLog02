@@ -3,6 +3,10 @@
 let _analyticsDays = 30;
 
 async function renderAnalytics() {
+  // Update page metadata
+  if (typeof updatePageMeta === 'function') {
+    updatePageMeta('Analytics', 'Explore trends in public statements, top quoted figures, and source analytics.', '/analytics');
+  }
   const content = document.getElementById('content');
   content.innerHTML = `
     <div class="analytics-page">

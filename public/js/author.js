@@ -50,6 +50,11 @@ async function renderAuthor(id) {
     const aliases = authorData.aliases || [];
     const initial = a.name.charAt(0).toUpperCase();
 
+    // Update page metadata
+    if (typeof updatePageMeta === 'function') {
+      updatePageMeta(`${a.name} - Quotes`, a.disambiguation || a.categoryContext || `${a.quoteCount} quotes tracked`, `/author/${a.id}`);
+    }
+
     const avatarPlaceholder = `<div class="author-avatar">${initial}</div>`;
     const avatarInner = a.photoUrl
       ? `<img src="${escapeHtml(a.photoUrl)}" alt="${escapeHtml(a.name)}" class="author-avatar-img" onerror="this.outerHTML='<div class=\\'author-avatar\\'>${initial}</div>'">`

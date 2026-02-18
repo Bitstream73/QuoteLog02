@@ -1040,8 +1040,13 @@ async function renderHome() {
     }
   } catch { /* noteworthy section is optional */ }
 
-  // Render noteworthy + tab bar
-  content.innerHTML = noteworthyHtml + buildTabBarHtml(_activeTab);
+  // Update page metadata
+  if (typeof updatePageMeta === 'function') {
+    updatePageMeta(null, 'Track what public figures say with AI-powered quote extraction from news sources.', '/');
+  }
+
+  // Render noteworthy + tab bar with visually-hidden H1
+  content.innerHTML = '<h1 class="sr-only">WhatTheySaid.News - Accountability Through Quotes</h1>' + noteworthyHtml + buildTabBarHtml(_activeTab);
 
   // Render active tab content
   await renderTabContent(_activeTab);
