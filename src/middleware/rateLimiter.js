@@ -3,18 +3,26 @@ import jwt from 'jsonwebtoken';
 import config from '../config/index.js';
 import logger from '../services/logger.js';
 
+function isAuthenticatedAdmin(req) {
+  const token = req.cookies?.auth_token;
+  if (!token) return false;
+  try {
+    jwt.verify(token, config.jwtSecret);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function createRateLimiter(options = {}) {
   return rateLimit({
     windowMs: options.windowMs || 15 * 60 * 1000,
-    max: (req) => {
-      const token = req.cookies?.auth_token;
-      if (!token) return options.max || 200;
-      try {
-        jwt.verify(token, config.jwtSecret);
-        return options.authenticatedMax || 1000;
-      } catch {
-        return options.max || 200;
-      }
+    max: options.max || 200,
+    skip: (req) => {
+      // Skip excluded paths (they have their own rate limiters)
+      if (options.skipPaths?.some(p => req.path.startsWith(p))) return true;
+      // Skip authenticated admins entirely
+      return isAuthenticatedAdmin(req);
     },
     standardHeaders: true,
     legacyHeaders: false,
@@ -29,9 +37,9 @@ export function createLoginRateLimiter() {
   return rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 5, // 5 attempts per window
+    skip: (req) => isAuthenticatedAdmin(req),
     standardHeaders: true,
     legacyHeaders: false,
-    // No skip — login rate limiter applies to everyone
     handler: (req, res) => {
       logger.warn('api', 'login_rate_limit_exceeded', { ip: req.ip });
       res.status(429).json({ error: 'Too many login attempts, please try again later.' });

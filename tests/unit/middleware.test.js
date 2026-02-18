@@ -98,6 +98,68 @@ describe('Middleware', () => {
 
       expect(response.status).toBe(429);
     });
+
+    it('should skip rate limiting for authenticated admins', async () => {
+      vi.resetModules();
+      const jwt = await import('jsonwebtoken');
+      const config = (await import('../../src/config/index.js')).default;
+      const token = jwt.default.sign({ admin: true }, config.jwtSecret, { expiresIn: '1h' });
+
+      const app = express();
+      const cookieParser = (await import('cookie-parser')).default;
+      app.use(cookieParser());
+      const { createRateLimiter } = await import('../../src/middleware/rateLimiter.js');
+
+      app.use(createRateLimiter({ windowMs: 60000, max: 2 }));
+      app.get('/test', (req, res) => res.json({ ok: true }));
+
+      // Make 3 requests (over the limit of 2) with a valid auth cookie
+      for (let i = 0; i < 3; i++) {
+        const response = await request(app).get('/test').set('Cookie', `auth_token=${token}`);
+        expect(response.status).toBe(200);
+      }
+    });
+
+    it('should skip paths specified in skipPaths option', async () => {
+      vi.resetModules();
+      const app = express();
+      const { createRateLimiter } = await import('../../src/middleware/rateLimiter.js');
+
+      app.use(createRateLimiter({ windowMs: 60000, max: 2, skipPaths: ['/auth/'] }));
+      app.get('/auth/login', (req, res) => res.json({ ok: true }));
+      app.get('/test', (req, res) => res.json({ ok: true }));
+
+      // Exhaust the limit on /test
+      await request(app).get('/test');
+      await request(app).get('/test');
+      const blockedResponse = await request(app).get('/test');
+      expect(blockedResponse.status).toBe(429);
+
+      // /auth/login should still work (skipped)
+      const authResponse = await request(app).get('/auth/login');
+      expect(authResponse.status).toBe(200);
+    });
+
+    it('should skip login rate limiter for authenticated admins', async () => {
+      vi.resetModules();
+      const jwt = await import('jsonwebtoken');
+      const config = (await import('../../src/config/index.js')).default;
+      const token = jwt.default.sign({ admin: true }, config.jwtSecret, { expiresIn: '1h' });
+
+      const app = express();
+      const cookieParser = (await import('cookie-parser')).default;
+      app.use(cookieParser());
+      const { createLoginRateLimiter } = await import('../../src/middleware/rateLimiter.js');
+
+      app.use(createLoginRateLimiter());
+      app.post('/login', (req, res) => res.json({ ok: true }));
+
+      // Make 6 requests (over the login limit of 5) with a valid auth cookie
+      for (let i = 0; i < 6; i++) {
+        const response = await request(app).post('/login').set('Cookie', `auth_token=${token}`);
+        expect(response.status).toBe(200);
+      }
+    });
   });
 
   describe('Request Logger', () => {

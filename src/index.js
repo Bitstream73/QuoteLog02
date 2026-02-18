@@ -120,7 +120,7 @@ export function createApp({ skipDbInit = false } = {}) {
   app.use(logContext);
 
   // Rate limiting
-  app.use('/api/', createRateLimiter({ windowMs: 15 * 60 * 1000, max: 200, authenticatedMax: 2000 }));
+  app.use('/api/', createRateLimiter({ windowMs: 15 * 60 * 1000, max: 200, skipPaths: ['/auth/'] }));
 
   // CSRF protection for state-changing API requests (skip login endpoint)
   app.use('/api/', (req, res, next) => {
