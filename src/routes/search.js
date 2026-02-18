@@ -112,6 +112,8 @@ router.get('/noteworthy', (req, res) => {
         CASE
           WHEN n.entity_type = 'quote' THEN (SELECT q.text FROM quotes q WHERE q.id = n.entity_id)
           WHEN n.entity_type = 'article' THEN (SELECT a.title FROM articles a WHERE a.id = n.entity_id)
+          WHEN n.entity_type = 'topic' THEN (SELECT t.name FROM topics t WHERE t.id = n.entity_id)
+          WHEN n.entity_type = 'category' THEN (SELECT c.name FROM categories c WHERE c.id = n.entity_id)
         END as entity_label,
         CASE
           WHEN n.entity_type = 'quote' THEN (SELECT p2.canonical_name FROM quotes q2 JOIN persons p2 ON p2.id = q2.person_id WHERE q2.id = n.entity_id)

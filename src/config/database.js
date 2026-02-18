@@ -820,7 +820,7 @@ function initializeTables(db) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS noteworthy_items (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      entity_type TEXT NOT NULL CHECK(entity_type IN ('quote', 'article', 'topic')),
+      entity_type TEXT NOT NULL CHECK(entity_type IN ('quote', 'article', 'topic', 'category')),
       entity_id INTEGER NOT NULL,
       display_order INTEGER NOT NULL DEFAULT 0,
       active INTEGER NOT NULL DEFAULT 1,
@@ -829,6 +829,26 @@ function initializeTables(db) {
     )
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_noteworthy_active ON noteworthy_items(active, display_order)`);
+
+  // Migration: add 'category' to noteworthy_items entity_type CHECK constraint
+  const nwSchema = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='noteworthy_items'").get();
+  if (nwSchema && !nwSchema.sql.includes("'category'")) {
+    db.exec(`
+      ALTER TABLE noteworthy_items RENAME TO noteworthy_items_old;
+      CREATE TABLE noteworthy_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_type TEXT NOT NULL CHECK(entity_type IN ('quote', 'article', 'topic', 'category')),
+        entity_id INTEGER NOT NULL,
+        display_order INTEGER NOT NULL DEFAULT 0,
+        active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(entity_type, entity_id)
+      );
+      INSERT INTO noteworthy_items SELECT * FROM noteworthy_items_old;
+      DROP TABLE noteworthy_items_old;
+    `);
+    db.exec('CREATE INDEX IF NOT EXISTS idx_noteworthy_active ON noteworthy_items(active, display_order)');
+  }
 
   // Back-propagation log — tracks historical quote extraction runs
   db.exec(`

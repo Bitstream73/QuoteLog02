@@ -237,7 +237,7 @@ async function renderSettings() {
       <!-- Noteworthy Section -->
       <div class="settings-section" id="settings-section-noteworthy">
         <h2>Noteworthy</h2>
-        <p class="section-description">Manage items displayed in the Noteworthy section on the homepage. Add quotes, topics, or articles that deserve special attention.</p>
+        <p class="section-description">Manage items displayed in the Noteworthy section on the homepage. Add quotes, topics, articles, or categories that deserve special attention.</p>
 
         <div class="settings-subsection">
           <div class="subsection-header">
@@ -248,6 +248,7 @@ async function renderSettings() {
               <option value="quote">Quote</option>
               <option value="topic">Topic</option>
               <option value="article">Article</option>
+              <option value="category">Category</option>
             </select>
             <input type="text" id="noteworthy-search" class="input-text" placeholder="Search by name or ID..." style="flex:1">
             <button class="btn btn-primary btn-sm" onclick="noteworthySearch()">Search</button>
@@ -260,7 +261,7 @@ async function renderSettings() {
             <h3 class="subsection-title">Current Items (${noteworthyItems.length})</h3>
           </div>
           <div id="noteworthy-items-list" class="topics-keywords-list">
-            ${noteworthyItems.length === 0 ? '<p class="empty-message">No noteworthy items. Add quotes, topics, or articles above.</p>' : noteworthyItems.map(item => renderNoteworthyRow(item)).join('')}
+            ${noteworthyItems.length === 0 ? '<p class="empty-message">No noteworthy items. Add quotes, topics, articles, or categories above.</p>' : noteworthyItems.map(item => renderNoteworthyRow(item)).join('')}
           </div>
         </div>
       </div>
@@ -794,7 +795,10 @@ async function testHistoricalSource(key) {
 // ======= Noteworthy Section =======
 
 function renderNoteworthyRow(item) {
-  const typeIcon = item.entity_type === 'quote' ? '\u201C\u201D' : item.entity_type === 'topic' ? '#' : '\uD83D\uDCF0';
+  const typeIcon = item.entity_type === 'quote' ? '\u201C\u201D'
+    : item.entity_type === 'topic' ? '#'
+    : item.entity_type === 'category' ? '\uD83D\uDDC2\uFE0F'
+    : '\uD83D\uDCF0';
   const label = item.entity_label || `${item.entity_type} #${item.entity_id}`;
   return `
     <div class="tk-row" data-noteworthy-id="${item.id}">
@@ -848,6 +852,15 @@ async function noteworthySearch() {
         id: a.id,
         label: a.title || 'Untitled',
         type: 'article'
+      }));
+    } else if (type === 'category') {
+      const data = await API.get('/admin/categories');
+      items = (data.categories || []).filter(c =>
+        c.name.toLowerCase().includes(query.toLowerCase())
+      ).slice(0, 10).map(c => ({
+        id: c.id,
+        label: c.name,
+        type: 'category'
       }));
     }
 
