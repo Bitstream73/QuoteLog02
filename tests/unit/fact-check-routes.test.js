@@ -29,11 +29,16 @@ vi.mock('../../src/services/logger.js', () => ({
 const mockFactCheckQuote = vi.fn();
 const mockClassifyAndVerify = vi.fn();
 const mockExtractAndEnrichReferences = vi.fn();
+const mockGenerateShareImage = vi.fn().mockResolvedValue(Buffer.from('fake'));
 
 vi.mock('../../src/services/factCheck.js', () => ({
   factCheckQuote: mockFactCheckQuote,
   classifyAndVerify: mockClassifyAndVerify,
   extractAndEnrichReferences: mockExtractAndEnrichReferences,
+}));
+
+vi.mock('../../src/services/shareImage.js', () => ({
+  generateShareImage: mockGenerateShareImage,
 }));
 
 // ---------------------------------------------------------------------------
