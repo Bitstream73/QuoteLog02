@@ -752,6 +752,22 @@ function initializeTables(db) {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_logs_level ON application_logs(level)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_logs_category ON application_logs(category)`);
 
+  // Bug reports
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS bug_reports (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      message TEXT NOT NULL CHECK(length(message) <= 280),
+      page_url TEXT NOT NULL,
+      quote_id INTEGER REFERENCES quotes(id) ON DELETE SET NULL,
+      user_agent TEXT,
+      ip_hash TEXT NOT NULL,
+      starred INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_bug_reports_created ON bug_reports(created_at DESC)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_bug_reports_starred ON bug_reports(starred DESC, created_at DESC)`);
+
   // Admin users
   db.exec(`
     CREATE TABLE IF NOT EXISTS admin_users (

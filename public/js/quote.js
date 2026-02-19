@@ -247,6 +247,9 @@ const FC_CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
 // Guard against double annotation of quote text
 let quoteTextAnnotated = false;
 
+// Flag: true while a first-time fact-check is running (blocks sharing)
+let _factCheckInProgress = false;
+
 // ---------------------------------------------------------------------------
 // Fact-check loading animation
 // ---------------------------------------------------------------------------
@@ -361,6 +364,7 @@ async function runFactCheck(quoteId, force) {
 
   // Show animated loading messages
   startFactCheckLoadingAnimation(container);
+  _factCheckInProgress = true;
 
   // Gather quote data from the DOM
   const heroText = document.querySelector('.quote-page__text') || document.querySelector('.quote-hero__text');
@@ -397,8 +401,10 @@ async function runFactCheck(quoteId, force) {
 
     renderFactCheckResult(container, result, quoteId);
     annotateQuoteText(result);
+    _factCheckInProgress = false;
 
   } catch (err) {
+    _factCheckInProgress = false;
     stopFactCheckLoadingAnimation();
     container.innerHTML = `<div class="context-error"><p>Fact check unavailable.</p><button class="context-btn" onclick="runFactCheck(${quoteId}, false)">Try Again</button></div>`;
   }
