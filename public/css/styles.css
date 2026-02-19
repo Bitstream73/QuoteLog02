@@ -127,6 +127,12 @@
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
+img, video, iframe, embed, object { max-width: 100%; }
+
+html {
+  overflow-x: hidden;
+}
+
 body {
   font-family: var(--font-body);
   background: var(--bg-primary);
@@ -135,12 +141,17 @@ body {
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
   -webkit-text-size-adjust: 100%;
+  overflow-x: hidden;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 #app {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  max-width: 100vw;
+  overflow-x: hidden;
 }
 
 /* Keyboard navigation focus outlines (only for keyboard users, not mouse clicks) */
@@ -164,6 +175,7 @@ header {
   top: 0;
   z-index: 100;
   transition: transform 0.3s ease;
+  overflow: hidden;
 }
 
 @media (max-width: 768px) {
@@ -473,6 +485,8 @@ nav {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   position: relative;
+  min-width: 0;
+  flex-wrap: wrap;
 }
 
 .nav-links a {
@@ -513,7 +527,6 @@ nav {
   display: inline-flex;
   align-items: center;
   line-height: 1;
-  margin-left: auto;
   flex-shrink: 0;
 }
 .theme-toggle:hover {
@@ -548,6 +561,8 @@ main {
   margin: 0 auto;
   padding: 2rem;
   width: 100%;
+  min-width: 0;
+  overflow-wrap: break-word;
 }
 
 @keyframes page-fade-in {
@@ -2267,6 +2282,8 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
 
 .author-info {
   flex: 1;
+  min-width: 0;
+  overflow-wrap: break-word;
 }
 
 .author-disambiguation {
@@ -2438,7 +2455,8 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   .header-search { order: 0; }
   .search-box-expanded { min-width: 250px; right: -2rem; }
   .nav-links { gap: 1rem; font-size: 0.75rem; justify-content: center; }
-  .theme-toggle { order: 2; margin-left: auto; }
+  .bug-report-btn { order: 2; margin-left: auto; }
+  .theme-toggle { order: 3; }
   .category-tabs { gap: 0.15rem; }
   .category-tab { font-size: 0.65rem; padding: 0.25rem 0.5rem; }
   main { padding: 1rem; }
@@ -2472,6 +2490,25 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   .article-group-title {
     font-size: 0.9rem;
   }
+  .author-header {
+    gap: 1rem;
+  }
+  .author-avatar-wrap,
+  .author-avatar,
+  .author-avatar-img {
+    width: 96px;
+    height: 96px;
+  }
+  .author-avatar {
+    font-size: 2.4rem;
+  }
+  .search-box-expanded {
+    min-width: 0;
+    right: 0;
+  }
+  .quote-hero__text {
+    font-size: calc(var(--text-xl) * 0.75);
+  }
 }
 
 @media (max-width: 400px) {
@@ -2492,6 +2529,15 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   }
   .quote-text { font-size: 0.95rem; }
   .article-group-title { font-size: 0.85rem; }
+  .author-avatar-wrap,
+  .author-avatar,
+  .author-avatar-img {
+    width: 72px;
+    height: 72px;
+  }
+  .author-avatar {
+    font-size: 1.8rem;
+  }
 }
 
 /* ===================================
@@ -2735,6 +2781,8 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   border-radius: var(--radius);
   background: var(--bg-primary);
   transition: border-color 0.2s;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .article-group:hover {
@@ -2752,6 +2800,8 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   padding: 0.75rem 1rem;
   background: var(--bg-secondary);
   border-bottom: none;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .article-group-header .article-group-date {
@@ -2763,6 +2813,8 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   font-size: 1rem;
   font-weight: 700;
   color: var(--text-primary);
+  min-width: 0;
+  overflow-wrap: break-word;
 }
 
 .article-group-date {
@@ -3379,6 +3431,8 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   color: var(--text-primary);
   text-decoration: none;
   transition: color 0.2s;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .article-group-title-link:hover {
@@ -5955,6 +6009,18 @@ span.evidence-source-cite {
   font-size: calc(var(--text-xl, 1.953rem) * 1.25);
 }
 
+@media (max-width: 768px) {
+  .quote-entry .quote-text {
+    font-size: calc(var(--text-lg, 1.563rem) * 1.1);
+  }
+}
+
+@media (max-width: 400px) {
+  .quote-entry .quote-text {
+    font-size: var(--text-md, 1.25rem);
+  }
+}
+
 /* ===================================
    Phase 7: Settings filters
    =================================== */
@@ -6377,12 +6443,13 @@ span.evidence-source-cite {
 .bug-report-btn {
   background: none;
   border: none;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   cursor: pointer;
   padding: 0.25rem;
   display: flex;
   align-items: center;
   transition: color 0.2s;
+  margin-left: auto;
 }
 .bug-report-btn:hover { color: var(--accent); }
 
