@@ -37,6 +37,7 @@ import historicalSourcesRouter from './routes/historicalSources.js';
 import contextRouter from './routes/context.js';
 import factCheckRouter from './routes/factCheck.js';
 import searchRouter from './routes/search.js';
+import bugReportsRouter from './routes/bugReports.js';
 import { loadFonts } from './services/shareImage.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -297,6 +298,7 @@ export function createApp({ skipDbInit = false } = {}) {
   app.use('/api/quotes', contextRouter);
   app.use('/api/fact-check', factCheckRouter);
   app.use('/api/search', searchRouter);
+  app.use('/api/bug-reports', bugReportsRouter);
 
   // SPA fallback - serve index.html for all non-API routes
   // Inject OG/Twitter meta tags, canonical URL, and JSON-LD for public pages
