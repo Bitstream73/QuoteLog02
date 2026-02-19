@@ -308,6 +308,9 @@ function initializeTables(db) {
   if (!personCols.includes('category_context')) {
     db.exec(`ALTER TABLE persons ADD COLUMN category_context TEXT`);
   }
+  if (!personCols.includes('image_suggestions')) {
+    db.exec(`ALTER TABLE persons ADD COLUMN image_suggestions TEXT`);
+  }
 
   // Migration: add is_top_story column to sources
   const sourceCols = db.prepare("PRAGMA table_info(sources)").all().map(c => c.name);

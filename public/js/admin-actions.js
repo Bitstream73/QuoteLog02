@@ -124,22 +124,137 @@ async function adminDeleteQuote(quoteId, onUpdate, btn) {
   }, 3000);
 }
 
+let _selectedHeadshotUrl = '';
+let _headshotOnUpdate = null;
+let _headshotPersonId = null;
+
 async function adminChangeHeadshot(personId, personName, onUpdate) {
-  // Fetch current photo URL so admin can see/verify it
+  _headshotPersonId = personId;
+  _headshotOnUpdate = onUpdate;
+  _selectedHeadshotUrl = '';
+
+  // Fetch current author data + cached suggestions
   let currentUrl = '';
+  let cachedSuggestions = [];
   try {
     const data = await API.get(`/authors/${personId}`);
     currentUrl = data.author?.photoUrl || '';
   } catch (e) { /* continue with empty */ }
 
-  const newUrl = prompt(`Enter new headshot URL for ${personName}:`, currentUrl);
-  if (newUrl === null) return;
-  if (newUrl.trim() === currentUrl.trim()) return; // No change
+  try {
+    const cached = await API.get(`/authors/${personId}/image-suggestions`);
+    cachedSuggestions = cached.suggestions || [];
+  } catch (e) { /* no cached suggestions */ }
+
+  _selectedHeadshotUrl = currentUrl;
+
+  const safeName = escapeHtml(personName);
+  const initial = (personName || '?').charAt(0).toUpperCase();
+  const currentImg = currentUrl
+    ? `<img src="${escapeHtml(currentUrl)}" alt="${safeName}" onerror="this.outerHTML='<div class=\\'quote-headshot-placeholder\\'>${initial}</div>'">`
+    : `<div class="quote-headshot-placeholder">${initial}</div>`;
+
+  const modalContent = document.getElementById('modal-content');
+  modalContent.innerHTML = `
+    <h3>Change Photo &mdash; ${safeName}</h3>
+    <div class="headshot-modal">
+      <div class="headshot-modal__current">
+        ${currentImg}
+      </div>
+
+      <div class="headshot-modal__suggestions">
+        <div class="headshot-modal__suggestions-header">
+          <span>AI Suggestions</span>
+          <button class="btn btn-sm" onclick="searchAuthorImages(${personId}, '${escapeHtml(personName.replace(/'/g, "\\'"))}')">Search with AI</button>
+        </div>
+        <div id="headshot-suggestions-grid">
+          ${cachedSuggestions.length > 0 ? renderSuggestionCards(cachedSuggestions) : '<div class="headshot-spinner">No suggestions yet</div>'}
+        </div>
+      </div>
+
+      <div class="headshot-modal__manual">
+        <label>Or enter URL manually:</label>
+        <input type="text" id="headshot-manual-url" placeholder="https://..." value="${escapeHtml(currentUrl)}">
+        <button class="btn btn-sm" onclick="previewManualUrl()">Preview</button>
+        <div id="headshot-manual-preview"></div>
+      </div>
+
+      <div class="headshot-modal__actions">
+        <button class="btn btn-primary" onclick="applyHeadshot(${personId})">Apply</button>
+        <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('modal-overlay').classList.remove('hidden');
+
+  // Auto-trigger AI search if no cached suggestions and no current photo
+  if (cachedSuggestions.length === 0 && !currentUrl) {
+    searchAuthorImages(personId, personName);
+  }
+}
+
+function renderSuggestionCards(suggestions) {
+  if (!suggestions || suggestions.length === 0) {
+    return '<div class="headshot-spinner">No image suggestions found</div>';
+  }
+  return suggestions.map(s => `
+    <div class="headshot-suggestion" onclick="selectSuggestion('${escapeHtml(s.url.replace(/'/g, "\\'"))}', this)">
+      <img src="${escapeHtml(s.url)}" alt="${escapeHtml(s.description || '')}" onerror="this.parentElement.remove()">
+      <small>${escapeHtml(s.source || '')}</small>
+    </div>
+  `).join('');
+}
+
+function selectSuggestion(url, el) {
+  _selectedHeadshotUrl = url;
+  // Update selection visuals
+  document.querySelectorAll('.headshot-suggestion').forEach(s => s.classList.remove('selected'));
+  if (el) el.classList.add('selected');
+  // Update manual input to match
+  const manualInput = document.getElementById('headshot-manual-url');
+  if (manualInput) manualInput.value = url;
+}
+
+async function searchAuthorImages(personId, personName) {
+  const grid = document.getElementById('headshot-suggestions-grid');
+  if (!grid) return;
+  grid.innerHTML = '<div class="headshot-spinner">Searching for images...</div>';
 
   try {
-    await API.patch(`/authors/${personId}`, { photoUrl: newUrl.trim() || null });
+    const data = await API.post(`/authors/${personId}/image-search`);
+    grid.innerHTML = renderSuggestionCards(data.suggestions);
+  } catch (err) {
+    grid.innerHTML = '<div class="headshot-spinner">Search failed: ' + escapeHtml(err.message) + '</div>';
+  }
+}
+
+function previewManualUrl() {
+  const input = document.getElementById('headshot-manual-url');
+  const preview = document.getElementById('headshot-manual-preview');
+  if (!input || !preview) return;
+
+  const url = input.value.trim();
+  if (!url) {
+    preview.innerHTML = '';
+    _selectedHeadshotUrl = '';
+    return;
+  }
+
+  _selectedHeadshotUrl = url;
+  // Deselect any AI suggestion cards
+  document.querySelectorAll('.headshot-suggestion').forEach(s => s.classList.remove('selected'));
+
+  preview.innerHTML = `<img src="${escapeHtml(url)}" alt="Preview" style="max-width:80px;max-height:80px;border-radius:50%;object-fit:cover;margin-top:0.5rem" onerror="this.outerHTML='<span style=\\'color:var(--error)\\'>Failed to load image</span>'">`;
+}
+
+async function applyHeadshot(personId) {
+  const url = _selectedHeadshotUrl.trim();
+  try {
+    await API.patch(`/authors/${personId}`, { photoUrl: url || null });
     showToast('Headshot updated', 'success');
-    if (onUpdate) onUpdate();
+    closeModal();
+    if (_headshotOnUpdate) _headshotOnUpdate();
   } catch (err) {
     showToast('Error: ' + err.message, 'error', 5000);
   }

@@ -99,8 +99,23 @@ function renderAnalyticsData(data) {
 
 function renderQuoteCard(q) {
   const truncated = q.text.length > 200 ? q.text.substring(0, 200) + '...' : q.text;
+
+  // Populate _quoteMeta so runInlineFactCheck has data
+  if (typeof _quoteMeta !== 'undefined') {
+    _quoteMeta[q.id] = {
+      text: q.text,
+      personName: q.canonical_name || q.person_name || '',
+      personCategoryContext: q.category_context || q.person_category_context || '',
+      context: q.context || '',
+    };
+  }
+
+  const verdict = q.fact_check_verdict || q.factCheckVerdict || null;
+  const badgeHtml = typeof buildVerdictBadgeHtml === 'function' ? buildVerdictBadgeHtml(q.id, verdict) : '';
+
   return `
     <div class="analytics-quote-card" onclick="navigate(null, '/quote/${q.id}')">
+      ${badgeHtml}
       <div class="quote-card-header">
         <img src="${q.photo_url || '/img/default-avatar.svg'}" alt="" class="author-thumb" onerror="this.src='/img/default-avatar.svg'">
         <div>

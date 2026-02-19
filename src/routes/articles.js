@@ -38,6 +38,7 @@ router.get('/:id', (req, res) => {
 
   const quotes = db.prepare(`
     SELECT q.id, q.text, q.context, q.quote_type, q.is_visible, q.created_at, q.source_urls,
+           q.fact_check_verdict,
            p.id AS person_id, p.canonical_name, p.photo_url, p.category AS person_category,
            p.category_context AS person_category_context,
            COALESCE((SELECT SUM(vote_value) FROM votes WHERE votes.quote_id = q.id), 0) as vote_score
@@ -73,6 +74,7 @@ router.get('/:id', (req, res) => {
       sourceUrls: JSON.parse(q.source_urls || '[]'),
       createdAt: q.created_at,
       voteScore: q.vote_score,
+      factCheckVerdict: q.fact_check_verdict || null,
     })),
   });
 });

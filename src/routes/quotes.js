@@ -95,7 +95,7 @@ router.get('/', (req, res) => {
   // Get quotes with person info + first linked article/source + vote score
   const quotes = db.prepare(`
     SELECT q.id, q.text, q.source_urls, q.created_at, q.quote_datetime, q.context, q.quote_type, q.is_visible,
-           q.rss_metadata,
+           q.rss_metadata, q.fact_check_verdict,
            p.id AS person_id, p.canonical_name, p.photo_url, p.category AS person_category,
            p.category_context AS person_category_context,
            a.id AS article_id, a.title AS article_title, a.published_at AS article_published_at, a.url AS article_url,
@@ -137,6 +137,7 @@ router.get('/', (req, res) => {
     createdAt: q.created_at,
     quoteDateTime: q.quote_datetime || null,
     importantsCount: q.importants_count,
+    factCheckVerdict: q.fact_check_verdict || null,
   }));
 
   // Get broad category counts for tab rendering
@@ -224,6 +225,7 @@ router.get('/search', async (req, res) => {
       const placeholders = quoteIds.map(() => '?').join(',');
       const allQuotes = db.prepare(`
         SELECT q.id, q.text, q.source_urls, q.created_at, q.context, q.quote_type, q.is_visible,
+               q.fact_check_verdict,
                p.id AS person_id, p.canonical_name, p.photo_url, p.category AS person_category,
                p.category_context AS person_category_context,
                a.id AS article_id, a.title AS article_title, a.published_at AS article_published_at, a.url AS article_url,
@@ -271,6 +273,7 @@ router.get('/search', async (req, res) => {
 
   const quotes = db.prepare(`
     SELECT q.id, q.text, q.source_urls, q.created_at, q.context, q.quote_type, q.is_visible,
+           q.fact_check_verdict,
            p.id AS person_id, p.canonical_name, p.photo_url, p.category AS person_category,
            p.category_context AS person_category_context,
            a.id AS article_id, a.title AS article_title, a.published_at AS article_published_at, a.url AS article_url,
@@ -317,6 +320,7 @@ function formatQuoteResult(q) {
     primarySourceName: q.primary_source_name || null,
     sourceUrls: JSON.parse(q.source_urls || '[]'),
     createdAt: q.created_at,
+    factCheckVerdict: q.fact_check_verdict || null,
   };
 }
 

@@ -274,10 +274,10 @@ describe('Frontend JS files', () => {
   });
 
   describe('Google Image search for missing author photos', () => {
-    it('should have admin-headshot-search link in home.js for missing photos', () => {
+    it('should open headshot modal for missing photos in home.js', () => {
       const homeJs = fs.readFileSync(path.join(process.cwd(), 'public/js/home.js'), 'utf-8');
-      expect(homeJs).toContain('admin-headshot-search');
-      expect(homeJs).toContain('google.com/search?tbm=isch');
+      expect(homeJs).toContain('admin-headshot-clickable');
+      expect(homeJs).toContain('adminChangeHeadshot');
     });
 
     it('should make existing headshot clickable for admin to change photo on home.js', () => {
@@ -298,13 +298,11 @@ describe('Frontend JS files', () => {
       expect(authorJs).toContain('google.com/search?tbm=isch');
     });
 
-    it('should use encodeURIComponent for Google Image search URL', () => {
-      const homeJs = fs.readFileSync(path.join(process.cwd(), 'public/js/home.js'), 'utf-8');
-      expect(homeJs).toContain('encodeURIComponent(');
-      // Verify the search includes person name
-      const searchPattern = homeJs.match(/google\.com\/search\?tbm=isch&q=\$\{encodeURIComponent\(([^)]+)\)/);
-      expect(searchPattern).not.toBeNull();
-      expect(searchPattern[1]).toContain('personName');
+    it('should have AI image search in admin-actions.js', () => {
+      const adminActionsJs = fs.readFileSync(path.join(process.cwd(), 'public/js/admin-actions.js'), 'utf-8');
+      expect(adminActionsJs).toContain('searchAuthorImages');
+      expect(adminActionsJs).toContain('headshot-suggestions-grid');
+      expect(adminActionsJs).toContain('image-search');
     });
 
     it('should have admin-headshot-search styles in CSS', () => {

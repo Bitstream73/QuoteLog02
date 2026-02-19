@@ -102,7 +102,7 @@ router.get('/trending-sources', (req, res) => {
     // For each article, get top 3 quotes
     const getTopQuotes = db.prepare(`
       SELECT q.id, q.text, q.context, q.quote_datetime, q.importants_count, q.share_count,
-        q.created_at,
+        q.created_at, q.fact_check_verdict,
         p.id as person_id, p.canonical_name as person_name, p.photo_url,
         p.category_context
       FROM quotes q
@@ -142,7 +142,7 @@ router.get('/trending-quotes', (req, res) => {
 
     const baseSelect = `
       SELECT q.id, q.text, q.context, q.quote_datetime, q.importants_count, q.share_count,
-        q.trending_score, q.created_at,
+        q.trending_score, q.created_at, q.fact_check_verdict,
         p.id as person_id, p.canonical_name as person_name, p.photo_url,
         p.category_context,
         a.id as article_id, a.title as article_title, a.url as article_url,
@@ -236,7 +236,7 @@ router.get('/all-sources', (req, res) => {
     // For each article, get top 3 quotes
     const getTopQuotes = db.prepare(`
       SELECT q.id, q.text, q.context, q.quote_datetime, q.importants_count, q.share_count,
-        q.created_at,
+        q.created_at, q.fact_check_verdict,
         p.id as person_id, p.canonical_name as person_name, p.photo_url,
         p.category_context
       FROM quotes q
@@ -356,7 +356,7 @@ router.get('/trending-authors', (req, res) => {
     // For each author, get top 4 recent quotes
     const getTopQuotes = db.prepare(`
       SELECT q.id, q.text, q.context, q.quote_datetime, q.importants_count, q.share_count,
-        q.created_at,
+        q.created_at, q.fact_check_verdict,
         p.id as person_id, p.canonical_name as person_name, p.photo_url,
         p.category_context,
         a.id as article_id, a.title as article_title, a.url as article_url,

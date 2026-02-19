@@ -362,8 +362,22 @@ async function loadAdminQuotes(page) {
         try { return new URL(u).hostname.replace(/^www\\./, ''); } catch { return u; }
       });
 
+      // Populate _quoteMeta for runInlineFactCheck
+      if (typeof _quoteMeta !== 'undefined') {
+        _quoteMeta[q.id] = {
+          text: q.text,
+          personName: q.personName || '',
+          personCategoryContext: q.personCategoryContext || '',
+          context: q.context || '',
+        };
+      }
+
+      const verdict = q.factCheckVerdict || null;
+      const badgeHtml = typeof buildVerdictBadgeHtml === 'function' ? buildVerdictBadgeHtml(q.id, verdict) : '';
+
       html += `
         <div class="admin-quote-card" id="aqc-${q.id}">
+          ${badgeHtml}
           <div class="admin-quote-top">
             <div class="admin-quote-headshot-col">
               ${headshotHtml}

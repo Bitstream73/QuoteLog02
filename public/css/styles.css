@@ -4111,7 +4111,17 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
 }
 
 .quote-block--compact .quote-block__summary {
-  display: none;
+  -webkit-line-clamp: 2;
+}
+
+.quote-block__context {
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  color: var(--text-faint);
+  border-left: 2px solid var(--accent-muted);
+  padding-left: var(--space-3);
+  margin-top: var(--space-2);
+  cursor: pointer;
 }
 
 /* ======= Phase 6: Share Buttons ======= */
@@ -5452,6 +5462,13 @@ span.evidence-source-cite {
   overflow: visible;
 }
 
+/* Fact-check container — stacking context prevents AI-generated sticky
+   headers from overlapping the site header (z-index: 100) */
+#fact-check-container {
+  position: relative;
+  z-index: 0;
+}
+
 /* Fact-check container — ensure widget and references fill same width */
 #fact-check-content > * {
   width: 100%;
@@ -6301,5 +6318,53 @@ span.evidence-source-cite {
 .tax-edit-form {
   padding: 0.5rem 0;
 }
+
+/* Verdict badge on quote cards */
+.wts-verdict-badge {
+  display: inline-block;
+  padding: 0.2rem 0.6rem;
+  border-radius: var(--radius);
+  font-family: var(--font-ui);
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #fff;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+  border: none;
+  margin-bottom: 0.4rem;
+  line-height: 1.4;
+}
+
+.wts-verdict-badge--pending {
+  background: var(--text-muted);
+}
+.wts-verdict-badge--pending:hover {
+  filter: brightness(1.2);
+}
+.wts-verdict-badge--pending:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+/* Headshot Modal */
+.headshot-modal__current { text-align: center; margin-bottom: 1rem; }
+.headshot-modal__current img { width: 80px; height: 80px; border-radius: 50%; object-fit: cover; }
+
+.headshot-modal__suggestions-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
+
+#headshot-suggestions-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; }
+
+.headshot-suggestion { cursor: pointer; border: 2px solid var(--border); border-radius: 6px; padding: 0.5rem; text-align: center; transition: border-color 0.2s; }
+.headshot-suggestion:hover, .headshot-suggestion.selected { border-color: var(--accent); }
+.headshot-suggestion img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 4px; }
+.headshot-suggestion small { display: block; margin-top: 0.25rem; color: var(--text-muted); font-size: 0.75rem; }
+
+.headshot-modal__manual { margin-top: 1rem; }
+.headshot-modal__manual input { width: 100%; margin: 0.25rem 0; }
+.headshot-modal__actions { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1rem; }
+
+.headshot-spinner { text-align: center; padding: 1rem; color: var(--text-muted); }
 
 /* Phase 8B: Search box overlap fix — already has proper z-index at line 225 */

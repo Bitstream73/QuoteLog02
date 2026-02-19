@@ -9,6 +9,72 @@ const _quoteMeta = {};
 // Current active tab
 let _activeTab = 'trending-quotes';
 
+// ======= Verdict Badge =======
+
+const VERDICT_COLORS = {
+  TRUE: 'var(--success)', MOSTLY_TRUE: 'var(--success)',
+  FALSE: 'var(--error)', MOSTLY_FALSE: 'var(--error)',
+  MISLEADING: 'var(--warning)', LACKS_CONTEXT: 'var(--warning)',
+  UNVERIFIABLE: 'var(--info)',
+};
+const VERDICT_LABELS = {
+  TRUE: '\u2713 True', MOSTLY_TRUE: '\u2248 Mostly True',
+  FALSE: '\u2717 False', MOSTLY_FALSE: '\u2248 Mostly False',
+  MISLEADING: '\u26A0 Misleading', LACKS_CONTEXT: '\u26A0 Lacks Context',
+  UNVERIFIABLE: '? Unverifiable',
+};
+
+function buildVerdictBadgeHtml(quoteId, verdict) {
+  if (verdict && VERDICT_LABELS[verdict]) {
+    const color = VERDICT_COLORS[verdict] || 'var(--text-muted)';
+    return `<span class="wts-verdict-badge" style="background:${color}" onclick="event.stopPropagation(); navigateTo('/quote/${quoteId}')">${VERDICT_LABELS[verdict]}</span>`;
+  }
+  return `<button class="wts-verdict-badge wts-verdict-badge--pending" onclick="event.stopPropagation(); runInlineFactCheck(${quoteId}, this)">Run Fact Check</button>`;
+}
+
+async function runInlineFactCheck(quoteId, btn) {
+  if (!btn || btn.disabled) return;
+  btn.disabled = true;
+  btn.textContent = 'One sec..';
+
+  const meta = _quoteMeta[quoteId];
+  if (!meta || !meta.text) {
+    btn.disabled = false;
+    btn.textContent = 'Run Fact Check';
+    showToast('Quote data not available', 'error');
+    return;
+  }
+
+  try {
+    const result = await API.post('/fact-check/check', {
+      quoteId,
+      quoteText: meta.text,
+      authorName: meta.personName || '',
+      authorDescription: meta.personCategoryContext || '',
+      context: meta.context || '',
+    });
+
+    const verdict = result.verdict || result.factCheck?.verdict;
+    if (verdict && VERDICT_LABELS[verdict]) {
+      const color = VERDICT_COLORS[verdict] || 'var(--text-muted)';
+      const badge = document.createElement('span');
+      badge.className = 'wts-verdict-badge';
+      badge.style.background = color;
+      badge.textContent = VERDICT_LABELS[verdict];
+      badge.onclick = function(e) { e.stopPropagation(); navigateTo('/quote/' + quoteId); };
+      btn.replaceWith(badge);
+    } else {
+      btn.disabled = false;
+      btn.textContent = 'Run Fact Check';
+      showToast('No verdict returned', 'info');
+    }
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = 'Run Fact Check';
+    showToast('Fact check failed: ' + (err.message || 'Unknown error'), 'error');
+  }
+}
+
 // Pending new quotes count (for non-jarring updates)
 let _pendingNewQuotes = 0;
 
@@ -284,9 +350,11 @@ function buildQuoteBlockHtml(q, isImportant, options = {}) {
   const importantButton = renderImportantButton('quote', q.id, importantsCount, isImportant);
 
   const variantClass = variant !== 'default' ? ' quote-block--' + variant : '';
+  const verdict = q.fact_check_verdict || q.factCheckVerdict || null;
 
   return `
     <div class="quote-block${variantClass}" data-quote-id="${q.id}" data-track-type="quote" data-track-id="${q.id}" data-created-at="${quoteDateTime || q.created_at || ''}" data-importance="${(importantsCount + shareCount + viewCount) || 0}" data-share-view="${(shareCount + viewCount) || 0}">
+      ${buildVerdictBadgeHtml(q.id, verdict)}
       <div class="quote-block__text" onclick="navigateTo('/quote/${q.id}')">
         <span class="quote-mark quote-mark--open">\u201C</span>${escapeHtml(truncatedText)}${isLong ? `<a href="#" class="show-more-toggle" onclick="toggleQuoteText(event, ${q.id})">show more</a>` : ''}<span class="quote-mark quote-mark--close">\u201D</span>
       </div>
@@ -352,11 +420,14 @@ function buildAdminQuoteBlockHtml(q, isImportant) {
   const _safeName = escapeHtml((personName || '').replace(/'/g, "\\'"));
   const headshotHtml = photoUrl
     ? `<img src="${escapeHtml(photoUrl)}" alt="${escapeHtml(personName)}" class="quote-block__headshot admin-headshot-clickable" onclick="adminChangeHeadshot(${personId}, '${_safeName}')" title="Click to change photo" style="cursor:pointer" onerror="if(!this.dataset.retry){this.dataset.retry='1';this.src=this.src}else{this.outerHTML='<div class=\\'quote-headshot-placeholder\\'>${initial}</div>'}" loading="lazy">`
-    : `<a href="https://www.google.com/search?tbm=isch&q=${encodeURIComponent((personName || '') + ' ' + (personCategoryContext || ''))}" target="_blank" rel="noopener" class="admin-headshot-search" title="Search Google Images"><div class="quote-headshot-placeholder">${initial}</div></a>`;
+    : `<div class="quote-headshot-placeholder admin-headshot-clickable" onclick="adminChangeHeadshot(${personId}, '${_safeName}')" title="Click to find photo" style="cursor:pointer">${initial}</div>`;
+
+  const verdict = q.fact_check_verdict || q.factCheckVerdict || null;
 
   return `
     <div class="admin-quote-block quote-block" data-quote-id="${q.id}" data-track-type="quote" data-track-id="${q.id}" data-created-at="${q.created_at || ''}" data-importance="${(importantsCount + shareViewScore) || 0}" data-share-view="${shareViewScore}">
 
+      ${buildVerdictBadgeHtml(q.id, verdict)}
       <div class="quote-block__text" onclick="navigateTo('/quote/${q.id}')">
         <span class="quote-mark quote-mark--open">\u201C</span>${escapeHtml(q.text || '')}<span class="quote-mark quote-mark--close">\u201D</span>
       </div>
@@ -395,7 +466,7 @@ function buildAdminQuoteBlockHtml(q, isImportant) {
         <button onclick="adminEditContext(${q.id}, _quoteMeta[${q.id}]?.context || '')">Context</button>
         <button onclick="navigateTo('/article/${articleId}')">Sources</button>
         <button onclick="adminEditAuthorFromQuote(${q.person_id || q.personId})">Author</button>
-        <button onclick="adminChangeHeadshotFromQuote(${q.person_id || q.personId})">Photo</button>
+        <button onclick="adminChangeHeadshot(${q.person_id || q.personId}, '${_safeName}')">Photo</button>
         <button onclick="adminDeleteQuote(${q.id}, function(){ location.reload(); }, this)" title="Delete quote" style="color:var(--danger,#dc2626)">Delete</button>
       </div>
 
@@ -423,25 +494,6 @@ async function adminEditAuthorFromQuote(personId) {
   }
 }
 
-async function adminChangeHeadshotFromQuote(personId) {
-  // Fetch current photo URL so admin can see/verify it
-  let currentUrl = '';
-  try {
-    const data = await API.get(`/authors/${personId}`);
-    currentUrl = data.author?.photoUrl || '';
-  } catch (e) { /* continue with empty */ }
-
-  const newUrl = prompt('Enter new headshot URL:', currentUrl);
-  if (newUrl === null) return;
-  if (newUrl.trim() === currentUrl.trim()) return; // No change
-
-  try {
-    await API.patch(`/authors/${personId}`, { photoUrl: newUrl.trim() || null });
-    showToast('Headshot updated', 'success');
-  } catch (err) {
-    showToast('Error: ' + err.message, 'error');
-  }
-}
 
 // ======= Lazy-Load Admin Details for List View =======
 
