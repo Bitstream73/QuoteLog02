@@ -723,4 +723,3 @@ async function adminSaveInlineEdit(editId, inputType, entityType, fieldName, ent
     showToast('Error: ' + err.message, 'error');
   }
 }
-
