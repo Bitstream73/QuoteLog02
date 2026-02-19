@@ -41,6 +41,14 @@ vi.mock('../../src/services/shareImage.js', () => ({
   generateShareImage: mockGenerateShareImage,
 }));
 
+const mockDbGet = vi.fn();
+const mockDbPrepare = vi.fn().mockReturnValue({ get: mockDbGet, run: vi.fn() });
+const mockGetDb = vi.fn().mockReturnValue({ prepare: mockDbPrepare });
+
+vi.mock('../../src/config/database.js', () => ({
+  getDb: mockGetDb,
+}));
+
 // ---------------------------------------------------------------------------
 // App setup
 // ---------------------------------------------------------------------------
@@ -52,6 +60,8 @@ beforeEach(async () => {
   mockFactCheckQuote.mockReset();
   mockClassifyAndVerify.mockReset();
   mockExtractAndEnrichReferences.mockReset();
+  mockGenerateShareImage.mockReset();
+  mockGenerateShareImage.mockResolvedValue(Buffer.from('fake'));
 
   vi.doMock('../../src/config/index.js', () => ({
     default: { env: 'test', port: 3000, databasePath: ':memory:', geminiApiKey: 'test-key', pineconeApiKey: '', pineconeIndexHost: '' }
@@ -63,6 +73,17 @@ beforeEach(async () => {
     factCheckQuote: mockFactCheckQuote,
     classifyAndVerify: mockClassifyAndVerify,
     extractAndEnrichReferences: mockExtractAndEnrichReferences,
+  }));
+  vi.doMock('../../src/services/shareImage.js', () => ({
+    generateShareImage: mockGenerateShareImage,
+  }));
+  mockDbGet.mockReset();
+  mockDbPrepare.mockReset();
+  mockDbPrepare.mockReturnValue({ get: mockDbGet, run: vi.fn() });
+  mockGetDb.mockReset();
+  mockGetDb.mockReturnValue({ prepare: mockDbPrepare });
+  vi.doMock('../../src/config/database.js', () => ({
+    getDb: mockGetDb,
   }));
 
   const routerModule = await import('../../src/routes/factCheck.js');

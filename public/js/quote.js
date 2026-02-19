@@ -1,4 +1,5 @@
 async function renderQuote(id) {
+  window._currentQuoteId = id;
   const content = document.getElementById('content');
   content.innerHTML = typeof buildSkeletonHtml === 'function' ? buildSkeletonHtml(1) : '<div class="loading">Loading quote...</div>';
   try {
