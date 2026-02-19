@@ -25,13 +25,26 @@ describe('Analytics Page', () => {
     };
 
     global.API = {
-      get: vi.fn().mockResolvedValue({
-        period_days: 30,
-        total_quotes: 100,
-        total_authors: 25,
-        authors: [
-          { id: 1, canonical_name: 'Author A', photo_url: null, category: 'Politician', quote_count: 15 },
-        ],
+      get: vi.fn((url) => {
+        if (url.startsWith('/analytics/overview')) {
+          return Promise.resolve({
+            period_days: 30,
+            total_quotes: 100,
+            total_authors: 25,
+            authors: [
+              { id: 1, canonical_name: 'Author A', photo_url: null, category: 'Politician', quote_count: 15 },
+            ],
+          });
+        }
+        if (url.startsWith('/analytics/trending-quotes')) {
+          return Promise.resolve({
+            quote_of_day: null,
+            quote_of_week: null,
+            quote_of_month: null,
+            recent_quotes: [],
+          });
+        }
+        return Promise.resolve({});
       }),
     };
 
@@ -58,9 +71,10 @@ describe('Analytics Page', () => {
     expect(mockContent.innerHTML).toContain('analytics-page');
   });
 
-  it('renderAnalytics calls API.get with overview endpoint', async () => {
+  it('renderAnalytics calls API.get with overview and trending-quotes endpoints', async () => {
     await mod.renderAnalytics();
     expect(global.API.get).toHaveBeenCalledWith('/analytics/overview?days=30');
+    expect(global.API.get).toHaveBeenCalledWith('/analytics/trending-quotes');
   });
 
   it('changeAnalyticsPeriod updates days and calls API', async () => {
@@ -69,9 +83,10 @@ describe('Analytics Page', () => {
     global.API.get.mockClear();
     await mod.changeAnalyticsPeriod(7);
     expect(global.API.get).toHaveBeenCalledWith('/analytics/overview?days=7');
+    expect(global.API.get).toHaveBeenCalledWith('/analytics/trending-quotes');
   });
 
-  it('renderAnalyticsData renders stats cards', () => {
+  it('renderAnalyticsData renders stats cards', async () => {
     // Set up DOM for renderAnalyticsData
     const page = {
       querySelector: vi.fn((sel) => {
@@ -83,7 +98,7 @@ describe('Analytics Page', () => {
     };
     global.document.querySelector = vi.fn(() => page);
 
-    mod.renderAnalyticsData({
+    await mod.renderAnalyticsData({
       total_quotes: 100,
       total_authors: 25,
       authors: [{ id: 1, canonical_name: 'Author A', photo_url: null, category: 'Politician', quote_count: 15 }],
