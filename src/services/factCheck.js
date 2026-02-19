@@ -61,7 +61,7 @@ async function classifyAndVerify(quoteData) {
 // Step 2: Render HTML
 // ---------------------------------------------------------------------------
 
-async function renderHTML(result) {
+async function renderHTML(result, quoteId) {
   if (result.category === 'B') {
     return renderCategoryLabel(
       'opinion',
@@ -92,7 +92,7 @@ async function renderHTML(result) {
 
   // For simple verdicts, use template rendering (fast, no extra Gemini call)
   if (['text', 'single_stat', 'excerpt'].includes(result.display_type)) {
-    return renderVerdictTemplate(result);
+    return renderVerdictTemplate(result, quoteId);
   }
 
   // For complex visualizations, use Gemini to generate custom HTML
@@ -103,10 +103,11 @@ async function renderHTML(result) {
       displayType: result.display_type,
     });
     const html = await gemini.generateText(prompt);
-    return html.replace(/^```html?\s*/i, '').replace(/```\s*$/, '').trim();
+    const rendered = html.replace(/^```html?\s*/i, '').replace(/```\s*$/, '').trim();
+    return rendered + renderFeedbackButtons(quoteId);
   } catch (err) {
     logger.error('factcheck', 'html_rendering_failed', {}, err);
-    return renderVerdictTemplate(result);
+    return renderVerdictTemplate(result, quoteId);
   }
 }
 
@@ -137,7 +138,23 @@ function renderCategoryLabel(type, title, reasoning, summaryLabel) {
 </div>`;
 }
 
-function renderVerdictTemplate(v) {
+function renderFeedbackButtons(quoteId) {
+  if (!quoteId) return '';
+  return `
+  <div class="fc-feedback" data-quote-id="${quoteId}">
+    <span class="fc-feedback-label">Do you agree with this fact-check?</span>
+    <div class="fc-feedback-buttons">
+      <button class="fc-feedback-btn fc-feedback-agree" onclick="handleFactCheckFeedback(event, ${quoteId}, 'agree')">
+        Agree <span class="fc-feedback-count">(0)</span>
+      </button>
+      <button class="fc-feedback-btn fc-feedback-disagree" onclick="handleFactCheckFeedback(event, ${quoteId}, 'disagree')">
+        Disagree <span class="fc-feedback-count">(0)</span>
+      </button>
+    </div>
+  </div>`;
+}
+
+function renderVerdictTemplate(v, quoteId) {
   const verdictColor = VERDICT_COLORS[v.verdict] || 'var(--text-muted)';
   const verdictLabel = VERDICT_LABELS[v.verdict] || v.verdict;
 
@@ -208,6 +225,7 @@ function renderVerdictTemplate(v) {
   ${excerptHTML}
   ${dataPointsHTML}
   ${citationHTML}
+  ${renderFeedbackButtons(quoteId)}
 </div>`;
 }
 
@@ -362,7 +380,7 @@ async function factCheckQuote(quoteData, options = {}) {
 
   const factCheckPromise = skipFactCheck
     ? Promise.resolve(null)
-    : runFactCheckPipeline(quoteData);
+    : runFactCheckPipeline(quoteData, quoteId);
 
   const referencesPromise = skipReferences
     ? Promise.resolve(null)
@@ -430,15 +448,15 @@ async function factCheckQuote(quoteData, options = {}) {
   };
 }
 
-async function runFactCheckPipeline(quoteData) {
+async function runFactCheckPipeline(quoteData, quoteId) {
   const result = await classifyAndVerify(quoteData);
 
   if (result.category !== 'A') {
-    const html = await renderHTML(result);
+    const html = await renderHTML(result, quoteId);
     return { category: result.category, classification: result, verdict: null, html };
   }
 
-  const html = await renderHTML(result);
+  const html = await renderHTML(result, quoteId);
   return { category: result.category, classification: result, verdict: result.verdict, html };
 }
 

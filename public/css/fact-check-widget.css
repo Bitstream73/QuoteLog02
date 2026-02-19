@@ -658,3 +658,80 @@ span.fc-ref-title {
 .fc-inline-ref--statistic:hover     { color: #1d4ed8; }
 .fc-inline-ref--media_clip:hover    { color: #dc2626; }
 .fc-inline-ref--legal_document:hover { color: #7c3aed; }
+
+
+/* ============================================================
+ * FACT-CHECK FEEDBACK BUTTONS
+ * ============================================================ */
+
+.fc-feedback {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.fc-feedback-label {
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.fc-feedback-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.fc-feedback-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-primary);
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s, color 0.2s;
+}
+
+.fc-feedback-btn:hover:not(:disabled) {
+  border-color: var(--text-muted);
+  color: var(--text-primary);
+}
+
+.fc-feedback-count {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.fc-feedback-btn--voted.fc-feedback-agree {
+  border-color: var(--success);
+  background: var(--success);
+  color: #fff;
+}
+
+.fc-feedback-btn--voted.fc-feedback-agree .fc-feedback-count {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.fc-feedback-btn--voted.fc-feedback-disagree {
+  border-color: var(--error);
+  background: var(--error);
+  color: #fff;
+}
+
+.fc-feedback-btn--voted.fc-feedback-disagree .fc-feedback-count {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.fc-feedback-btn--disabled {
+  opacity: 0.6;
+  cursor: default;
+  pointer-events: none;
+}

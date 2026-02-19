@@ -56,6 +56,7 @@ function setupTestDb() {
       canonical_name TEXT NOT NULL,
       disambiguation TEXT,
       photo_url TEXT,
+      category_context TEXT,
       quote_count INTEGER NOT NULL DEFAULT 0,
       metadata TEXT DEFAULT '{}',
       first_seen_at TEXT NOT NULL DEFAULT (datetime('now')),

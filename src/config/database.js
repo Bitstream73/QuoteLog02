@@ -622,6 +622,12 @@ function initializeTables(db) {
   if (!quoteCols2.includes('fact_check_references_json')) {
     db.exec(`ALTER TABLE quotes ADD COLUMN fact_check_references_json TEXT`);
   }
+  if (!quoteCols2.includes('fact_check_agree_count')) {
+    db.exec(`ALTER TABLE quotes ADD COLUMN fact_check_agree_count INTEGER NOT NULL DEFAULT 0`);
+  }
+  if (!quoteCols2.includes('fact_check_disagree_count')) {
+    db.exec(`ALTER TABLE quotes ADD COLUMN fact_check_disagree_count INTEGER NOT NULL DEFAULT 0`);
+  }
   db.exec(`CREATE INDEX IF NOT EXISTS idx_quotes_fact_check ON quotes(fact_check_category) WHERE fact_check_category IS NOT NULL`);
 
   // articles: importants_count, share_count, view_count, trending_score

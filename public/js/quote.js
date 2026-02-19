@@ -350,7 +350,7 @@ async function runFactCheck(quoteId, force) {
       if (raw) {
         const cached = JSON.parse(raw);
         if (Date.now() - cached.timestamp < FC_CACHE_TTL_MS) {
-          renderFactCheckResult(container, cached.data);
+          renderFactCheckResult(container, cached.data, quoteId);
           annotateQuoteText(cached.data);
           return;
         }
@@ -395,7 +395,7 @@ async function runFactCheck(quoteId, force) {
       }));
     } catch { /* sessionStorage full */ }
 
-    renderFactCheckResult(container, result);
+    renderFactCheckResult(container, result, quoteId);
     annotateQuoteText(result);
 
   } catch (err) {
@@ -404,9 +404,90 @@ async function runFactCheck(quoteId, force) {
   }
 }
 
-function renderFactCheckResult(container, result) {
+function renderFactCheckResult(container, result, quoteId) {
   stopFactCheckLoadingAnimation();
   container.innerHTML = result.combinedHtml || result.html || '';
+
+  // Load feedback counts and apply session state
+  initFactCheckFeedback(quoteId, result);
+}
+
+/**
+ * Initialize fact-check feedback buttons: load counts and restore session vote state.
+ */
+async function initFactCheckFeedback(quoteId, result) {
+  const feedbackEl = document.querySelector('.fc-feedback[data-quote-id]');
+  if (!feedbackEl) return;
+
+  // Check if user already voted this session
+  const voted = sessionStorage.getItem('fc_feedback_' + quoteId);
+  if (voted) {
+    disableFeedbackButtons(quoteId, voted);
+  }
+
+  // Populate counts from result if available, otherwise fetch
+  let agreeCount = result?.agree_count;
+  let disagreeCount = result?.disagree_count;
+
+  if (agreeCount == null || disagreeCount == null) {
+    try {
+      const counts = await API.get('/fact-check/' + quoteId + '/feedback');
+      agreeCount = counts.agree_count || 0;
+      disagreeCount = counts.disagree_count || 0;
+    } catch {
+      return;
+    }
+  }
+
+  updateFeedbackCounts(quoteId, agreeCount, disagreeCount);
+}
+
+/**
+ * Handle agree/disagree button click.
+ */
+async function handleFactCheckFeedback(event, quoteId, value) {
+  event.preventDefault();
+  const btn = event.currentTarget;
+  if (btn.disabled) return;
+
+  try {
+    const result = await API.post('/fact-check/' + quoteId + '/feedback', { value });
+    sessionStorage.setItem('fc_feedback_' + quoteId, value);
+    updateFeedbackCounts(quoteId, result.agree_count, result.disagree_count);
+    disableFeedbackButtons(quoteId, value);
+  } catch (err) {
+    showToast('Could not submit feedback', 'error');
+  }
+}
+
+function updateFeedbackCounts(quoteId, agreeCount, disagreeCount) {
+  const feedbackEl = document.querySelector('.fc-feedback[data-quote-id="' + quoteId + '"]');
+  if (!feedbackEl) return;
+
+  const counts = feedbackEl.querySelectorAll('.fc-feedback-count');
+  if (counts[0]) counts[0].textContent = '(' + (agreeCount || 0) + ')';
+  if (counts[1]) counts[1].textContent = '(' + (disagreeCount || 0) + ')';
+}
+
+function disableFeedbackButtons(quoteId, votedValue) {
+  const feedbackEl = document.querySelector('.fc-feedback[data-quote-id="' + quoteId + '"]');
+  if (!feedbackEl) return;
+
+  const buttons = feedbackEl.querySelectorAll('.fc-feedback-btn');
+  buttons.forEach(btn => {
+    btn.disabled = true;
+    btn.classList.add('fc-feedback-btn--disabled');
+  });
+
+  // Highlight the voted button
+  const votedBtn = feedbackEl.querySelector(
+    votedValue === 'agree' ? '.fc-feedback-agree' : '.fc-feedback-disagree'
+  );
+  if (votedBtn) {
+    votedBtn.classList.add('fc-feedback-btn--voted');
+    votedBtn.classList.remove('fc-feedback-btn--disabled');
+    votedBtn.style.opacity = '1';
+  }
 }
 
 /**

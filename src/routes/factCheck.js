@@ -55,7 +55,7 @@ router.post('/check', async (req, res) => {
       try {
         const db = getDb();
         const row = db.prepare(
-          `SELECT fact_check_html, fact_check_references_json, fact_check_verdict FROM quotes WHERE id = ?`
+          `SELECT fact_check_html, fact_check_references_json, fact_check_verdict, fact_check_agree_count, fact_check_disagree_count FROM quotes WHERE id = ?`
         ).get(quoteId);
 
         if (row && row.fact_check_html) {
@@ -64,6 +64,8 @@ router.post('/check', async (req, res) => {
             html: row.fact_check_html,
             references: row.fact_check_references_json ? JSON.parse(row.fact_check_references_json) : null,
             verdict: row.fact_check_verdict || null,
+            agree_count: row.fact_check_agree_count || 0,
+            disagree_count: row.fact_check_disagree_count || 0,
             fromCache: true,
           };
           cache.set(cacheKey, { data: dbCached, timestamp: Date.now() });
@@ -205,6 +207,79 @@ router.get('/status', (req, res) => {
     cacheSize: cache.size,
     geminiConfigured: !!config.geminiApiKey,
   });
+});
+
+// ---------------------------------------------------------------------------
+// GET /:quoteId/feedback — Get current agree/disagree counts
+// ---------------------------------------------------------------------------
+
+router.get('/:quoteId/feedback', (req, res) => {
+  try {
+    const quoteId = parseInt(req.params.quoteId, 10);
+    if (!quoteId || isNaN(quoteId)) {
+      return res.status(400).json({ error: 'Invalid quoteId' });
+    }
+
+    const db = getDb();
+    const row = db.prepare(
+      `SELECT fact_check_agree_count, fact_check_disagree_count FROM quotes WHERE id = ?`
+    ).get(quoteId);
+
+    if (!row) {
+      return res.status(404).json({ error: 'Quote not found' });
+    }
+
+    return res.json({
+      agree_count: row.fact_check_agree_count || 0,
+      disagree_count: row.fact_check_disagree_count || 0,
+    });
+  } catch (err) {
+    logger.error('factcheck', 'get_feedback_failed', { quoteId: req.params.quoteId }, err);
+    return res.status(500).json({ error: 'Failed to get feedback counts' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /:quoteId/feedback — Submit agree/disagree feedback
+// ---------------------------------------------------------------------------
+
+router.post('/:quoteId/feedback', (req, res) => {
+  try {
+    const quoteId = parseInt(req.params.quoteId, 10);
+    if (!quoteId || isNaN(quoteId)) {
+      return res.status(400).json({ error: 'Invalid quoteId' });
+    }
+
+    const { value } = req.body;
+    if (!['agree', 'disagree'].includes(value)) {
+      return res.status(400).json({ error: 'value must be "agree" or "disagree"' });
+    }
+
+    const db = getDb();
+
+    // Verify quote exists
+    const exists = db.prepare(`SELECT id FROM quotes WHERE id = ?`).get(quoteId);
+    if (!exists) {
+      return res.status(404).json({ error: 'Quote not found' });
+    }
+
+    // Increment the appropriate counter
+    const column = value === 'agree' ? 'fact_check_agree_count' : 'fact_check_disagree_count';
+    db.prepare(`UPDATE quotes SET ${column} = ${column} + 1 WHERE id = ?`).run(quoteId);
+
+    // Return updated counts
+    const row = db.prepare(
+      `SELECT fact_check_agree_count, fact_check_disagree_count FROM quotes WHERE id = ?`
+    ).get(quoteId);
+
+    return res.json({
+      agree_count: row.fact_check_agree_count || 0,
+      disagree_count: row.fact_check_disagree_count || 0,
+    });
+  } catch (err) {
+    logger.error('factcheck', 'post_feedback_failed', { quoteId: req.params.quoteId }, err);
+    return res.status(500).json({ error: 'Failed to submit feedback' });
+  }
 });
 
 export default router;
