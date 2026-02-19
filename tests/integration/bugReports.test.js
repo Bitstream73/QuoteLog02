@@ -10,11 +10,21 @@ describe('Bug Reports API', () => {
   let app;
   let authCookie;
   let createdReportId;
+  let testQuoteId;
 
   beforeAll(async () => {
     const { createApp } = await import('../../src/index.js');
     app = createApp();
     authCookie = getAuthCookie();
+
+    // Create a test quote for FK reference
+    const { getDb } = await import('../../src/config/database.js');
+    const db = getDb();
+    const personResult = db.prepare('INSERT INTO persons (canonical_name) VALUES (?)').run('Bug Test Author');
+    const quoteResult = db.prepare('INSERT INTO quotes (person_id, text, is_visible) VALUES (?, ?, 1)').run(
+      Number(personResult.lastInsertRowid), 'Test quote for bug reports'
+    );
+    testQuoteId = Number(quoteResult.lastInsertRowid);
   }, 30000);
 
   afterAll(async () => {
@@ -69,7 +79,7 @@ describe('Bug Reports API', () => {
     it('accepts report with quote_id', async () => {
       const res = await request(app)
         .post('/api/bug-reports')
-        .send({ message: 'Quote display bug', page_url: 'https://example.com/quote/42', quote_id: 42 });
+        .send({ message: 'Quote display bug', page_url: 'https://example.com/quote/1', quote_id: testQuoteId });
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
@@ -132,10 +142,11 @@ describe('Bug Reports API', () => {
     });
 
     it('deletes a report', async () => {
-      // Create a report to delete
+      // Create via admin (bypasses rate limit) for test setup
       const createRes = await request(app)
         .post('/api/bug-reports')
-        .send({ message: 'To be deleted', page_url: 'https://example.com/test' });
+        .send({ message: 'To be deleted', page_url: 'https://example.com/test' })
+        .set('Cookie', authCookie);
 
       const id = createRes.body.id;
 
@@ -166,13 +177,15 @@ describe('Bug Reports API', () => {
     });
 
     it('deletes multiple reports', async () => {
-      // Create two reports
+      // Create via admin (bypasses rate limit) for test setup
       const r1 = await request(app)
         .post('/api/bug-reports')
-        .send({ message: 'Batch 1', page_url: 'https://example.com' });
+        .send({ message: 'Batch 1', page_url: 'https://example.com' })
+        .set('Cookie', authCookie);
       const r2 = await request(app)
         .post('/api/bug-reports')
-        .send({ message: 'Batch 2', page_url: 'https://example.com' });
+        .send({ message: 'Batch 2', page_url: 'https://example.com' })
+        .set('Cookie', authCookie);
 
       const res = await request(app)
         .post('/api/bug-reports/batch-delete')

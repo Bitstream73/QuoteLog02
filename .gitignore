@@ -6,6 +6,7 @@ data/*
 !data/settings-seed.json
 uploads/
 coverage/
+tests/share-images/
 .DS_Store
 .claude/
 GitIgnored/
