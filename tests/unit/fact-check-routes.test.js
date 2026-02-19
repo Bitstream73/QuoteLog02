@@ -338,4 +338,101 @@ describe('Fact Check Routes', () => {
       expect(res.body.error).toContain('Reference extraction failed');
     });
   });
+
+  // -----------------------------------------------------------------------
+  // Share image pre-warming after fact-check
+  // -----------------------------------------------------------------------
+
+  describe('POST /check — share image pre-warming', () => {
+    it('should trigger share image generation after fresh fact-check with quoteId', async () => {
+      mockFactCheckQuote.mockResolvedValue({
+        category: 'A',
+        verdict: 'TRUE',
+        html: '<div>result</div>',
+        references: null,
+        referencesHtml: '',
+        combinedHtml: '<div>result</div>',
+        processingTimeMs: 150,
+      });
+
+      // Mock DB returning a quote row for pre-warming query
+      mockDbGet.mockReturnValue({
+        id: 42,
+        text: 'Test quote text',
+        context: 'Test context',
+        fact_check_verdict: 'TRUE',
+        fact_check_claim: 'Test claim',
+        fact_check_explanation: 'Test explanation',
+        canonical_name: 'Test Author',
+        disambiguation: 'Politician',
+        photo_url: null,
+        person_category: 'A',
+      });
+
+      const res = await request(app)
+        .post('/api/fact-check/check')
+        .send({ quoteId: 42, quoteText: 'Test quote text' });
+
+      expect(res.status).toBe(200);
+
+      // Give the fire-and-forget Promise time to resolve
+      await new Promise(r => setTimeout(r, 50));
+
+      expect(mockGenerateShareImage).toHaveBeenCalledTimes(2);
+      expect(mockGenerateShareImage).toHaveBeenCalledWith(
+        expect.objectContaining({ quoteId: 42, quoteText: 'Test quote text' }),
+        'landscape'
+      );
+      expect(mockGenerateShareImage).toHaveBeenCalledWith(
+        expect.objectContaining({ quoteId: 42, quoteText: 'Test quote text' }),
+        'portrait'
+      );
+    });
+
+    it('should NOT trigger share image generation for cached fact-check', async () => {
+      mockFactCheckQuote.mockResolvedValue({
+        category: 'A', verdict: 'TRUE', html: '<div>result</div>',
+        references: null, referencesHtml: '', combinedHtml: '<div>result</div>', processingTimeMs: 100,
+      });
+
+      // First request — triggers fresh fact-check + pre-warming
+      mockDbGet.mockReturnValue({
+        id: 43, text: 'Cached', context: '', fact_check_verdict: 'TRUE',
+        fact_check_claim: '', fact_check_explanation: '', canonical_name: 'Author',
+        disambiguation: '', photo_url: null, person_category: 'A',
+      });
+
+      await request(app)
+        .post('/api/fact-check/check')
+        .send({ quoteId: 43, quoteText: 'Cached claim for pre-warm test' });
+
+      await new Promise(r => setTimeout(r, 50));
+      mockGenerateShareImage.mockClear();
+
+      // Second request — should come from in-memory cache, no pre-warming
+      const res = await request(app)
+        .post('/api/fact-check/check')
+        .send({ quoteId: 43, quoteText: 'Cached claim for pre-warm test' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.fromCache).toBe(true);
+
+      await new Promise(r => setTimeout(r, 50));
+      expect(mockGenerateShareImage).not.toHaveBeenCalled();
+    });
+
+    it('should NOT trigger share image generation when quoteId is absent', async () => {
+      mockFactCheckQuote.mockResolvedValue({
+        category: 'A', verdict: 'TRUE', html: '<div>r</div>',
+        references: null, referencesHtml: '', combinedHtml: '<div>r</div>', processingTimeMs: 50,
+      });
+
+      await request(app)
+        .post('/api/fact-check/check')
+        .send({ quoteText: 'No quoteId here' });
+
+      await new Promise(r => setTimeout(r, 50));
+      expect(mockGenerateShareImage).not.toHaveBeenCalled();
+    });
+  });
 });

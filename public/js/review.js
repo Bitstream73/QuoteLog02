@@ -18,6 +18,7 @@ async function renderReview() {
       <button class="review-tab ${_reviewActiveTab === 'quotes' ? 'active' : ''}" data-tab="quotes" onclick="switchReviewTab('quotes')">Quote Management</button>
       <button class="review-tab ${_reviewActiveTab === 'disambiguation' ? 'active' : ''}" data-tab="disambiguation" onclick="switchReviewTab('disambiguation')">Disambiguation Review <span class="disambig-tab-badge" id="disambig-tab-badge" style="display:none"></span></button>
       <button class="review-tab ${_reviewActiveTab === 'taxonomy' ? 'active' : ''}" data-tab="taxonomy" onclick="switchReviewTab('taxonomy')">Taxonomy Review <span class="taxonomy-tab-badge" id="taxonomy-tab-badge" style="display:none"></span></button>
+      <button class="review-tab ${_reviewActiveTab === 'bugs' ? 'active' : ''}" data-tab="bugs" onclick="switchReviewTab('bugs')">Bug Reports <span class="bugs-tab-badge" id="bugs-tab-badge" style="display:none"></span></button>
     </div>
     <div id="review-tab-content"></div>
   `;
@@ -25,8 +26,11 @@ async function renderReview() {
 
   // Load taxonomy badge count in background
   loadTaxonomyBadgeCount();
+  loadBugReportsBadgeCount();
 
-  if (_reviewActiveTab === 'taxonomy') {
+  if (_reviewActiveTab === 'bugs') {
+    await renderBugReportsTab();
+  } else if (_reviewActiveTab === 'taxonomy') {
     await renderTaxonomyTab();
   } else if (_reviewActiveTab === 'disambiguation') {
     await renderDisambiguationTab();
@@ -44,7 +48,9 @@ function switchReviewTab(tab) {
   const container = document.getElementById('review-tab-content');
   if (!container) return;
   container.innerHTML = '<div class="loading">Loading...</div>';
-  if (tab === 'taxonomy') {
+  if (tab === 'bugs') {
+    renderBugReportsTab();
+  } else if (tab === 'taxonomy') {
     renderTaxonomyTab();
   } else if (tab === 'disambiguation') {
     renderDisambiguationTab();
@@ -1117,6 +1123,177 @@ async function triggerEvolution() {
       renderTaxonomyTab();
     } catch (err) {
       showToast('Error: ' + err.message, 'error', 5000);
+    }
+  });
+}
+
+// ===================================
+// Bug Reports Tab
+// ===================================
+
+let _bugReportSelectedIds = new Set();
+
+async function loadBugReportsBadgeCount() {
+  try {
+    const data = await API.get('/bug-reports?limit=1');
+    updateBugReportsBadge(data.total || 0);
+  } catch (_) { /* ignore */ }
+}
+
+function updateBugReportsBadge(count) {
+  const badge = document.getElementById('bugs-tab-badge');
+  if (!badge) return;
+  if (count > 0) {
+    badge.textContent = count > 99 ? '99+' : count;
+    badge.style.display = '';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+async function renderBugReportsTab() {
+  const container = document.getElementById('review-tab-content');
+  if (!container) return;
+  _bugReportSelectedIds.clear();
+
+  try {
+    const data = await API.get('/bug-reports?limit=100');
+    const reports = data.reports || [];
+    updateBugReportsBadge(data.total || 0);
+
+    const starred = reports.filter(r => r.starred);
+    const unstarred = reports.filter(r => !r.starred);
+
+    let html = `
+      <p class="page-subtitle">Review user-submitted bug reports.</p>
+      <div class="review-stats">
+        <span class="stat"><strong>${data.total}</strong> total reports</span>
+        <span class="stat"><strong>${starred.length}</strong> starred</span>
+      </div>
+    `;
+
+    if (reports.length > 0) {
+      html += `
+        <div class="bug-bulk-actions">
+          <label><input type="checkbox" id="bug-select-all" onchange="toggleBugSelectAll()"> Select All</label>
+          <button class="btn btn-danger btn-sm" onclick="bulkDeleteBugReports()">Delete Selected</button>
+        </div>
+      `;
+    }
+
+    if (starred.length > 0) {
+      html += '<h3 class="bug-section-title">Starred Reports</h3>';
+      for (const report of starred) {
+        html += renderBugReportCard(report);
+      }
+    }
+
+    if (unstarred.length > 0) {
+      html += '<h3 class="bug-section-title">Other Reports</h3>';
+      for (const report of unstarred) {
+        html += renderBugReportCard(report);
+      }
+    }
+
+    if (reports.length === 0) {
+      html += `
+        <div class="empty-state">
+          <h3>No bug reports</h3>
+          <p>No bug reports have been submitted yet.</p>
+        </div>
+      `;
+    }
+
+    container.innerHTML = html;
+  } catch (err) {
+    container.innerHTML = `<div class="empty-state"><h3>Error</h3><p>${escapeHtml(err.message)}</p></div>`;
+  }
+}
+
+function renderBugReportCard(report) {
+  const dateStr = report.created_at
+    ? new Date(report.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+    : '';
+  const starClass = report.starred ? ' starred' : '';
+  const starIcon = report.starred ? '\u2605' : '\u2606';
+
+  return `
+    <div class="bug-report-card" id="bug-card-${report.id}">
+      <div class="bug-report-header">
+        <label class="bug-card-select">
+          <input type="checkbox" class="bug-select-cb" value="${report.id}" onchange="toggleBugReportSelect(${report.id})">
+        </label>
+        <span class="bug-report-date">${dateStr}</span>
+        <button class="bug-star-btn${starClass}" onclick="toggleBugReportStar(${report.id})" title="${report.starred ? 'Unstar' : 'Star'}">${starIcon}</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteBugReport(${report.id})" style="margin-left:auto">Delete</button>
+      </div>
+      <p class="bug-report-message">${escapeHtml(report.message)}</p>
+      <div class="bug-report-meta">
+        <span>Page: <a href="${escapeHtml(report.page_url)}" target="_blank" rel="noopener">${escapeHtml(report.page_url)}</a></span>
+        ${report.quote_id ? `<span>Quote: <a href="/quote/${report.quote_id}" onclick="navigate(event, '/quote/${report.quote_id}')">#${report.quote_id}</a></span>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+async function toggleBugReportStar(id) {
+  try {
+    await API.patch(`/bug-reports/${id}/star`);
+    renderBugReportsTab();
+  } catch (err) {
+    showToast('Error: ' + err.message, 'error');
+  }
+}
+
+function deleteBugReport(id) {
+  showConfirmToast('Delete this bug report?', async () => {
+    try {
+      await API.delete(`/bug-reports/${id}`);
+      const card = document.getElementById('bug-card-' + id);
+      if (card) {
+        card.style.transition = 'opacity 0.3s';
+        card.style.opacity = '0';
+        setTimeout(() => card.remove(), 300);
+      }
+      showToast('Bug report deleted', 'success');
+      loadBugReportsBadgeCount();
+    } catch (err) {
+      showToast('Error: ' + err.message, 'error');
+    }
+  });
+}
+
+function toggleBugSelectAll() {
+  const allCb = document.getElementById('bug-select-all');
+  const checkboxes = document.querySelectorAll('.bug-select-cb');
+  _bugReportSelectedIds.clear();
+  checkboxes.forEach(cb => {
+    cb.checked = allCb.checked;
+    if (allCb.checked) _bugReportSelectedIds.add(parseInt(cb.value));
+  });
+}
+
+function toggleBugReportSelect(id) {
+  if (_bugReportSelectedIds.has(id)) {
+    _bugReportSelectedIds.delete(id);
+  } else {
+    _bugReportSelectedIds.add(id);
+  }
+}
+
+function bulkDeleteBugReports() {
+  const ids = Array.from(_bugReportSelectedIds);
+  if (ids.length === 0) {
+    showToast('Select at least one report', 'error');
+    return;
+  }
+  showConfirmToast(`Delete ${ids.length} bug report(s)?`, async () => {
+    try {
+      await API.post('/bug-reports/batch-delete', { ids });
+      showToast(`Deleted ${ids.length} report(s)`, 'success');
+      renderBugReportsTab();
+    } catch (err) {
+      showToast('Error: ' + err.message, 'error');
     }
   });
 }

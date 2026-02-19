@@ -6368,3 +6368,188 @@ span.evidence-source-cite {
 .headshot-spinner { text-align: center; padding: 1rem; color: var(--text-muted); }
 
 /* Phase 8B: Search box overlap fix — already has proper z-index at line 225 */
+
+/* ===================================
+   Bug Report Feature
+   =================================== */
+
+/* Header bug icon button */
+.bug-report-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0.25rem;
+  display: flex;
+  align-items: center;
+  transition: color 0.2s;
+}
+.bug-report-btn:hover { color: var(--accent); }
+
+/* Footer bug link styled as text */
+.footer-bug-link {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: inherit;
+  font-family: inherit;
+  padding: 0;
+  text-decoration: underline;
+  transition: color 0.2s;
+}
+.footer-bug-link:hover { color: var(--accent); }
+
+/* Fact-check widget bug icon */
+.fc-bug-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0.15rem;
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  opacity: 0.5;
+  transition: opacity 0.2s, color 0.2s;
+}
+.fc-bug-btn:hover { opacity: 1; color: var(--accent); }
+
+/* Bug Report Modal */
+.bug-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.bug-modal {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.5rem;
+  width: min(90vw, 420px);
+  position: relative;
+}
+
+.bug-modal-close {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.75rem;
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: var(--text-muted);
+  line-height: 1;
+}
+.bug-modal-close:hover { color: var(--text); }
+
+.bug-modal-title {
+  margin: 0 0 1rem 0;
+  font-size: 1.1rem;
+}
+
+.bug-modal-textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.5rem;
+  font-family: inherit;
+  font-size: 0.9rem;
+  resize: vertical;
+  min-height: 80px;
+  background: var(--bg);
+  color: var(--text);
+  box-sizing: border-box;
+}
+.bug-modal-textarea:focus { outline: none; border-color: var(--accent); }
+
+.bug-modal-char-count {
+  text-align: right;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin: 0.25rem 0 0.75rem 0;
+}
+
+/* Bug Reports Admin Tab */
+.bug-section-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin: 1.25rem 0 0.5rem 0;
+  color: var(--text-muted);
+}
+
+.bug-bulk-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--bg-offset, var(--bg));
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+
+.bug-report-card {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.75rem;
+  margin-bottom: 0.5rem;
+  background: var(--bg);
+}
+
+.bug-report-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.bug-report-date {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.bug-star-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.1rem;
+  color: var(--text-muted);
+  padding: 0;
+  line-height: 1;
+  transition: color 0.2s;
+}
+.bug-star-btn:hover { color: #f59e0b; }
+.bug-star-btn.starred { color: #f59e0b; }
+
+.bug-report-message {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.bug-report-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+.bug-report-meta a { color: var(--accent); }
+
+.bugs-tab-badge {
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.7rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 8px;
+  margin-left: 0.25rem;
+  vertical-align: middle;
+}
+
+.bug-card-select { display: flex; align-items: center; }

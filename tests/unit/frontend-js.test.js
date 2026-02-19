@@ -596,4 +596,54 @@ describe('Frontend JS files', () => {
       expect(authorJs).not.toContain('renderVoteControls');
     });
   });
+
+  // Share image pre-warming: fact-check progress flag and share blocking
+  describe('quote.js _factCheckInProgress flag', () => {
+    const quoteJs = fs.readFileSync(path.join(process.cwd(), 'public/js/quote.js'), 'utf-8');
+
+    it('should declare _factCheckInProgress flag', () => {
+      expect(quoteJs).toContain('let _factCheckInProgress = false');
+    });
+
+    it('should set _factCheckInProgress to true before API call', () => {
+      // Flag should be set after loading animation starts, before the API call
+      const flagSetIdx = quoteJs.indexOf('_factCheckInProgress = true');
+      const apiCallIdx = quoteJs.indexOf("API.post('/fact-check/check'");
+      expect(flagSetIdx).toBeGreaterThan(-1);
+      expect(apiCallIdx).toBeGreaterThan(flagSetIdx);
+    });
+
+    it('should clear _factCheckInProgress after success', () => {
+      // After renderFactCheckResult and annotateQuoteText
+      const renderIdx = quoteJs.indexOf('renderFactCheckResult(container, result, quoteId)');
+      const clearIdx = quoteJs.indexOf('_factCheckInProgress = false', renderIdx);
+      expect(clearIdx).toBeGreaterThan(renderIdx);
+    });
+
+    it('should clear _factCheckInProgress in catch block', () => {
+      const catchIdx = quoteJs.indexOf('} catch (err) {', quoteJs.indexOf("API.post('/fact-check/check'"));
+      const clearInCatch = quoteJs.indexOf('_factCheckInProgress = false', catchIdx);
+      expect(clearInCatch).toBeGreaterThan(catchIdx);
+    });
+  });
+
+  describe('home.js share blocking during fact-check', () => {
+    const homeJs = fs.readFileSync(path.join(process.cwd(), 'public/js/home.js'), 'utf-8');
+
+    it('should check _factCheckInProgress in shareEntity', () => {
+      const shareEntityIdx = homeJs.indexOf('async function shareEntity');
+      const flagCheckIdx = homeJs.indexOf('_factCheckInProgress', shareEntityIdx);
+      expect(flagCheckIdx).toBeGreaterThan(shareEntityIdx);
+    });
+
+    it('should check _factCheckInProgress in downloadShareImage', () => {
+      const downloadIdx = homeJs.indexOf('async function downloadShareImage');
+      const flagCheckIdx = homeJs.indexOf('_factCheckInProgress', downloadIdx);
+      expect(flagCheckIdx).toBeGreaterThan(downloadIdx);
+    });
+
+    it('should show toast message about fact-checking', () => {
+      expect(homeJs).toContain("It'll just be a sec. We're fact checking this quote for the first time...");
+    });
+  });
 });
