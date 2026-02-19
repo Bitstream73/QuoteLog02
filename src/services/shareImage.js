@@ -14,8 +14,22 @@ import sharp from 'sharp';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import config from '../config/index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// ---------------------------------------------------------------------------
+// Persistent Disk Cache (L2)
+// ---------------------------------------------------------------------------
+
+export const CACHE_DIR = path.join(path.dirname(config.databasePath), 'share-images');
+let _cacheDirReady = false;
+
+function ensureCacheDir() {
+  if (_cacheDirReady) return;
+  fs.mkdirSync(CACHE_DIR, { recursive: true });
+  _cacheDirReady = true;
+}
 
 // ---------------------------------------------------------------------------
 // Font Loading
@@ -69,6 +83,10 @@ function pruneCache() {
 export function invalidateShareImageCache(quoteId) {
   imageCache.delete(getCacheKey(quoteId, 'landscape'));
   imageCache.delete(getCacheKey(quoteId, 'portrait'));
+  // Delete disk cache files (L2)
+  for (const fmt of ['landscape', 'portrait']) {
+    try { fs.unlinkSync(path.join(CACHE_DIR, `${quoteId}-${fmt}.jpg`)); } catch {}
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -711,13 +729,22 @@ function buildPortraitLayout(data) {
 export async function generateShareImage(quoteData, format = 'landscape') {
   if (!fontsLoaded) await loadFonts();
 
-  // Check cache
+  // Check L1 in-memory cache
   if (quoteData.quoteId) {
     const cacheKey = getCacheKey(quoteData.quoteId, format);
     const cached = imageCache.get(cacheKey);
     if (cached && (Date.now() - cached.timestamp < CACHE_TTL_MS)) {
       return cached.buffer;
     }
+
+    // Check L2 disk cache
+    const diskPath = path.join(CACHE_DIR, `${quoteData.quoteId}-${format}.jpg`);
+    try {
+      const diskBuffer = fs.readFileSync(diskPath);
+      // Promote back to L1
+      imageCache.set(cacheKey, { buffer: diskBuffer, timestamp: Date.now() });
+      return diskBuffer;
+    } catch { /* not on disk, generate fresh */ }
   }
 
   const isPortrait = format === 'portrait';
@@ -761,13 +788,19 @@ export async function generateShareImage(quoteData, format = 'landscape') {
     .jpeg({ quality: 85 })
     .toBuffer();
 
-  // Store in cache
+  // Store in L1 memory cache
   if (quoteData.quoteId) {
     imageCache.set(getCacheKey(quoteData.quoteId, format), {
       buffer: jpegBuffer,
       timestamp: Date.now(),
     });
     pruneCache();
+
+    // Write to L2 disk cache
+    try {
+      ensureCacheDir();
+      fs.writeFileSync(path.join(CACHE_DIR, `${quoteData.quoteId}-${format}.jpg`), jpegBuffer);
+    } catch (err) { /* log but don't fail */ }
   }
 
   return jpegBuffer;
