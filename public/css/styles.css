@@ -2351,6 +2351,18 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   border-bottom: none;
 }
 
+/* Source Author Avatar (rounded square to distinguish from person headshots) */
+.source-author-avatar { flex-shrink: 0; width: 48px; height: 48px; }
+.source-author-avatar__img { width: 48px; height: 48px; border-radius: 4px; object-fit: cover; display: block; }
+.source-author-avatar__placeholder {
+  width: 48px; height: 48px; border-radius: 4px;
+  background: var(--bg-secondary); color: var(--text-muted);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-ui); font-size: 1.25rem; font-weight: 600;
+  border: 1px solid var(--border);
+}
+.source-author-content { flex: 1; min-width: 0; }
+
 .sources-list { list-style: none; padding: 0; }
 .sources-list li {
   padding: 0.75rem;
@@ -6620,3 +6632,68 @@ span.evidence-source-cite {
 }
 
 .bug-card-select { display: flex; align-items: center; }
+
+/* ===== Category Search Pills ===== */
+.search-categories-section {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding-bottom: 0.75rem;
+  margin-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.search-category-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  cursor: pointer;
+  background: var(--bg-card);
+  transition: border-color 0.15s, background 0.15s;
+  font-family: var(--font-ui);
+}
+
+.search-category-pill:hover {
+  border-color: var(--accent);
+  background: var(--accent-light);
+}
+
+.search-category-pill__name {
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+}
+
+.search-category-pill__count {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* ===== Category Detail Page ===== */
+.category-header {
+  margin-bottom: 1rem;
+}
+
+.category-topics {
+  margin-bottom: 1.5rem;
+}
+
+.category-topics-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.category-topic-chip {
+  display: inline-block;
+  padding: 0.2rem 0.6rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}

@@ -174,6 +174,9 @@ function route() {
   } else if (path.startsWith('/author/')) {
     const id = path.split('/')[2];
     renderAuthor(id);
+  } else if (path.startsWith('/category/')) {
+    const id = path.split('/')[2];
+    renderCategory(id);
   } else if (path === '/analytics') {
     renderAnalytics();
   } else if (path === '/admin') {
@@ -226,7 +229,7 @@ function updateAdVisibility(path) {
   if (!adContainer) return;
 
   const isPublicPage = path === '/' || path === '' ||
-    path.startsWith('/quote/') || path.startsWith('/author/') || path.startsWith('/article/') || path.startsWith('/analytics');
+    path.startsWith('/quote/') || path.startsWith('/author/') || path.startsWith('/article/') || path.startsWith('/category/') || path.startsWith('/analytics');
 
   if (isPublicPage && !isStandalone) {
     adContainer.style.display = '';

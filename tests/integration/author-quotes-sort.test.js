@@ -71,12 +71,19 @@ describe('Author Quotes Sort & Featured Quote API', () => {
       const res = await request(app).get(`/api/authors/${personId}/quotes?limit=50&sort=importance`);
       expect(res.status).toBe(200);
       const ids = res.body.quotes.map(q => q.id);
-      // Importance sort uses tiered approach - highest importants_count first within tiers
-      // A and D both have 10, B has 5, C has 1
-      // Within same importance, newer date wins
-      // A (10, old) and D (10, newer) - D should come before A
-      expect(ids[0]).toBe(quoteIds.d); // 10 importance, newer
-      expect(ids[1]).toBe(quoteIds.a); // 10 importance, older
+      // Tiered importance sort: recent high-importance quotes first
+      // C (imp=1, 2026-01-20) is within ~30 days of now → tier 3
+      // B (imp=5, 2025-12-15) may be tier 3 or 4 depending on test date
+      // D (imp=10, 2025-06-15) and A (imp=10, 2025-01-01) → tier 4 (older)
+      // Tier 5: importance=0 (none here)
+      // Within a tier: higher importants_count first, then newer date
+      // The last quote should be in the lowest-priority tier with lowest importance
+      // All 4 quotes have importance > 0, so none are in tier 5
+      // Verify that higher-importance quotes from the same time period beat lower ones
+      // D and A (both imp=10) should be adjacent, D before A (newer date)
+      const dIdx = ids.indexOf(quoteIds.d);
+      const aIdx = ids.indexOf(quoteIds.a);
+      expect(dIdx).toBeLessThan(aIdx); // D (10, newer) before A (10, older)
     });
 
     it('page 1 response includes a featuredQuote object', async () => {

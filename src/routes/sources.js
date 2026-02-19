@@ -79,6 +79,17 @@ router.post('/', requireAdmin, async (req, res) => {
       'INSERT INTO sources (domain, name, rss_url, enabled) VALUES (?, ?, ?, 1)'
     ).run(domain, name, rss_url);
 
+    // Find or create source_author for this domain and link
+    let sa = db.prepare('SELECT id FROM source_authors WHERE domain = ?').get(domain);
+    if (!sa) {
+      const derivedName = domain.split('.')[0].charAt(0).toUpperCase() + domain.split('.')[0].slice(1);
+      db.prepare('INSERT INTO source_authors (name, domain) VALUES (?, ?)').run(derivedName, domain);
+      sa = db.prepare('SELECT id FROM source_authors WHERE domain = ?').get(domain);
+    }
+    if (sa) {
+      db.prepare('UPDATE sources SET source_author_id = ? WHERE id = ?').run(sa.id, result.lastInsertRowid);
+    }
+
     const source = db.prepare('SELECT * FROM sources WHERE id = ?').get(result.lastInsertRowid);
 
     // Verify RSS feed works by doing a test fetch (non-blocking)

@@ -522,10 +522,13 @@ router.get('/:id', (req, res) => {
 
   // Get related articles
   const articles = db.prepare(`
-    SELECT a.id, a.url, a.title, a.published_at, s.domain, s.name as source_name
+    SELECT a.id, a.url, a.title, a.published_at, s.domain, s.name as source_name,
+           sa.id as source_author_id, sa.name as source_author_name,
+           sa.image_url as source_author_image_url
     FROM quote_articles qa
     JOIN articles a ON qa.article_id = a.id
     LEFT JOIN sources s ON a.source_id = s.id
+    LEFT JOIN source_authors sa ON s.source_author_id = sa.id
     WHERE qa.quote_id = ?
   `).all(quote.id);
 

@@ -260,6 +260,124 @@ async function applyHeadshot(personId) {
   }
 }
 
+// --- Source Author Image Modal ---
+
+let _selectedSourceAuthorUrl = '';
+let _sourceAuthorOnUpdate = null;
+let _sourceAuthorId = null;
+
+async function adminChangeSourceAuthorImage(sourceAuthorId, saName, onUpdate) {
+  _sourceAuthorId = sourceAuthorId;
+  _sourceAuthorOnUpdate = onUpdate || null;
+  _selectedSourceAuthorUrl = '';
+
+  let currentUrl = '';
+  let cachedSuggestions = [];
+  try {
+    const data = await API.get(`/source-authors/${sourceAuthorId}`);
+    currentUrl = data.sourceAuthor?.image_url || '';
+  } catch (e) { /* continue */ }
+
+  try {
+    const cached = await API.get(`/source-authors/${sourceAuthorId}/image-suggestions`);
+    cachedSuggestions = cached.suggestions || [];
+  } catch (e) { /* no cached suggestions */ }
+
+  _selectedSourceAuthorUrl = currentUrl;
+
+  const safeName = escapeHtml(saName);
+  const initial = (saName || '?').charAt(0).toUpperCase();
+  const currentImg = currentUrl
+    ? `<img src="${escapeHtml(currentUrl)}" alt="${safeName}" style="width:48px;height:48px;border-radius:4px;object-fit:cover" onerror="this.outerHTML='<div class=\\'source-author-avatar__placeholder\\'>${initial}</div>'">`
+    : `<div class="source-author-avatar__placeholder">${initial}</div>`;
+
+  const modalContent = document.getElementById('modal-content');
+  modalContent.innerHTML = `
+    <h3>Change Image &mdash; ${safeName}</h3>
+    <div class="headshot-modal">
+      <div class="headshot-modal__current">
+        ${currentImg}
+      </div>
+
+      <div class="headshot-modal__suggestions">
+        <div class="headshot-modal__suggestions-header">
+          <span>AI Suggestions</span>
+          <button class="btn btn-sm" onclick="searchSourceAuthorImages(${sourceAuthorId}, '${escapeHtml(saName.replace(/'/g, "\\'"))}')">Search with AI</button>
+        </div>
+        <div id="headshot-suggestions-grid">
+          ${cachedSuggestions.length > 0 ? renderSuggestionCards(cachedSuggestions) : '<div class="headshot-spinner">No suggestions yet</div>'}
+        </div>
+      </div>
+
+      <div class="headshot-modal__manual">
+        <label>Or enter URL manually:</label>
+        <input type="text" id="headshot-manual-url" placeholder="https://..." value="${escapeHtml(currentUrl)}">
+        <button class="btn btn-sm" onclick="previewSourceAuthorManualUrl()">Preview</button>
+        <div id="headshot-manual-preview"></div>
+      </div>
+
+      <div class="headshot-modal__actions">
+        <button class="btn btn-primary" onclick="applySourceAuthorImage(${sourceAuthorId})">Apply</button>
+        <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('modal-overlay').classList.remove('hidden');
+
+  if (cachedSuggestions.length === 0 && !currentUrl) {
+    searchSourceAuthorImages(sourceAuthorId, saName);
+  }
+}
+
+async function searchSourceAuthorImages(sourceAuthorId, saName) {
+  const grid = document.getElementById('headshot-suggestions-grid');
+  if (!grid) return;
+  grid.innerHTML = '<div class="headshot-spinner">Searching for images...</div>';
+
+  try {
+    const data = await API.post(`/source-authors/${sourceAuthorId}/image-search`);
+    grid.innerHTML = renderSuggestionCards(data.suggestions);
+  } catch (err) {
+    grid.innerHTML = '<div class="headshot-spinner">Search failed: ' + escapeHtml(err.message) + '</div>';
+  }
+}
+
+function previewSourceAuthorManualUrl() {
+  const input = document.getElementById('headshot-manual-url');
+  const preview = document.getElementById('headshot-manual-preview');
+  if (!input || !preview) return;
+
+  const url = input.value.trim();
+  if (!url) {
+    preview.innerHTML = '';
+    _selectedSourceAuthorUrl = '';
+    return;
+  }
+
+  _selectedSourceAuthorUrl = url;
+  document.querySelectorAll('.headshot-suggestion').forEach(s => s.classList.remove('selected'));
+
+  preview.innerHTML = `<img src="${escapeHtml(url)}" alt="Preview" style="max-width:48px;max-height:48px;border-radius:4px;object-fit:cover;margin-top:0.5rem" onerror="this.outerHTML='<span style=\\'color:var(--error)\\'>Failed to load image</span>'">`;
+}
+
+async function applySourceAuthorImage(sourceAuthorId) {
+  const manualInput = document.getElementById('headshot-manual-url');
+  const url = (manualInput ? manualInput.value.trim() : _selectedSourceAuthorUrl) || _selectedSourceAuthorUrl;
+  try {
+    await API.patch(`/source-authors/${sourceAuthorId}`, { imageUrl: url || null });
+    showToast('Source author image updated', 'success');
+    closeModal();
+    if (_sourceAuthorOnUpdate) _sourceAuthorOnUpdate();
+    // Reload page to show updated image
+    if (typeof renderQuote === 'function' && window._currentQuoteId) {
+      renderQuote(window._currentQuoteId);
+    }
+  } catch (err) {
+    showToast('Error: ' + err.message, 'error', 5000);
+  }
+}
+
 /**
  * Build admin action toolbar HTML for a quote entry.
  * Pass quote data object with: id, personId, personName, text, context, isVisible, personCategory, personCategoryContext, disambiguation

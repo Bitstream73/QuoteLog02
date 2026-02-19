@@ -1121,7 +1121,8 @@ async function renderSearchResults(content, searchQuery) {
     const quotesCount = (data.quotes || []).length;
     const personsCount = (data.persons || []).length;
     const articlesCount = (data.articles || []).length;
-    const totalCount = quotesCount + personsCount + articlesCount;
+    const categoriesCount = (data.categories || []).length;
+    const totalCount = quotesCount + personsCount + articlesCount + categoriesCount;
 
     let html = `<div class="search-results-header">
       <h2>Search results for "${escapeHtml(searchQuery)}"</h2>
@@ -1131,6 +1132,18 @@ async function renderSearchResults(content, searchQuery) {
     if (totalCount === 0) {
       html += `<div class="empty-state"><h3>No results found</h3></div>`;
     } else {
+      // Category pills above tabs
+      if (categoriesCount > 0) {
+        html += `<div class="search-categories-section">`;
+        for (const cat of data.categories) {
+          html += `<div class="search-category-pill" onclick="navigateTo('/category/${cat.id}')">
+            <span class="search-category-pill__name">${escapeHtml(cat.name)}</span>
+            <span class="search-category-pill__count">${cat.quote_count || 0} quotes</span>
+          </div>`;
+        }
+        html += `</div>`;
+      }
+
       // Tab bar
       html += `<div class="search-results-tabs">
         <button class="search-tab ${_searchActiveTab === 'persons' ? 'active' : ''}" onclick="switchSearchTab('persons')">Authors <span class="tab-count">${personsCount}</span></button>

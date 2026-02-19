@@ -86,14 +86,38 @@ async function renderQuote(id) {
       for (const a of data.articles) {
         const sourceName = a.source_name || a.domain || 'Source';
         const articleDate = a.published_at ? formatDateTime(a.published_at) : '';
+        const saId = a.source_author_id;
+        const saName = a.source_author_name || sourceName;
+        const saImg = a.source_author_image_url;
+        const saInitial = (saName || '?').charAt(0).toUpperCase();
+
+        let avatarHtml;
+        if (saImg) {
+          const imgTag = `<img src="${escapeHtml(saImg)}" alt="${escapeHtml(saName)}" class="source-author-avatar__img" onerror="this.outerHTML='<div class=\\'source-author-avatar__placeholder\\'>${saInitial}</div>'" loading="lazy">`;
+          if (typeof isAdmin !== 'undefined' && isAdmin && saId) {
+            avatarHtml = `<div class="source-author-avatar" onclick="adminChangeSourceAuthorImage(${saId}, '${escapeHtml(saName.replace(/'/g, "\\'"))}')" style="cursor:pointer" title="Change image">${imgTag}</div>`;
+          } else {
+            avatarHtml = `<div class="source-author-avatar">${imgTag}</div>`;
+          }
+        } else {
+          if (typeof isAdmin !== 'undefined' && isAdmin && saId) {
+            avatarHtml = `<div class="source-author-avatar" onclick="adminChangeSourceAuthorImage(${saId}, '${escapeHtml(saName.replace(/'/g, "\\'"))}')" style="cursor:pointer" title="Add image"><div class="source-author-avatar__placeholder">${saInitial}</div></div>`;
+          } else {
+            avatarHtml = `<div class="source-author-avatar"><div class="source-author-avatar__placeholder">${saInitial}</div></div>`;
+          }
+        }
+
         html += `
-          <div class="quote-detail-source-item">
-            <a href="/article/${a.id}" onclick="navigate(event, '/article/${a.id}')" class="quote-article-title-link">${escapeHtml(a.title || 'Untitled Article')}</a>
-            ${a.context ? `<div style="font-family:var(--font-ui);font-size:var(--text-sm);color:var(--text-secondary);margin-top:0.25rem">${escapeHtml(a.context)}</div>` : ''}
-            <div style="display:flex;gap:0.5rem;align-items:center;margin-top:0.25rem">
-              <span class="quote-primary-source">${escapeHtml(sourceName)}</span>
-              ${articleDate ? `<span class="quote-date-inline">${articleDate}</span>` : ''}
-              ${a.url ? `<a href="${escapeHtml(a.url)}" target="_blank" rel="noopener" style="font-family:var(--font-ui);font-size:var(--text-xs);color:var(--accent);text-decoration:none">View original &rarr;</a>` : ''}
+          <div class="quote-detail-source-item" style="display:flex;gap:0.75rem;align-items:flex-start">
+            ${avatarHtml}
+            <div class="source-author-content">
+              <a href="/article/${a.id}" onclick="navigate(event, '/article/${a.id}')" class="quote-article-title-link">${escapeHtml(a.title || 'Untitled Article')}</a>
+              ${a.context ? `<div style="font-family:var(--font-ui);font-size:var(--text-sm);color:var(--text-secondary);margin-top:0.25rem">${escapeHtml(a.context)}</div>` : ''}
+              <div style="display:flex;gap:0.5rem;align-items:center;margin-top:0.25rem">
+                <span class="quote-primary-source">${escapeHtml(sourceName)}</span>
+                ${articleDate ? `<span class="quote-date-inline">${articleDate}</span>` : ''}
+                ${a.url ? `<a href="${escapeHtml(a.url)}" target="_blank" rel="noopener" style="font-family:var(--font-ui);font-size:var(--text-xs);color:var(--accent);text-decoration:none">View original &rarr;</a>` : ''}
+              </div>
             </div>
           </div>
         `;

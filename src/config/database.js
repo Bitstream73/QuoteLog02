@@ -312,10 +312,45 @@ function initializeTables(db) {
     db.exec(`ALTER TABLE persons ADD COLUMN image_suggestions TEXT`);
   }
 
+  // Source Authors — one per root domain (publisher/organization with branding)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS source_authors (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      domain TEXT NOT NULL UNIQUE,
+      image_url TEXT,
+      description TEXT,
+      image_suggestions TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_source_authors_domain ON source_authors(domain)`);
+
   // Migration: add is_top_story column to sources
   const sourceCols = db.prepare("PRAGMA table_info(sources)").all().map(c => c.name);
   if (!sourceCols.includes('is_top_story')) {
     db.exec(`ALTER TABLE sources ADD COLUMN is_top_story INTEGER NOT NULL DEFAULT 0`);
+  }
+
+  // Migration: add source_author_id FK column to sources
+  if (!sourceCols.includes('source_author_id')) {
+    db.exec(`ALTER TABLE sources ADD COLUMN source_author_id INTEGER REFERENCES source_authors(id)`);
+  }
+
+  // Auto-seed source_authors from distinct source domains and link existing sources
+  const sourceAuthorCount = db.prepare('SELECT COUNT(*) as count FROM source_authors').get().count;
+  const unlinkedSources = db.prepare('SELECT COUNT(*) as count FROM sources WHERE source_author_id IS NULL').get().count;
+  if (sourceAuthorCount === 0 || unlinkedSources > 0) {
+    const distinctDomains = db.prepare('SELECT DISTINCT domain FROM sources').all();
+    for (const { domain } of distinctDomains) {
+      const derivedName = domain.split('.')[0].charAt(0).toUpperCase() + domain.split('.')[0].slice(1);
+      db.prepare('INSERT OR IGNORE INTO source_authors (name, domain) VALUES (?, ?)').run(derivedName, domain);
+      const sa = db.prepare('SELECT id FROM source_authors WHERE domain = ?').get(domain);
+      if (sa) {
+        db.prepare('UPDATE sources SET source_author_id = ? WHERE domain = ? AND source_author_id IS NULL').run(sa.id, domain);
+      }
+    }
   }
 
   // Migration: add is_top_story column to articles

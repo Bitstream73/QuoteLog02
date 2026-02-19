@@ -64,7 +64,20 @@ router.get('/unified', (req, res) => {
       LIMIT ?
     `).all(searchTerm, limit);
 
-    res.json({ quotes, persons, articles });
+    // Search categories
+    const categories = db.prepare(`
+      SELECT c.id, c.name, c.slug,
+        (SELECT COUNT(DISTINCT qt.quote_id)
+         FROM category_topics ct
+         JOIN quote_topics qt ON qt.topic_id = ct.topic_id
+         WHERE ct.category_id = c.id) AS quote_count
+      FROM categories c
+      WHERE c.name LIKE ?
+      ORDER BY c.sort_order, c.name
+      LIMIT ?
+    `).all(searchTerm, limit);
+
+    res.json({ quotes, persons, articles, categories });
   } catch (err) {
     res.status(500).json({ error: 'Search failed' });
   }

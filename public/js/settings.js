@@ -5,7 +5,7 @@ async function renderSettings() {
   content.innerHTML = '<div class="loading">Loading settings...</div>';
 
   try {
-    const [settings, sourcesData, promptsData, noteworthyData, keywordsData, topicsData, categoriesData] = await Promise.all([
+    const [settings, sourcesData, promptsData, noteworthyData, keywordsData, topicsData, categoriesData, sourceAuthorsData] = await Promise.all([
       API.get('/settings'),
       API.get('/sources'),
       API.get('/settings/prompts').catch(() => ({ prompts: [] })),
@@ -13,11 +13,13 @@ async function renderSettings() {
       API.get('/admin/keywords').catch(() => ({ keywords: [] })),
       API.get('/admin/topics').catch(() => ({ topics: [] })),
       API.get('/admin/categories').catch(() => ({ categories: [] })),
+      API.get('/source-authors').catch(() => ({ sourceAuthors: [] })),
     ]);
 
     const sources = sourcesData.sources || [];
     const prompts = promptsData.prompts || [];
     const noteworthyItems = noteworthyData.items || [];
+    const sourceAuthors = sourceAuthorsData.sourceAuthors || [];
     const keywords = keywordsData.keywords || [];
     const topics = topicsData.topics || [];
     const categories = categoriesData.categories || [];
@@ -219,6 +221,43 @@ async function renderSettings() {
               <span class="setting-description">Fetch headshot photos from Wikipedia for persons without one</span>
             </label>
             <button class="btn btn-secondary" id="backfill-headshots-btn" onclick="backfillHeadshots()">Backfill Headshots</button>
+          </div>
+        </div>
+
+        <!-- Source Authors Subsection -->
+        <div class="settings-subsection">
+          <h3 class="subsection-title">Source Authors</h3>
+          <p class="section-description">Publishers/organizations linked to news sources. Each unique domain has one source author with a logo image.</p>
+
+          <details class="sources-details">
+            <summary>Source Authors (${sourceAuthors.length})</summary>
+            <div class="sources-list">
+              ${sourceAuthors.length === 0 ? '<p class="empty-message">No source authors yet. They are created automatically when sources are added.</p>'
+                : sourceAuthors.map(sa => {
+                  const initial = (sa.name || '?').charAt(0).toUpperCase();
+                  const imgHtml = sa.image_url
+                    ? '<img src="' + escapeHtml(sa.image_url) + '" alt="' + escapeHtml(sa.name) + '" style="width:32px;height:32px;border-radius:4px;object-fit:cover" onerror="this.outerHTML=\\'<span style=&quot;width:32px;height:32px;border-radius:4px;background:var(--bg-secondary);display:inline-flex;align-items:center;justify-content:center;font-size:0.9rem;border:1px solid var(--border)&quot;>' + initial + '</span>\\'">'
+                    : '<span style="width:32px;height:32px;border-radius:4px;background:var(--bg-secondary);display:inline-flex;align-items:center;justify-content:center;font-size:0.9rem;border:1px solid var(--border)">' + initial + '</span>';
+                  return '<div style="display:flex;align-items:center;gap:0.75rem;padding:0.5rem 0;border-bottom:1px solid var(--border)">'
+                    + imgHtml
+                    + '<div style="flex:1;min-width:0">'
+                    + '<strong style="font-size:0.9rem">' + escapeHtml(sa.name) + '</strong>'
+                    + '<span style="font-size:0.8rem;color:var(--text-muted);margin-left:0.5rem">' + escapeHtml(sa.domain) + '</span>'
+                    + (sa.source_count ? '<span style="font-size:0.75rem;color:var(--text-muted);margin-left:0.5rem">(' + sa.source_count + ' feeds)</span>' : '')
+                    + '</div>'
+                    + '<button class="btn btn-sm" onclick="adminChangeSourceAuthorImage(' + sa.id + ', \\'' + escapeHtml(sa.name.replace(/'/g, "\\\\'")) + '\\', function(){ renderSettings(); })">Image</button>'
+                    + '<button class="btn btn-sm" onclick="editSourceAuthorName(' + sa.id + ', \\'' + escapeHtml(sa.name.replace(/'/g, "\\\\'")) + '\\')">Edit</button>'
+                    + '</div>';
+                }).join('')}
+            </div>
+          </details>
+
+          <div class="setting-row" style="align-items:center;margin-top:0.75rem">
+            <label>
+              <span class="setting-label">Backfill Source Author Images</span>
+              <span class="setting-description">Fetch logos from Wikipedia for source authors without one</span>
+            </label>
+            <button class="btn btn-secondary" id="backfill-sa-images-btn" onclick="backfillSourceAuthorImages()">Backfill Images</button>
           </div>
         </div>
 
@@ -656,6 +695,36 @@ async function backfillHeadshots() {
   } finally {
     btn.disabled = false;
     btn.textContent = 'Backfill Headshots';
+  }
+}
+
+async function editSourceAuthorName(saId, currentName) {
+  const newName = prompt('Edit source author name:', currentName || '');
+  if (newName === null || newName.trim() === '' || newName.trim() === currentName) return;
+
+  try {
+    await API.patch(`/source-authors/${saId}`, { name: newName.trim() });
+    showToast('Source author name updated', 'success');
+    renderSettings();
+  } catch (err) {
+    showToast('Error: ' + err.message, 'error', 5000);
+  }
+}
+
+async function backfillSourceAuthorImages() {
+  const btn = document.getElementById('backfill-sa-images-btn');
+  btn.disabled = true;
+  btn.textContent = 'Backfilling...';
+
+  try {
+    const result = await API.post('/admin/backfill-source-author-images', { limit: 50 });
+    showToast(`Backfill complete: ${result.found} images found out of ${result.processed} processed`, 'success', 5000);
+    renderSettings();
+  } catch (err) {
+    showToast('Backfill failed: ' + err.message, 'error', 5000);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Backfill Images';
   }
 }
 

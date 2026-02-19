@@ -3,6 +3,7 @@ import gemini from '../services/ai/gemini.js';
 import { requireAdmin } from '../middleware/auth.js';
 import { createBackup, listBackups, exportDatabaseJson, importDatabaseJson } from '../services/backup.js';
 import { backfillHeadshots } from '../services/personPhoto.js';
+import { backfillSourceAuthorImages } from '../services/sourceAuthorPhoto.js';
 import vectorDb, { embedQuote } from '../services/vectorDb.js';
 import { getDb } from '../config/database.js';
 import config from '../config/index.js';
@@ -66,6 +67,17 @@ router.post('/backfill-headshots', async (req, res) => {
     const limit = parseInt(req.body?.limit) || 50;
     const result = await backfillHeadshots(limit);
     res.json({ message: 'Headshot backfill complete', ...result });
+  } catch (err) {
+    res.status(500).json({ error: 'Backfill failed: ' + err.message });
+  }
+});
+
+// Backfill source author images from Wikipedia
+router.post('/backfill-source-author-images', async (req, res) => {
+  try {
+    const limit = parseInt(req.body?.limit) || 50;
+    const result = await backfillSourceAuthorImages(limit);
+    res.json({ message: 'Source author image backfill complete', ...result });
   } catch (err) {
     res.status(500).json({ error: 'Backfill failed: ' + err.message });
   }
