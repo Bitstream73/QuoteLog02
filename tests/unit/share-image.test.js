@@ -1,17 +1,30 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import fs from 'fs';
+import path from 'path';
 
 process.env.NODE_ENV = 'test';
 
 describe('Share Image Service', () => {
-  let generateShareImage, loadFonts, invalidateShareImageCache;
+  let generateShareImage, loadFonts, invalidateShareImageCache, CACHE_DIR;
 
   beforeAll(async () => {
     const mod = await import('../../src/services/shareImage.js');
     generateShareImage = mod.generateShareImage;
     loadFonts = mod.loadFonts;
     invalidateShareImageCache = mod.invalidateShareImageCache;
+    CACHE_DIR = mod.CACHE_DIR;
     await loadFonts();
   }, 30000);
+
+  afterAll(() => {
+    // Clean up any disk cache files created during tests
+    const testIds = [99999, 88888];
+    for (const id of testIds) {
+      for (const fmt of ['landscape', 'portrait']) {
+        try { fs.unlinkSync(path.join(CACHE_DIR, `${id}-${fmt}.jpg`)); } catch {}
+      }
+    }
+  });
 
   it('generates a JPEG buffer for landscape format', async () => {
     const buffer = await generateShareImage({
