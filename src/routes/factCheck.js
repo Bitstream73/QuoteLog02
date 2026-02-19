@@ -10,6 +10,7 @@
 
 import express from 'express';
 import { factCheckQuote, classifyAndVerify, extractAndEnrichReferences } from '../services/factCheck.js';
+import { generateShareImage } from '../services/shareImage.js';
 import { getDb } from '../config/database.js';
 import config from '../config/index.js';
 import logger from '../services/logger.js';
@@ -94,6 +95,40 @@ router.post('/check', async (req, res) => {
     );
 
     cache.set(cacheKey, { data: result, timestamp: Date.now() });
+
+    // Pre-generate share images (fire-and-forget) so they're cached for later
+    if (quoteId) {
+      try {
+        const db = getDb();
+        const row = db.prepare(
+          `SELECT q.id, q.text, q.context, q.fact_check_verdict, q.fact_check_claim, q.fact_check_explanation,
+                  p.canonical_name, p.disambiguation, p.photo_url, p.category AS person_category
+           FROM quotes q
+           LEFT JOIN persons p ON q.person_id = p.id
+           WHERE q.id = ?`
+        ).get(quoteId);
+
+        if (row) {
+          const imgData = {
+            quoteId: row.id,
+            quoteText: row.text,
+            authorName: row.canonical_name || 'Unknown',
+            disambiguation: row.disambiguation || '',
+            verdict: row.fact_check_verdict || null,
+            category: row.person_category || null,
+            photoUrl: row.photo_url || null,
+            claim: row.fact_check_claim || '',
+            explanation: row.fact_check_explanation || '',
+          };
+          Promise.all([
+            generateShareImage(imgData, 'landscape'),
+            generateShareImage(imgData, 'portrait'),
+          ]).catch(err => logger.warn('factcheck', 'share_image_prewarm_failed', { quoteId, error: err.message }));
+        }
+      } catch (err) {
+        logger.warn('factcheck', 'share_image_prewarm_query_failed', { quoteId, error: err.message });
+      }
+    }
 
     // Prune old cache entries periodically
     if (cache.size > 1000) {
