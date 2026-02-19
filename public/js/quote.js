@@ -37,7 +37,7 @@ async function renderQuote(id) {
     const heroPhotoUrl = q.photoUrl || '';
     const heroInitial = (heroPersonName || '?').charAt(0).toUpperCase();
     const heroAvatarHtml = heroPhotoUrl
-      ? `<img src="${escapeHtml(heroPhotoUrl)}" alt="${escapeHtml(heroPersonName)}" class="quote-hero__avatar" onerror="this.outerHTML='<div class=\\'quote-hero__avatar-placeholder\\'>${heroInitial}</div>'" loading="lazy">`
+      ? `<img src="${escapeHtml(heroPhotoUrl)}" alt="${escapeHtml(heroPersonName)}" class="quote-hero__avatar" onerror="if(!this.dataset.retry){this.dataset.retry='1';this.src=this.src}else{this.outerHTML='<div class=\\'quote-hero__avatar-placeholder\\'>${heroInitial}</div>'}" loading="lazy">`
       : `<div class="quote-hero__avatar-placeholder">${heroInitial}</div>`;
 
     const shareHtml = typeof buildShareButtonsHtml === 'function'
@@ -81,6 +81,7 @@ async function renderQuote(id) {
     // 4. Source — title (links to article), context, org + published date
     if (data.articles && data.articles.length > 0) {
       html += '<div class="quote-page__source">';
+      html += `<strong style="font-family:var(--font-ui);font-size:var(--text-sm)">Quote Source:</strong>`;
       for (const a of data.articles) {
         const sourceName = a.source_name || a.domain || 'Source';
         const articleDate = a.published_at ? formatDateTime(a.published_at) : '';
@@ -217,6 +218,7 @@ function buildSmartRelatedQuoteBlock(item) {
     person_name: item.person_name || item.authorName,
     person_id: item.person_id || '',
     photo_url: item.photo_url || '',
+    person_category_context: item.person_category_context || '',
     importants_count: item.importants_count || 0,
     quote_datetime: item.quote_datetime || item.date || '',
     article_id: item.article_id || '',
@@ -224,7 +226,7 @@ function buildSmartRelatedQuoteBlock(item) {
     source_domain: item.source_domain || '',
     source_name: item.source_name || item.sourceName || '',
   };
-  return buildQuoteBlockHtml(quoteData, false, { variant: 'compact', showAvatar: false, showSummary: false });
+  return buildQuoteBlockHtml(quoteData, false, { variant: 'compact', showAvatar: true, showSummary: true });
 }
 
 /**
@@ -312,7 +314,7 @@ function startFactCheckLoadingAnimation(container) {
   container.innerHTML = `
     <div class="context-loading" style="flex-direction:column;align-items:flex-start;gap:0.5rem">
       <div style="font-family:var(--font-ui);font-size:var(--text-sm);color:var(--text-muted);margin-bottom:0.25rem">
-        Thank you for your patience. We strive to be as thorough as possible.
+        Just a sec. We're researching this for the first time.
       </div>
       <div style="display:flex;align-items:center;gap:0.5rem">
         <div class="context-loading-spinner"></div>

@@ -461,6 +461,7 @@ function formatSmartRelated(db, rows, fromCache) {
     const rq = db.prepare(`
       SELECT q.id, q.text, q.context, q.created_at, q.quote_datetime,
              q.person_id, q.importants_count, p.canonical_name, p.photo_url,
+             p.category_context,
              a.id AS article_id, a.url AS article_url, a.title AS article_title,
              s.name AS source_name, s.domain AS source_domain
       FROM quotes q
@@ -480,6 +481,7 @@ function formatSmartRelated(db, rows, fromCache) {
       person_id: rq.person_id,
       person_name: rq.canonical_name,
       photo_url: rq.photo_url || '',
+      person_category_context: rq.category_context || '',
       importants_count: rq.importants_count || 0,
       authorName: rq.canonical_name,
       date: rq.quote_datetime || rq.created_at,

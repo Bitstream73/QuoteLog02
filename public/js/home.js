@@ -276,7 +276,7 @@ function buildQuoteBlockHtml(q, isImportant, options = {}) {
   const _isAdm = typeof isAdmin !== 'undefined' && isAdmin;
   const _safeName = escapeHtml((personName || '').replace(/'/g, "\\'"));
   const headshotHtml = photoUrl
-    ? `<img src="${escapeHtml(photoUrl)}" alt="${escapeHtml(personName)}" class="quote-block__headshot" onerror="this.outerHTML='<div class=\\'quote-headshot-placeholder\\'>${initial}</div>'" loading="lazy">`
+    ? `<img src="${escapeHtml(photoUrl)}" alt="${escapeHtml(personName)}" class="quote-block__headshot" onerror="if(!this.dataset.retry){this.dataset.retry='1';this.src=this.src}else{this.outerHTML='<div class=\\'quote-headshot-placeholder\\'>${initial}</div>'}" loading="lazy">`
     : `<div class="quote-headshot-placeholder">${initial}</div>`;
 
   // Share buttons + important
@@ -351,7 +351,7 @@ function buildAdminQuoteBlockHtml(q, isImportant) {
   const initial = (personName || '?').charAt(0).toUpperCase();
   const _safeName = escapeHtml((personName || '').replace(/'/g, "\\'"));
   const headshotHtml = photoUrl
-    ? `<img src="${escapeHtml(photoUrl)}" alt="${escapeHtml(personName)}" class="quote-block__headshot admin-headshot-clickable" onclick="adminChangeHeadshot(${personId}, '${_safeName}')" title="Click to change photo" style="cursor:pointer" onerror="this.outerHTML='<div class=\\'quote-headshot-placeholder\\'>${initial}</div>'" loading="lazy">`
+    ? `<img src="${escapeHtml(photoUrl)}" alt="${escapeHtml(personName)}" class="quote-block__headshot admin-headshot-clickable" onclick="adminChangeHeadshot(${personId}, '${_safeName}')" title="Click to change photo" style="cursor:pointer" onerror="if(!this.dataset.retry){this.dataset.retry='1';this.src=this.src}else{this.outerHTML='<div class=\\'quote-headshot-placeholder\\'>${initial}</div>'}" loading="lazy">`
     : `<a href="https://www.google.com/search?tbm=isch&q=${encodeURIComponent((personName || '') + ' ' + (personCategoryContext || ''))}" target="_blank" rel="noopener" class="admin-headshot-search" title="Search Google Images"><div class="quote-headshot-placeholder">${initial}</div></a>`;
 
   return `
@@ -424,8 +424,17 @@ async function adminEditAuthorFromQuote(personId) {
 }
 
 async function adminChangeHeadshotFromQuote(personId) {
-  const newUrl = prompt('Enter new headshot URL:');
+  // Fetch current photo URL so admin can see/verify it
+  let currentUrl = '';
+  try {
+    const data = await API.get(`/authors/${personId}`);
+    currentUrl = data.author?.photoUrl || '';
+  } catch (e) { /* continue with empty */ }
+
+  const newUrl = prompt('Enter new headshot URL:', currentUrl);
   if (newUrl === null) return;
+  if (newUrl.trim() === currentUrl.trim()) return; // No change
+
   try {
     await API.patch(`/authors/${personId}`, { photoUrl: newUrl.trim() || null });
     showToast('Headshot updated', 'success');
@@ -575,7 +584,7 @@ function buildAuthorCardHtml(author) {
   const _isAdm = typeof isAdmin !== 'undefined' && isAdmin;
   const initial = (author.canonical_name || '?').charAt(0).toUpperCase();
   const photoHtml = author.photo_url
-    ? `<img src="${escapeHtml(author.photo_url)}" alt="${escapeHtml(author.canonical_name)}" class="author-card__photo" onerror="this.outerHTML='<div class=\\'quote-headshot-placeholder\\'>${initial}</div>'" loading="lazy">`
+    ? `<img src="${escapeHtml(author.photo_url)}" alt="${escapeHtml(author.canonical_name)}" class="author-card__photo" onerror="if(!this.dataset.retry){this.dataset.retry='1';this.src=this.src}else{this.outerHTML='<div class=\\'quote-headshot-placeholder\\'>${initial}</div>'}" loading="lazy">`
     : `<div class="quote-headshot-placeholder">${initial}</div>`;
 
   const quotesHtml = quotes.slice(0, 4).map((q, i) => {
@@ -1112,7 +1121,7 @@ async function renderSearchResults(content, searchQuery) {
         for (const p of data.persons) {
           const initial = (p.canonical_name || '?').charAt(0).toUpperCase();
           const photoHtml = p.photo_url
-            ? `<img src="${escapeHtml(p.photo_url)}" alt="${escapeHtml(p.canonical_name)}" class="search-author__photo" onerror="this.outerHTML='<div class=\\'quote-headshot-placeholder\\'>${initial}</div>'" loading="lazy">`
+            ? `<img src="${escapeHtml(p.photo_url)}" alt="${escapeHtml(p.canonical_name)}" class="search-author__photo" onerror="if(!this.dataset.retry){this.dataset.retry='1';this.src=this.src}else{this.outerHTML='<div class=\\'quote-headshot-placeholder\\'>${initial}</div>'}" loading="lazy">`
             : `<div class="quote-headshot-placeholder">${initial}</div>`;
           html += `<div class="search-author-row" onclick="navigateTo('/author/${p.id}')">
             ${photoHtml}

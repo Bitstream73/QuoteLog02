@@ -57,7 +57,7 @@ async function renderAuthor(id) {
 
     const avatarPlaceholder = `<div class="author-avatar">${initial}</div>`;
     const avatarInner = a.photoUrl
-      ? `<img src="${escapeHtml(a.photoUrl)}" alt="${escapeHtml(a.name)}" class="author-avatar-img" onerror="this.outerHTML='<div class=\\'author-avatar\\'>${initial}</div>'">`
+      ? `<img src="${escapeHtml(a.photoUrl)}" alt="${escapeHtml(a.name)}" class="author-avatar-img" onerror="if(!this.dataset.retry){this.dataset.retry='1';this.src=this.src}else{this.outerHTML='<div class=\\'author-avatar\\'>${initial}</div>'}">`
       : (typeof isAdmin !== 'undefined' && isAdmin
         ? `<a href="https://www.google.com/search?tbm=isch&q=${encodeURIComponent((a.name || '') + ' ' + (a.disambiguation || ''))}" target="_blank" rel="noopener" class="admin-headshot-search" title="Search Google Images">${avatarPlaceholder}</a>`
         : avatarPlaceholder);

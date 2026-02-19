@@ -125,8 +125,16 @@ async function adminDeleteQuote(quoteId, onUpdate, btn) {
 }
 
 async function adminChangeHeadshot(personId, personName, onUpdate) {
-  const newUrl = prompt(`Enter new headshot URL for ${personName}:`, '');
+  // Fetch current photo URL so admin can see/verify it
+  let currentUrl = '';
+  try {
+    const data = await API.get(`/authors/${personId}`);
+    currentUrl = data.author?.photoUrl || '';
+  } catch (e) { /* continue with empty */ }
+
+  const newUrl = prompt(`Enter new headshot URL for ${personName}:`, currentUrl);
   if (newUrl === null) return;
+  if (newUrl.trim() === currentUrl.trim()) return; // No change
 
   try {
     await API.patch(`/authors/${personId}`, { photoUrl: newUrl.trim() || null });
