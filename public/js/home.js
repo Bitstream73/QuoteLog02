@@ -180,6 +180,12 @@ async function shareEntity(event, entityType, entityId, platform) {
   event.stopPropagation();
   event.preventDefault();
 
+  // Block sharing while fact-check is in progress
+  if (entityType === 'quote' && typeof _factCheckInProgress !== 'undefined' && _factCheckInProgress) {
+    showToast("It'll just be a sec. We're fact checking this quote for the first time...", 'info');
+    return;
+  }
+
   // Increment share count via API
   try {
     await API.post('/tracking/share', { entity_type: entityType, entity_id: entityId });
@@ -227,6 +233,12 @@ async function shareEntity(event, entityType, entityId, platform) {
 async function downloadShareImage(event, quoteId) {
   event.stopPropagation();
   event.preventDefault();
+
+  // Block download while fact-check is in progress
+  if (typeof _factCheckInProgress !== 'undefined' && _factCheckInProgress) {
+    showToast("It'll just be a sec. We're fact checking this quote for the first time...", 'info');
+    return;
+  }
 
   const btn = event.currentTarget;
   btn.classList.add('share-btn--loading');
