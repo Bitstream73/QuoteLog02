@@ -35,8 +35,11 @@ async function changeAnalyticsPeriod(days) {
 
 async function loadAnalytics() {
   try {
-    const data = await API.get(`/analytics/overview?days=${_analyticsDays}`);
-    renderAnalyticsData(data);
+    const [data, trendingData] = await Promise.all([
+      API.get(`/analytics/overview?days=${_analyticsDays}`),
+      API.get('/analytics/trending-quotes'),
+    ]);
+    renderAnalyticsData(data, trendingData);
   } catch (err) {
     const content = document.querySelector('.analytics-page');
     if (content) {
@@ -48,7 +51,7 @@ async function loadAnalytics() {
   }
 }
 
-function renderAnalyticsData(data) {
+async function renderAnalyticsData(data, trendingData) {
   const page = document.querySelector('.analytics-page');
   if (!page) return;
 
@@ -59,6 +62,43 @@ function renderAnalyticsData(data) {
   // Remove existing content sections (keep header)
   page.querySelectorAll('.analytics-section').forEach(el => el.remove());
   page.querySelectorAll('.analytics-stats').forEach(el => el.remove());
+  page.querySelectorAll('.analytics-qotd-section').forEach(el => el.remove());
+
+  // Build QotD/W/M section
+  let qotdHtml = '';
+  if (trendingData) {
+    // Fetch importance statuses for featured quotes
+    const featuredKeys = [];
+    if (trendingData.quote_of_day) featuredKeys.push(`quote:${trendingData.quote_of_day.id}`);
+    if (trendingData.quote_of_week) featuredKeys.push(`quote:${trendingData.quote_of_week.id}`);
+    if (trendingData.quote_of_month) featuredKeys.push(`quote:${trendingData.quote_of_month.id}`);
+    if (featuredKeys.length > 0 && typeof fetchImportantStatuses === 'function') {
+      await fetchImportantStatuses(featuredKeys);
+    }
+    const impStatuses = typeof _importantStatuses !== 'undefined' ? _importantStatuses : {};
+
+    if (trendingData.quote_of_day || trendingData.quote_of_week || trendingData.quote_of_month) {
+      qotdHtml += '<div class="analytics-qotd-section">';
+
+      if (trendingData.quote_of_day && typeof buildQuoteBlockHtml === 'function') {
+        qotdHtml += `<div class="trending-section-header"><hr class="topic-section-rule"><h2 class="trending-section-heading">QUOTE OF THE DAY</h2><hr class="topic-section-rule"></div>`;
+        qotdHtml += buildQuoteBlockHtml(trendingData.quote_of_day, impStatuses[`quote:${trendingData.quote_of_day.id}`] || false, { variant: 'hero' });
+      }
+
+      if (trendingData.quote_of_week && typeof buildQuoteBlockHtml === 'function') {
+        qotdHtml += `<div class="trending-section-header"><hr class="topic-section-rule"><h2 class="trending-section-heading">QUOTE OF THE WEEK</h2><hr class="topic-section-rule"></div>`;
+        qotdHtml += buildQuoteBlockHtml(trendingData.quote_of_week, impStatuses[`quote:${trendingData.quote_of_week.id}`] || false, { variant: 'featured' });
+      }
+
+      if (trendingData.quote_of_month && typeof buildQuoteBlockHtml === 'function') {
+        qotdHtml += `<div class="trending-section-header"><hr class="topic-section-rule"><h2 class="trending-section-heading">QUOTE OF THE MONTH</h2><hr class="topic-section-rule"></div>`;
+        qotdHtml += buildQuoteBlockHtml(trendingData.quote_of_month, impStatuses[`quote:${trendingData.quote_of_month.id}`] || false, { variant: 'featured' });
+      }
+
+      qotdHtml += `<p class="trending-disclaimer"><em>*Trending quotes change over time as views and shares change</em></p>`;
+      qotdHtml += '</div>';
+    }
+  }
 
   // Stats summary
   const statsHtml = `
@@ -94,7 +134,7 @@ function renderAnalyticsData(data) {
     </div>
   `;
 
-  page.insertAdjacentHTML('beforeend', statsHtml + authorsHtml);
+  page.insertAdjacentHTML('beforeend', qotdHtml + statsHtml + authorsHtml);
 }
 
 function renderQuoteCard(q) {

@@ -1,7 +1,9 @@
 // Author Detail Page
 
+let _authorQuoteSortBy = 'date';
+
 // Build quote HTML for author page — reuses homepage buildQuoteBlockHtml
-function buildAuthorQuoteHtml(q, authorName, authorCategoryContext, authorId, authorPhotoUrl) {
+function buildAuthorQuoteHtml(q, authorName, authorCategoryContext, authorId, authorPhotoUrl, options = {}) {
   // Map author-endpoint fields to the format buildQuoteBlockHtml expects
   const mapped = {
     id: q.id,
@@ -16,24 +18,26 @@ function buildAuthorQuoteHtml(q, authorName, authorCategoryContext, authorId, au
     article_url: q.articleUrl || '',
     source_domain: q.primarySourceDomain || '',
     source_name: q.primarySourceName || '',
-    quote_datetime: q.articlePublishedAt || q.createdAt || '',
+    quote_datetime: q.quoteDateTime || q.articlePublishedAt || q.createdAt || '',
     importants_count: q.importantsCount || q.importants_count || q.voteScore || 0,
     share_count: q.shareCount || q.share_count || 0,
     view_count: q.viewCount || q.view_count || 0,
     is_visible: q.isVisible,
   };
   const isImp = typeof _importantStatuses !== 'undefined' ? (_importantStatuses[`quote:${q.id}`] || false) : false;
-  return buildQuoteBlockHtml(mapped, isImp);
+  return buildQuoteBlockHtml(mapped, isImp, options);
 }
 
 async function renderAuthor(id) {
   const content = document.getElementById('content');
   content.innerHTML = typeof buildSkeletonHtml === 'function' ? buildSkeletonHtml(3) : '<div class="loading">Loading author...</div>';
 
+  const sortParam = _authorQuoteSortBy === 'importance' ? '&sort=importance' : '';
+
   try {
     const [authorData, quotesData] = await Promise.all([
       API.get(`/authors/${id}`),
-      API.get(`/authors/${id}/quotes?limit=50`),
+      API.get(`/authors/${id}/quotes?limit=50${sortParam}`),
     ]);
 
     if (!authorData.author) {
@@ -96,18 +100,38 @@ async function renderAuthor(id) {
       }
     }
 
-    html += '<h2 style="margin:2rem 0 1rem;font-family:var(--font-headline);font-size:1.3rem">Quotes</h2>';
+    // Quotes heading with sort controls
+    html += `<div style="display:flex;align-items:center;justify-content:space-between;margin:2rem 0 1rem">
+      <h2 style="margin:0;font-family:var(--font-headline);font-size:1.3rem">Quotes</h2>
+      <div class="tab-sort-controls">
+        Sort: <a class="sort-toggle-text ${_authorQuoteSortBy === 'date' ? 'active' : ''}" onclick="switchAuthorQuoteSort('date')">Date</a>
+        <span class="sort-toggle-divider">|</span>
+        <a class="sort-toggle-text ${_authorQuoteSortBy === 'importance' ? 'active' : ''}" onclick="switchAuthorQuoteSort('importance')">Importance</a>
+      </div>
+    </div>`;
 
     if (quotesData.quotes.length === 0) {
       html += '<p style="color:var(--text-muted);font-family:var(--font-ui)">No quotes found for this author.</p>';
     } else {
-      // Fetch important statuses for all quotes
+      // Fetch important statuses for all quotes (+ featured)
+      const statusKeys = quotesData.quotes.map(q => `quote:${q.id}`);
+      if (quotesData.featuredQuote) statusKeys.push(`quote:${quotesData.featuredQuote.id}`);
       if (typeof fetchImportantStatuses === 'function') {
-        await fetchImportantStatuses(quotesData.quotes.map(q => `quote:${q.id}`));
+        await fetchImportantStatuses(statusKeys);
       }
+
+      // Featured quote
+      if (quotesData.featuredQuote) {
+        html += `<div class="trending-section-header"><hr class="topic-section-rule"><h2 class="trending-section-heading">MOST NOTABLE</h2><hr class="topic-section-rule"></div>`;
+        html += buildAuthorQuoteHtml(quotesData.featuredQuote, a.name, a.categoryContext, a.id, a.photoUrl, { variant: 'featured' });
+      }
+
+      // Quote list
+      html += '<div id="author-quotes-list">';
       for (const q of quotesData.quotes) {
         html += buildAuthorQuoteHtml(q, a.name, a.categoryContext, a.id, a.photoUrl);
       }
+      html += '</div>';
 
       // Pagination
       if (quotesData.totalPages > 1) {
@@ -147,6 +171,13 @@ async function renderAuthor(id) {
   } catch (err) {
     content.innerHTML = `<div class="empty-state"><h3>Error</h3><p>${escapeHtml(err.message)}</p></div>`;
   }
+}
+
+function switchAuthorQuoteSort(sortBy) {
+  _authorQuoteSortBy = sortBy;
+  // Get author ID from current URL
+  const match = window.location.pathname.match(/\/author\/(.+)/);
+  if (match) renderAuthor(match[1]);
 }
 
 async function loadAuthorCharts(authorId) {
@@ -202,8 +233,9 @@ async function loadAuthorCharts(authorId) {
 }
 
 async function loadAuthorQuotesPage(authorId, page) {
+  const sortParam = _authorQuoteSortBy === 'importance' ? '&sort=importance' : '';
   try {
-    const quotesData = await API.get(`/authors/${authorId}/quotes?page=${page}&limit=50`);
+    const quotesData = await API.get(`/authors/${authorId}/quotes?page=${page}&limit=50${sortParam}`);
 
     // Get author info from the header
     const nameEl = document.querySelector('.page-title');

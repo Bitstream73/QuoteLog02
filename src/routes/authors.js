@@ -242,6 +242,28 @@ router.get('/:id/quotes', (req, res) => {
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 50;
   const offset = (page - 1) * limit;
+  const sort = req.query.sort;
+
+  const QUOTE_DATE_EXPR = `COALESCE(
+    CASE WHEN q.quote_datetime GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]*'
+      THEN q.quote_datetime ELSE NULL END,
+    q.created_at)`;
+
+  let orderBy;
+  if (sort === 'importance') {
+    orderBy = `
+      CASE
+        WHEN q.importants_count > 0 AND ${QUOTE_DATE_EXPR} >= datetime('now', '-1 day') THEN 1
+        WHEN q.importants_count > 0 AND ${QUOTE_DATE_EXPR} >= datetime('now', '-7 days') THEN 2
+        WHEN q.importants_count > 0 AND ${QUOTE_DATE_EXPR} >= datetime('now', '-30 days') THEN 3
+        WHEN q.importants_count > 0 THEN 4
+        ELSE 5
+      END ASC,
+      CASE WHEN q.importants_count > 0 THEN q.importants_count ELSE 0 END DESC,
+      ${QUOTE_DATE_EXPR} DESC`;
+  } else {
+    orderBy = `${QUOTE_DATE_EXPR} DESC`;
+  }
 
   // Find person
   let personId;
@@ -265,7 +287,7 @@ router.get('/:id/quotes', (req, res) => {
 
   const quotes = db.prepare(`
     SELECT q.id, q.text, q.source_urls, q.created_at, q.context, q.quote_type, q.is_visible,
-           q.fact_check_verdict,
+           q.fact_check_verdict, q.importants_count, q.quote_datetime,
            a.id AS article_id, a.title AS article_title, a.published_at AS article_published_at, a.url AS article_url,
            s.domain AS primary_source_domain, s.name AS primary_source_name,
            COALESCE((SELECT SUM(vote_value) FROM votes WHERE votes.quote_id = q.id), 0) as vote_score
@@ -275,9 +297,51 @@ router.get('/:id/quotes', (req, res) => {
     LEFT JOIN sources s ON a.source_id = s.id
     WHERE q.person_id = ? AND q.canonical_quote_id IS NULL ${visFilter}
     GROUP BY q.id
-    ORDER BY q.created_at DESC
+    ORDER BY ${orderBy}
     LIMIT ? OFFSET ?
   `).all(personId, limit, offset);
+
+  // Featured quote: page 1 only
+  let featuredQuote = null;
+  if (page === 1) {
+    const featured = db.prepare(`
+      SELECT q.id, q.text, q.source_urls, q.created_at, q.context, q.quote_type, q.is_visible,
+             q.fact_check_verdict, q.importants_count, q.quote_datetime,
+             a.id AS article_id, a.title AS article_title, a.published_at AS article_published_at, a.url AS article_url,
+             s.domain AS primary_source_domain, s.name AS primary_source_name,
+             COALESCE((SELECT SUM(vote_value) FROM votes WHERE votes.quote_id = q.id), 0) as vote_score
+      FROM quotes q
+      LEFT JOIN quote_articles qa ON qa.quote_id = q.id
+      LEFT JOIN articles a ON qa.article_id = a.id
+      LEFT JOIN sources s ON a.source_id = s.id
+      WHERE q.person_id = ? AND q.canonical_quote_id IS NULL ${visFilter}
+      GROUP BY q.id
+      ORDER BY q.importants_count DESC, ${QUOTE_DATE_EXPR} DESC
+      LIMIT 1
+    `).get(personId);
+
+    if (featured) {
+      featuredQuote = {
+        id: featured.id,
+        text: featured.text,
+        context: featured.context,
+        quoteType: featured.quote_type,
+        sourceUrls: JSON.parse(featured.source_urls || '[]'),
+        createdAt: featured.created_at,
+        quoteDateTime: featured.quote_datetime || null,
+        importantsCount: featured.importants_count || 0,
+        isVisible: featured.is_visible,
+        articleId: featured.article_id || null,
+        articleTitle: featured.article_title || null,
+        articlePublishedAt: featured.article_published_at || null,
+        articleUrl: featured.article_url || null,
+        primarySourceDomain: featured.primary_source_domain || null,
+        primarySourceName: featured.primary_source_name || null,
+        voteScore: featured.vote_score,
+        factCheckVerdict: featured.fact_check_verdict || null,
+      };
+    }
+  }
 
   res.json({
     quotes: quotes.map(q => ({
@@ -287,6 +351,9 @@ router.get('/:id/quotes', (req, res) => {
       quoteType: q.quote_type,
       sourceUrls: JSON.parse(q.source_urls || '[]'),
       createdAt: q.created_at,
+      quoteDateTime: q.quote_datetime || null,
+      importantsCount: q.importants_count || 0,
+      isVisible: q.is_visible,
       articleId: q.article_id || null,
       articleTitle: q.article_title || null,
       articlePublishedAt: q.article_published_at || null,
@@ -296,6 +363,7 @@ router.get('/:id/quotes', (req, res) => {
       voteScore: q.vote_score,
       factCheckVerdict: q.fact_check_verdict || null,
     })),
+    featuredQuote: page === 1 ? featuredQuote : null,
     total,
     page,
     totalPages: Math.ceil(total / limit),

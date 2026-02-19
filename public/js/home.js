@@ -602,10 +602,10 @@ async function renderTabContent(tabKey) {
 
 // ======= Trending Authors Tab =======
 
-let _authorsSortBy = 'date';
+let _authorsSortBy = 'importance';
 
 async function renderTrendingAuthorsTab(container, sortBy) {
-  _authorsSortBy = sortBy || 'date';
+  _authorsSortBy = sortBy || 'importance';
   const sortParam = _authorsSortBy === 'importance' ? '?sort=importance' : '';
   const data = await API.get('/analytics/trending-authors' + sortParam);
   const authors = data.authors || [];
@@ -615,13 +615,10 @@ async function renderTrendingAuthorsTab(container, sortBy) {
     return;
   }
 
-  // Collect all quote IDs for importance status
+  // Collect person IDs for importance status
   const entityKeys = [];
   for (const a of authors) {
     entityKeys.push(`person:${a.id}`);
-    for (const q of (a.quotes || [])) {
-      entityKeys.push(`quote:${q.id}`);
-    }
   }
   await fetchImportantStatuses(entityKeys);
 
@@ -644,19 +641,10 @@ function switchAuthorsSort(sortBy) {
 }
 
 function buildAuthorCardHtml(author) {
-  const quotes = author.quotes || [];
-  const _isAdm = typeof isAdmin !== 'undefined' && isAdmin;
   const initial = (author.canonical_name || '?').charAt(0).toUpperCase();
   const photoHtml = author.photo_url
     ? `<img src="${escapeHtml(author.photo_url)}" alt="${escapeHtml(author.canonical_name)}" class="author-card__photo" onerror="if(!this.dataset.retry){this.dataset.retry='1';this.src=this.src}else{this.outerHTML='<div class=\\'quote-headshot-placeholder\\'>${initial}</div>'}" loading="lazy">`
     : `<div class="quote-headshot-placeholder">${initial}</div>`;
-
-  const quotesHtml = quotes.slice(0, 4).map((q, i) => {
-    const isQImp = _importantStatuses[`quote:${q.id}`] || false;
-    return buildQuoteBlockHtml(q, isQImp, { showAvatar: false });
-  }).join('');
-
-  const isPersonImp = _importantStatuses[`person:${author.id}`] || false;
 
   return `
     <div class="author-card" data-track-type="person" data-track-id="${author.id}">
@@ -668,10 +656,6 @@ function buildAuthorCardHtml(author) {
           <span class="author-card__stats">${author.quote_count} quotes</span>
         </div>
       </div>
-      <div class="card-quotes-container">
-        ${quotesHtml}
-      </div>
-      ${quotes.length > 0 ? `<a class="topic-card__see-all" onclick="navigateTo('/author/${author.id}')">See all ${author.quote_count} quotes by ${escapeHtml(author.canonical_name)} &rarr;</a>` : ''}
     </div>
   `;
 }
@@ -795,35 +779,12 @@ function expandSourceQuotes(btn, articleId) {
 async function renderTrendingQuotesTab(container) {
   const data = await API.get('/analytics/trending-quotes');
 
-  // Collect all quote IDs for important status batch fetch
+  // Collect recent quote IDs for important status batch fetch
   const allQuoteIds = [];
-  if (data.quote_of_day) allQuoteIds.push(`quote:${data.quote_of_day.id}`);
-  if (data.quote_of_week) allQuoteIds.push(`quote:${data.quote_of_week.id}`);
-  if (data.quote_of_month) allQuoteIds.push(`quote:${data.quote_of_month.id}`);
   (data.recent_quotes || []).forEach(q => allQuoteIds.push(`quote:${q.id}`));
   await fetchImportantStatuses(allQuoteIds);
 
   let html = '';
-
-  // Quote of the Day
-  if (data.quote_of_day) {
-    html += `<div class="trending-section-header"><hr class="topic-section-rule"><h2 class="trending-section-heading">QUOTE OF THE DAY</h2><hr class="topic-section-rule"></div>`;
-    html += buildQuoteBlockHtml(data.quote_of_day, _importantStatuses[`quote:${data.quote_of_day.id}`] || false, { variant: 'hero' });
-  }
-
-  // Quote of the Week
-  if (data.quote_of_week) {
-    html += `<div class="trending-section-header"><hr class="topic-section-rule"><h2 class="trending-section-heading">QUOTE OF THE WEEK</h2><hr class="topic-section-rule"></div>`;
-    html += buildQuoteBlockHtml(data.quote_of_week, _importantStatuses[`quote:${data.quote_of_week.id}`] || false, { variant: 'featured' });
-  }
-
-  // Quote of the Month
-  if (data.quote_of_month) {
-    html += `<div class="trending-section-header"><hr class="topic-section-rule"><h2 class="trending-section-heading">QUOTE OF THE MONTH</h2><hr class="topic-section-rule"></div>`;
-    html += buildQuoteBlockHtml(data.quote_of_month, _importantStatuses[`quote:${data.quote_of_month.id}`] || false, { variant: 'featured' });
-  }
-
-  html += `<p class="trending-disclaimer"><em>*Trending quotes change over time as views and shares change</em></p>`;
 
   // Recent Quotes
   const recentQuotes = data.recent_quotes || [];
@@ -840,7 +801,7 @@ async function renderTrendingQuotesTab(container) {
     html += `</div>`;
   }
 
-  if (!data.quote_of_day && !data.quote_of_week && !data.quote_of_month && recentQuotes.length === 0) {
+  if (recentQuotes.length === 0) {
     html = `<div class="empty-state"><h3>No quotes yet</h3><p>Quotes will appear here as they are extracted from news articles.</p></div>`;
   }
 
