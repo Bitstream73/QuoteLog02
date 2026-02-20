@@ -6,8 +6,8 @@ import { requireAdmin } from '../middleware/auth.js';
 
 const router = Router();
 
-const VALID_TYPES = ['quote', 'article', 'person'];
-const TABLE_MAP = { quote: 'quotes', article: 'articles', person: 'persons' };
+const VALID_TYPES = ['quote', 'article', 'person', 'topic', 'category'];
+const TABLE_MAP = { quote: 'quotes', article: 'articles', person: 'persons', topic: 'topics', category: 'categories' };
 
 // Pre-built SQL queries per entity type — eliminates all dynamic table name interpolation
 const QUERIES = {
@@ -31,6 +31,20 @@ const QUERIES = {
     increment: 'UPDATE persons SET importants_count = importants_count + 1 WHERE id = ?',
     getCount: 'SELECT importants_count FROM persons WHERE id = ?',
     superIncrement: 'UPDATE persons SET importants_count = importants_count + 100 WHERE id = ?',
+  },
+  topic: {
+    exists: 'SELECT id FROM topics WHERE id = ?',
+    decrement: 'UPDATE topics SET importants_count = MAX(importants_count - 1, 0) WHERE id = ?',
+    increment: 'UPDATE topics SET importants_count = importants_count + 1 WHERE id = ?',
+    getCount: 'SELECT importants_count FROM topics WHERE id = ?',
+    superIncrement: 'UPDATE topics SET importants_count = importants_count + 100 WHERE id = ?',
+  },
+  category: {
+    exists: 'SELECT id FROM categories WHERE id = ?',
+    decrement: 'UPDATE categories SET importants_count = MAX(importants_count - 1, 0) WHERE id = ?',
+    increment: 'UPDATE categories SET importants_count = importants_count + 1 WHERE id = ?',
+    getCount: 'SELECT importants_count FROM categories WHERE id = ?',
+    superIncrement: 'UPDATE categories SET importants_count = importants_count + 100 WHERE id = ?',
   },
 };
 

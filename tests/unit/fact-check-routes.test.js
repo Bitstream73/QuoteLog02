@@ -30,6 +30,7 @@ const mockFactCheckQuote = vi.fn();
 const mockClassifyAndVerify = vi.fn();
 const mockExtractAndEnrichReferences = vi.fn();
 const mockGenerateShareImage = vi.fn().mockResolvedValue(Buffer.from('fake'));
+const mockInvalidateShareImageCache = vi.fn();
 
 vi.mock('../../src/services/factCheck.js', () => ({
   factCheckQuote: mockFactCheckQuote,
@@ -39,6 +40,11 @@ vi.mock('../../src/services/factCheck.js', () => ({
 
 vi.mock('../../src/services/shareImage.js', () => ({
   generateShareImage: mockGenerateShareImage,
+  invalidateShareImageCache: mockInvalidateShareImageCache,
+}));
+
+vi.mock('../../src/services/factCheckQueue.js', () => ({
+  default: { enqueue: vi.fn((key, fn) => fn()) },
 }));
 
 const mockDbGet = vi.fn();
@@ -62,6 +68,7 @@ beforeEach(async () => {
   mockExtractAndEnrichReferences.mockReset();
   mockGenerateShareImage.mockReset();
   mockGenerateShareImage.mockResolvedValue(Buffer.from('fake'));
+  mockInvalidateShareImageCache.mockReset();
 
   vi.doMock('../../src/config/index.js', () => ({
     default: { env: 'test', port: 3000, databasePath: ':memory:', geminiApiKey: 'test-key', pineconeApiKey: '', pineconeIndexHost: '' }
@@ -76,6 +83,10 @@ beforeEach(async () => {
   }));
   vi.doMock('../../src/services/shareImage.js', () => ({
     generateShareImage: mockGenerateShareImage,
+    invalidateShareImageCache: mockInvalidateShareImageCache,
+  }));
+  vi.doMock('../../src/services/factCheckQueue.js', () => ({
+    default: { enqueue: vi.fn((key, fn) => fn()) },
   }));
   mockDbGet.mockReset();
   mockDbPrepare.mockReset();
@@ -366,7 +377,7 @@ describe('Fact Check Routes', () => {
         canonical_name: 'Test Author',
         disambiguation: 'Politician',
         photo_url: null,
-        person_category: 'A',
+        fact_check_category: 'A',
       });
 
       const res = await request(app)
@@ -399,7 +410,7 @@ describe('Fact Check Routes', () => {
       mockDbGet.mockReturnValue({
         id: 43, text: 'Cached', context: '', fact_check_verdict: 'TRUE',
         fact_check_claim: '', fact_check_explanation: '', canonical_name: 'Author',
-        disambiguation: '', photo_url: null, person_category: 'A',
+        disambiguation: '', photo_url: null, fact_check_category: 'A',
       });
 
       await request(app)
@@ -421,6 +432,26 @@ describe('Fact Check Routes', () => {
       expect(mockGenerateShareImage).not.toHaveBeenCalled();
     });
 
+    it('should invalidate share image cache before pre-warming', async () => {
+      mockFactCheckQuote.mockResolvedValue({
+        category: 'A', verdict: 'TRUE', html: '<div>r</div>',
+        references: null, referencesHtml: '', combinedHtml: '<div>r</div>', processingTimeMs: 50,
+      });
+
+      mockDbGet.mockReturnValue({
+        id: 55, text: 'Test', context: '', fact_check_verdict: 'TRUE',
+        fact_check_claim: '', fact_check_explanation: '', canonical_name: 'Author',
+        disambiguation: '', photo_url: null, fact_check_category: 'A',
+      });
+
+      await request(app)
+        .post('/api/fact-check/check')
+        .send({ quoteId: 55, quoteText: 'Test invalidation' });
+
+      await new Promise(r => setTimeout(r, 50));
+      expect(mockInvalidateShareImageCache).toHaveBeenCalledWith(55);
+    });
+
     it('should NOT trigger share image generation when quoteId is absent', async () => {
       mockFactCheckQuote.mockResolvedValue({
         category: 'A', verdict: 'TRUE', html: '<div>r</div>',
@@ -433,6 +464,49 @@ describe('Fact Check Routes', () => {
 
       await new Promise(r => setTimeout(r, 50));
       expect(mockGenerateShareImage).not.toHaveBeenCalled();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Socket.IO broadcast after fact-check
+  // -----------------------------------------------------------------------
+
+  describe('POST /check — Socket.IO broadcast', () => {
+    it('should emit fact_check_complete event with correct payload', async () => {
+      const mockIoEmit = vi.fn();
+
+      mockFactCheckQuote.mockResolvedValue({
+        category: 'A', verdict: 'TRUE', html: '<div>result</div>',
+        references: null, referencesHtml: '', combinedHtml: '<div>result</div>', processingTimeMs: 100,
+      });
+
+      app.set('io', { emit: mockIoEmit });
+
+      await request(app)
+        .post('/api/fact-check/check')
+        .send({ quoteId: 99, quoteText: 'Socket test claim' });
+
+      expect(mockIoEmit).toHaveBeenCalledWith('fact_check_complete', {
+        quoteId: 99,
+        verdict: 'TRUE',
+        category: 'A',
+      });
+    });
+
+    it('should NOT emit when quoteId is absent', async () => {
+      const mockIoEmit = vi.fn();
+      app.set('io', { emit: mockIoEmit });
+
+      mockFactCheckQuote.mockResolvedValue({
+        category: 'A', verdict: 'TRUE', html: '<div>r</div>',
+        references: null, referencesHtml: '', combinedHtml: '<div>r</div>', processingTimeMs: 50,
+      });
+
+      await request(app)
+        .post('/api/fact-check/check')
+        .send({ quoteText: 'No quoteId socket test' });
+
+      expect(mockIoEmit).not.toHaveBeenCalled();
     });
   });
 });

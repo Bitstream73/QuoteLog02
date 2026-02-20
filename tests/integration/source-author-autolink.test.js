@@ -91,22 +91,22 @@ describe('Source Author Auto-Link', () => {
     db.prepare('INSERT OR IGNORE INTO source_authors (name, domain, image_url) VALUES (?, ?, ?)').run('DetailTestOrg', 'detailtest.com', 'https://example.com/logo.jpg');
     const sa = db.prepare("SELECT id FROM source_authors WHERE domain = 'detailtest.com'").get();
 
-    db.prepare('INSERT INTO sources (domain, name, rss_url, source_author_id) VALUES (?, ?, ?, ?)').run('detailtest.com', 'Detail Test', 'https://detailtest.com/rss', sa.id);
-    const source = db.prepare("SELECT id FROM sources WHERE domain = 'detailtest.com' AND name = 'Detail Test'").get();
+    const srcResult = db.prepare('INSERT INTO sources (domain, name, rss_url, source_author_id) VALUES (?, ?, ?, ?)').run('detailtest.com', 'Detail Test', 'https://detailtest.com/rss', sa.id);
+    const sourceId = srcResult.lastInsertRowid;
 
-    db.prepare("INSERT INTO persons (canonical_name) VALUES ('Detail Test Person')");
-    const person = db.prepare("SELECT id FROM persons WHERE canonical_name = 'Detail Test Person'").get();
+    const personResult = db.prepare("INSERT INTO persons (canonical_name) VALUES ('Detail Test Person')").run();
+    const personId = personResult.lastInsertRowid;
 
-    db.prepare("INSERT INTO articles (url, title, source_id, status) VALUES (?, ?, ?, 'completed')").run('https://detailtest.com/article1', 'Test Article', source.id);
-    const article = db.prepare("SELECT id FROM articles WHERE url = 'https://detailtest.com/article1'").get();
+    const artResult = db.prepare("INSERT INTO articles (url, title, source_id, status) VALUES (?, ?, ?, 'completed')").run('https://detailtest.com/article1', 'Test Article', sourceId);
+    const articleId = artResult.lastInsertRowid;
 
-    db.prepare("INSERT INTO quotes (person_id, text, source_urls) VALUES (?, ?, '[]')").run(person.id, 'Detail test quote text');
-    const quote = db.prepare("SELECT id FROM quotes WHERE text = 'Detail test quote text'").get();
+    const quoteResult = db.prepare("INSERT INTO quotes (person_id, text, source_urls) VALUES (?, ?, '[]')").run(personId, 'Detail test quote text');
+    const quoteId = quoteResult.lastInsertRowid;
 
-    db.prepare('INSERT INTO quote_articles (quote_id, article_id) VALUES (?, ?)').run(quote.id, article.id);
+    db.prepare('INSERT INTO quote_articles (quote_id, article_id) VALUES (?, ?)').run(quoteId, articleId);
 
     // Fetch quote detail
-    const res = await request(app).get(`/api/quotes/${quote.id}`);
+    const res = await request(app).get(`/api/quotes/${quoteId}`);
     expect(res.status).toBe(200);
     expect(res.body.articles).toHaveLength(1);
     expect(res.body.articles[0].source_author_id).toBe(sa.id);
@@ -114,11 +114,11 @@ describe('Source Author Auto-Link', () => {
     expect(res.body.articles[0].source_author_image_url).toBe('https://example.com/logo.jpg');
 
     // Cleanup
-    db.prepare('DELETE FROM quote_articles WHERE quote_id = ?').run(quote.id);
-    db.prepare('DELETE FROM quotes WHERE id = ?').run(quote.id);
-    db.prepare('DELETE FROM articles WHERE id = ?').run(article.id);
-    db.prepare('DELETE FROM persons WHERE id = ?').run(person.id);
-    db.prepare('DELETE FROM sources WHERE id = ?').run(source.id);
+    db.prepare('DELETE FROM quote_articles WHERE quote_id = ?').run(quoteId);
+    db.prepare('DELETE FROM quotes WHERE id = ?').run(quoteId);
+    db.prepare('DELETE FROM articles WHERE id = ?').run(articleId);
+    db.prepare('DELETE FROM persons WHERE id = ?').run(personId);
+    db.prepare('DELETE FROM sources WHERE id = ?').run(sourceId);
     db.prepare("DELETE FROM source_authors WHERE domain = 'detailtest.com'").run();
   });
 });

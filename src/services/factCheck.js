@@ -425,12 +425,13 @@ async function factCheckQuote(quoteData, options = {}) {
         db.prepare(`
           UPDATE quotes
           SET fact_check_verdict = ?, fact_check_claim = ?, fact_check_explanation = ?,
-              fact_check_html = ?, fact_check_references_json = ?
+              fact_check_html = ?, fact_check_references_json = ?, fact_check_category = ?
           WHERE id = ?
         `).run(
           verdict, claim, explanation,
           combinedHtml || null,
           referencesResult?.enriched ? JSON.stringify(referencesResult.enriched) : null,
+          factCheckResult.category || null,
           quoteId
         );
       } else if (combinedHtml || referencesResult?.enriched) {
@@ -467,7 +468,8 @@ async function runFactCheckPipeline(quoteData, quoteId) {
 
   if (result.category !== 'A') {
     const html = await renderHTML(result, quoteId);
-    return { category: result.category, classification: result, verdict: null, html };
+    const verdict = result.category === 'B' ? 'OPINION' : result.category === 'C' ? 'FRAGMENT' : null;
+    return { category: result.category, classification: result, verdict, html };
   }
 
   const html = await renderHTML(result, quoteId);

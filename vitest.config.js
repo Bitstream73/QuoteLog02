@@ -7,6 +7,7 @@ export default defineConfig({
     testTimeout: 10000,
     hookTimeout: 30000,
     fileParallelism: false,
+    exclude: ['tests/e2e/**', 'node_modules/**'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

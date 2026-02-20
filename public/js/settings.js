@@ -276,7 +276,7 @@ async function renderSettings() {
       <!-- Noteworthy Section -->
       <div class="settings-section" id="settings-section-noteworthy">
         <h2>Noteworthy</h2>
-        <p class="section-description">Manage items displayed in the Noteworthy section on the homepage. Add quotes, topics, articles, or categories that deserve special attention.</p>
+        <p class="section-description">Manage items displayed in the Noteworthy section on the homepage. Add quotes, topics, articles, categories, or authors that deserve special attention.</p>
 
         <div class="settings-subsection">
           <div class="subsection-header">
@@ -288,6 +288,7 @@ async function renderSettings() {
               <option value="topic">Topic</option>
               <option value="article">Article</option>
               <option value="category">Category</option>
+              <option value="person">Author</option>
             </select>
             <input type="text" id="noteworthy-search" class="input-text" placeholder="Search by name or ID..." style="flex:1">
             <button class="btn btn-primary btn-sm" onclick="noteworthySearch()">Search</button>
@@ -867,6 +868,7 @@ function renderNoteworthyRow(item) {
   const typeIcon = item.entity_type === 'quote' ? '\u201C\u201D'
     : item.entity_type === 'topic' ? '#'
     : item.entity_type === 'category' ? '\uD83D\uDDC2\uFE0F'
+    : item.entity_type === 'person' ? '\uD83D\uDC64'
     : '\uD83D\uDCF0';
   const label = item.entity_label || `${item.entity_type} #${item.entity_id}`;
   return `
@@ -930,6 +932,13 @@ async function noteworthySearch() {
         id: c.id,
         label: c.name,
         type: 'category'
+      }));
+    } else if (type === 'person') {
+      const data = await API.get('/search/unified?q=' + encodeURIComponent(query) + '&limit=10');
+      items = (data.persons || []).map(p => ({
+        id: p.id,
+        label: p.canonical_name,
+        type: 'person'
       }));
     }
 

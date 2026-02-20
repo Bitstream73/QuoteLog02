@@ -16,12 +16,16 @@ const VERDICT_COLORS = {
   FALSE: 'var(--error)', MOSTLY_FALSE: 'var(--error)',
   MISLEADING: 'var(--warning)', LACKS_CONTEXT: 'var(--warning)',
   UNVERIFIABLE: 'var(--info)',
+  OPINION: 'var(--text-muted)',
+  FRAGMENT: 'var(--text-muted)',
 };
 const VERDICT_LABELS = {
   TRUE: '\u2713 True', MOSTLY_TRUE: '\u2248 Mostly True',
   FALSE: '\u2717 False', MOSTLY_FALSE: '\u2248 Mostly False',
   MISLEADING: '\u26A0 Misleading', LACKS_CONTEXT: '\u26A0 Lacks Context',
   UNVERIFIABLE: '? Unverifiable',
+  OPINION: '\uD83D\uDCAC Opinion',
+  FRAGMENT: '\u2014 Fragment',
 };
 
 function buildVerdictBadgeHtml(quoteId, verdict) {
@@ -246,7 +250,7 @@ async function downloadShareImage(event, quoteId) {
   try {
     // Try native share with image on supported platforms (mobile)
     if (navigator.share && navigator.canShare) {
-      const res = await fetch(`/api/quotes/${quoteId}/share-image?format=portrait`);
+      const res = await fetch(`/api/quotes/${quoteId}/share-image?format=portrait&t=${Date.now()}`);
       if (!res.ok) throw new Error('Failed to fetch image');
       const blob = await res.blob();
       const file = new File([blob], `whattheysaid-quote-${quoteId}.jpg`, { type: 'image/jpeg' });
@@ -263,7 +267,7 @@ async function downloadShareImage(event, quoteId) {
     }
 
     // Fallback: download the image
-    const res = await fetch(`/api/quotes/${quoteId}/share-image?format=portrait`);
+    const res = await fetch(`/api/quotes/${quoteId}/share-image?format=portrait&t=${Date.now()}`);
     if (!res.ok) throw new Error('Failed to fetch image');
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
@@ -1001,12 +1005,40 @@ function toggleQuoteText(event, quoteId) {
 /**
  * Build the noteworthy section HTML (horizontal scroll on mobile, grid on desktop).
  */
+function buildMiniQuotesHtml(topQuotes) {
+  if (!topQuotes || topQuotes.length === 0) return '';
+  return `<div class="noteworthy-mini-quotes">${topQuotes.map(tq =>
+    `<div class="noteworthy-mini-quote" onclick="event.stopPropagation(); navigateTo('/quote/${tq.id}')">
+      <span class="noteworthy-mini-quote__text">${escapeHtml((tq.text || '').substring(0, 80))}${(tq.text || '').length > 80 ? '...' : ''}</span>
+      <span class="noteworthy-mini-quote__author">${escapeHtml(tq.person_name || '')}</span>
+    </div>`
+  ).join('')}</div>`;
+}
+
+function buildMiniArticlesHtml(topArticles) {
+  if (!topArticles || topArticles.length === 0) return '';
+  return `<div class="noteworthy-mini-quotes">${topArticles.map(a =>
+    `<div class="noteworthy-mini-quote" onclick="event.stopPropagation(); navigateTo('/article/${a.id}')">
+      <span class="noteworthy-mini-quote__text">${escapeHtml((a.title || '').substring(0, 80))}${(a.title || '').length > 80 ? '...' : ''}</span>
+    </div>`
+  ).join('')}</div>`;
+}
+
 function buildNoteworthySectionHtml(items) {
   let cardsHtml = '';
+  const singleClass = items.length === 1 ? ' noteworthy-section__scroll--single' : '';
+  const oddClass = items.length > 1 && items.length % 2 !== 0 ? ' noteworthy-section__scroll--odd' : '';
 
   for (const item of items) {
     if (item.entity_type === 'quote') {
-      // Quote card — use buildQuoteBlockHtml if available
+      // Quote card with verdict badge + always-visible Important button
+      const verdictHtml = (item.fact_check_verdict && typeof buildVerdictBadgeHtml === 'function')
+        ? `<div class="noteworthy-card__verdict">${buildVerdictBadgeHtml(item.entity_id, item.fact_check_verdict)}</div>`
+        : '';
+      const importantHtml = (typeof renderImportantButton === 'function')
+        ? `<div class="noteworthy-card__important">${renderImportantButton('quote', item.entity_id, item.importants_count || 0, false)}</div>`
+        : '';
+
       if (typeof buildQuoteBlockHtml === 'function') {
         const quoteData = {
           id: item.entity_id,
@@ -1015,34 +1047,49 @@ function buildNoteworthySectionHtml(items) {
           person_name: item.person_name || '',
           person_id: '',
           photo_url: item.photo_url || '',
-          importants_count: 0,
+          importants_count: item.importants_count || 0,
           quote_datetime: '',
           article_id: '',
           article_title: '',
           source_domain: '',
           source_name: '',
         };
-        cardsHtml += `<div class="noteworthy-card">${buildQuoteBlockHtml(quoteData, false, { variant: 'compact', showAvatar: true, showSummary: false })}</div>`;
+        cardsHtml += `<div class="noteworthy-card noteworthy-card--quote">${verdictHtml}${buildQuoteBlockHtml(quoteData, false, { variant: 'compact', showAvatar: true, showSummary: false })}${importantHtml}</div>`;
       } else {
         cardsHtml += `<div class="noteworthy-card noteworthy-card--quote" onclick="navigateTo('/quote/${item.entity_id}')">
+          ${verdictHtml}
           <p class="noteworthy-card__text">${escapeHtml((item.entity_label || '').substring(0, 120))}${(item.entity_label || '').length > 120 ? '...' : ''}</p>
           ${item.person_name ? `<span class="noteworthy-card__author">${escapeHtml(item.person_name)}</span>` : ''}
+          ${importantHtml}
         </div>`;
       }
     } else if (item.entity_type === 'article') {
       cardsHtml += `<div class="noteworthy-card noteworthy-card--article" onclick="navigateTo('/article/${item.entity_id}')">
         <span class="noteworthy-card__type">Source</span>
         <p class="noteworthy-card__title">${escapeHtml(item.entity_label || 'Untitled')}</p>
+        ${item.source_name ? `<span class="noteworthy-card__meta">${escapeHtml(item.source_name)}</span>` : ''}
+        ${buildMiniArticlesHtml(item.top_articles)}
       </div>`;
     } else if (item.entity_type === 'person') {
       cardsHtml += `<div class="noteworthy-card noteworthy-card--person" onclick="navigateTo('/author/${item.entity_id}')">
         <span class="noteworthy-card__type">Author</span>
+        ${item.photo_url ? `<img class="noteworthy-card__avatar" src="${escapeHtml(item.photo_url)}" alt="" onerror="this.style.display='none'">` : ''}
         <p class="noteworthy-card__title">${escapeHtml(item.entity_label || 'Unknown Author')}</p>
+        ${item.category_context ? `<span class="noteworthy-card__meta">${escapeHtml(item.category_context)}</span>` : ''}
+        ${buildMiniQuotesHtml(item.top_quotes)}
+      </div>`;
+    } else if (item.entity_type === 'topic') {
+      cardsHtml += `<div class="noteworthy-card noteworthy-card--topic" onclick="navigateTo('/topic/${item.slug || item.entity_id}')">
+        <span class="noteworthy-card__type">Topic</span>
+        <p class="noteworthy-card__title">${escapeHtml(item.entity_label || 'Unknown Topic')}</p>
+        ${item.description ? `<span class="noteworthy-card__meta">${escapeHtml((item.description || '').substring(0, 80))}</span>` : ''}
+        ${buildMiniQuotesHtml(item.top_quotes)}
       </div>`;
     } else if (item.entity_type === 'category') {
-      cardsHtml += `<div class="noteworthy-card noteworthy-card--category">
+      cardsHtml += `<div class="noteworthy-card noteworthy-card--category" onclick="navigateTo('/category/${item.slug || item.entity_id}')">
         <span class="noteworthy-card__type">Category</span>
         <p class="noteworthy-card__title">${escapeHtml(item.entity_label || 'Unknown Category')}</p>
+        ${buildMiniQuotesHtml(item.top_quotes)}
       </div>`;
     }
   }
@@ -1050,9 +1097,30 @@ function buildNoteworthySectionHtml(items) {
   return `
     <div class="noteworthy-section">
       <h2 class="noteworthy-section__heading">Noteworthy</h2>
-      <div class="noteworthy-section__scroll">
+      <div class="noteworthy-section__scroll${singleClass}${oddClass}">
         ${cardsHtml}
       </div>
+    </div>
+  `;
+}
+
+function buildTopAuthorsBarHtml(authors) {
+  if (!authors || authors.length === 0) return '';
+  const items = authors.map(a => {
+    const avatarHtml = a.photo_url
+      ? `<img class="top-author-bar__avatar" src="${escapeHtml(a.photo_url)}" alt="" onerror="this.style.display='none'">`
+      : `<div class="top-author-bar__avatar top-author-bar__avatar--placeholder">${escapeHtml((a.canonical_name || '?')[0])}</div>`;
+    return `<div class="top-author-bar__item" onclick="navigateTo('/author/${a.id}')">
+      ${avatarHtml}
+      <span class="top-author-bar__name">${escapeHtml(a.canonical_name || '')}</span>
+    </div>`;
+  }).join('');
+
+  return `
+    <div class="top-author-bar">
+      <span class="top-author-bar__label">Top Authors</span>
+      <div class="top-author-bar__list">${items}</div>
+      <a class="top-author-bar__see-more" href="/analytics" onclick="navigate(event, '/analytics')">See more</a>
     </div>
   `;
 }
@@ -1075,12 +1143,19 @@ async function renderHome() {
     return;
   }
 
-  // Fetch noteworthy items before rendering tabs
+  // Fetch noteworthy items + top authors in parallel
   let noteworthyHtml = '';
+  let topAuthorsHtml = '';
   try {
-    const nwData = await API.get('/search/noteworthy?limit=10');
+    const [nwData, taData] = await Promise.all([
+      API.get('/search/noteworthy?limit=10'),
+      API.get('/analytics/top-authors?limit=5').catch(() => ({ authors: [] })),
+    ]);
     if (nwData.items && nwData.items.length > 0) {
       noteworthyHtml = buildNoteworthySectionHtml(nwData.items);
+    }
+    if (taData.authors && taData.authors.length > 0) {
+      topAuthorsHtml = buildTopAuthorsBarHtml(taData.authors);
     }
   } catch { /* noteworthy section is optional */ }
 
@@ -1089,8 +1164,8 @@ async function renderHome() {
     updatePageMeta(null, 'Track what public figures say with AI-powered quote extraction from news sources.', '/');
   }
 
-  // Render noteworthy + tab bar with visually-hidden H1
-  content.innerHTML = '<h1 class="sr-only">WhatTheySaid.News - Accountability Through Quotes</h1>' + noteworthyHtml + buildTabBarHtml(_activeTab);
+  // Render noteworthy + top authors bar + tab bar with visually-hidden H1
+  content.innerHTML = '<h1 class="sr-only">WhatTheySaid.News - Accountability Through Quotes</h1>' + noteworthyHtml + topAuthorsHtml + buildTabBarHtml(_activeTab);
 
   // Render active tab content
   await renderTabContent(_activeTab);
@@ -1266,6 +1341,28 @@ function loadNewQuotes() {
   if (banner) banner.remove();
   _importantStatuses = {}; // Clear cache on refresh
   renderHome();
+}
+
+/**
+ * Handle Socket.IO fact_check_complete event — update verdict badges sitewide
+ */
+function handleFactCheckComplete(data) {
+  const { quoteId, verdict } = data;
+  if (!quoteId) return;
+
+  // Update all verdict badges for this quote on the page
+  document.querySelectorAll(`.quote-block[data-quote-id="${quoteId}"]`).forEach(block => {
+    const badge = block.querySelector('.wts-verdict-badge, .wts-verdict-badge--pending');
+    if (badge) {
+      const newHtml = buildVerdictBadgeHtml(quoteId, verdict);
+      const temp = document.createElement('div');
+      temp.innerHTML = newHtml;
+      badge.replaceWith(temp.firstElementChild);
+    }
+  });
+
+  // Clear sessionStorage fact-check cache for this quote
+  try { sessionStorage.removeItem(`fc:${quoteId}`); } catch {}
 }
 
 /**

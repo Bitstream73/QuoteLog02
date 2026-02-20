@@ -175,7 +175,6 @@ header {
   top: 0;
   z-index: 100;
   transition: transform 0.3s ease;
-  overflow: hidden;
 }
 
 @media (max-width: 768px) {
@@ -5683,6 +5682,7 @@ span.evidence-source-cite {
   border-radius: var(--radius);
   cursor: pointer;
   transition: border-color 0.15s, box-shadow 0.15s;
+  position: relative;
 }
 
 .noteworthy-card:hover {
@@ -5783,6 +5783,199 @@ span.evidence-source-cite {
   text-overflow: ellipsis;
   white-space: nowrap;
   margin-right: 0.5rem;
+}
+
+/* Single-item full-width noteworthy */
+.noteworthy-section__scroll--single .noteworthy-card {
+  flex: 1 1 100%;
+}
+
+/* Verdict badge positioning inside noteworthy cards */
+.noteworthy-card__verdict {
+  margin-bottom: 0.35rem;
+}
+
+.noteworthy-card__verdict .wts-verdict-badge {
+  font-size: 0.65rem;
+  padding: 0.15rem 0.4rem;
+}
+
+/* Important button inside noteworthy cards */
+.noteworthy-card__important {
+  margin-top: 0.35rem;
+  text-align: right;
+}
+
+.noteworthy-card__important .important-btn {
+  font-size: 0.7rem;
+  padding: 0.2rem 0.5rem;
+}
+
+/* Hide share buttons inside noteworthy cards */
+.noteworthy-card .share-btn-wrap,
+.noteworthy-card .share-image-btn {
+  display: none;
+}
+
+/* Noteworthy card avatar for person type */
+.noteworthy-card__avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  margin-bottom: 0.25rem;
+}
+
+/* Noteworthy card meta (subtitle/description) */
+.noteworthy-card__meta {
+  display: block;
+  font-family: var(--font-ui);
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-top: 0.15rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Mini-quote previews inside noteworthy cards */
+.noteworthy-mini-quotes {
+  margin-top: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.noteworthy-mini-quote {
+  padding-left: 0.5rem;
+  border-left: 2px solid var(--accent);
+  cursor: pointer;
+  transition: background 0.15s;
+  border-radius: 0 2px 2px 0;
+}
+
+.noteworthy-mini-quote:hover {
+  background: var(--bg-hover);
+}
+
+.noteworthy-mini-quote__text {
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  font-style: italic;
+  color: var(--text-primary);
+  display: block;
+  line-height: 1.3;
+}
+
+.noteworthy-mini-quote__author {
+  font-family: var(--font-ui);
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+/* Top Authors Bar */
+.top-author-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 0;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid var(--divider-light);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.top-author-bar__label {
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.top-author-bar__list {
+  display: flex;
+  gap: 0.75rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.top-author-bar__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.top-author-bar__item:hover .top-author-bar__name {
+  color: var(--accent);
+}
+
+.top-author-bar__avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--border);
+}
+
+.top-author-bar__avatar--placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-secondary);
+  font-family: var(--font-ui);
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.top-author-bar__name {
+  font-family: var(--font-ui);
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-align: center;
+  max-width: 64px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color 0.15s;
+}
+
+.top-author-bar__see-more {
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  color: var(--accent);
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.top-author-bar__see-more:hover {
+  text-decoration: underline;
+}
+
+@media (min-width: 768px) {
+  .noteworthy-section__scroll--single {
+    grid-template-columns: 1fr;
+  }
+  .noteworthy-section__scroll--odd .noteworthy-card:last-child {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Quote card flex layout for bottom-justified important button */
+.noteworthy-card--quote {
+  display: flex;
+  flex-direction: column;
+}
+.noteworthy-card--quote .noteworthy-card__important {
+  margin-top: auto;
 }
 
 /* ===================================

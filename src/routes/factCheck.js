@@ -10,7 +10,8 @@
 
 import express from 'express';
 import { factCheckQuote, classifyAndVerify, extractAndEnrichReferences } from '../services/factCheck.js';
-import { generateShareImage } from '../services/shareImage.js';
+import { generateShareImage, invalidateShareImageCache } from '../services/shareImage.js';
+import factCheckQueue from '../services/factCheckQueue.js';
 import { getDb } from '../config/database.js';
 import config from '../config/index.js';
 import logger from '../services/logger.js';
@@ -77,7 +78,8 @@ router.post('/check', async (req, res) => {
       }
     }
 
-    const result = await factCheckQuote(
+    const queueKey = quoteId ? `q:${quoteId}` : `t:${quoteText.substring(0, 100)}`;
+    const result = await factCheckQueue.enqueue(queueKey, () => factCheckQuote(
       {
         quoteText,
         authorName: authorName || 'Unknown',
@@ -92,17 +94,27 @@ router.post('/check', async (req, res) => {
         skipReferences: skipReferences || false,
         quoteId: quoteId || null,
       }
-    );
+    ));
 
     cache.set(cacheKey, { data: result, timestamp: Date.now() });
 
+    // Broadcast fact-check completion via Socket.IO
+    if (quoteId) {
+      const io = req.app.get('io');
+      if (io) {
+        io.emit('fact_check_complete', { quoteId, verdict: result.verdict || null, category: result.category || null });
+      }
+    }
+
     // Pre-generate share images (fire-and-forget) so they're cached for later
     if (quoteId) {
+      invalidateShareImageCache(quoteId);
       try {
         const db = getDb();
         const row = db.prepare(
           `SELECT q.id, q.text, q.context, q.fact_check_verdict, q.fact_check_claim, q.fact_check_explanation,
-                  p.canonical_name, p.disambiguation, p.photo_url, p.category AS person_category
+                  q.fact_check_category,
+                  p.canonical_name, p.disambiguation, p.photo_url
            FROM quotes q
            LEFT JOIN persons p ON q.person_id = p.id
            WHERE q.id = ?`
@@ -115,7 +127,7 @@ router.post('/check', async (req, res) => {
             authorName: row.canonical_name || 'Unknown',
             disambiguation: row.disambiguation || '',
             verdict: row.fact_check_verdict || null,
-            category: row.person_category || null,
+            category: row.fact_check_category || null,
             photoUrl: row.photo_url || null,
             claim: row.fact_check_claim || '',
             explanation: row.fact_check_explanation || '',

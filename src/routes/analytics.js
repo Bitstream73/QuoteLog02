@@ -384,4 +384,27 @@ router.get('/trending-authors', (req, res) => {
   }
 });
 
+// GET /api/analytics/top-authors?limit=5 — Top N authors by composite score
+router.get('/top-authors', (req, res) => {
+  try {
+    const db = getDb();
+    const limit = Math.min(parseInt(req.query.limit) || 5, 20);
+
+    const authors = db.prepare(`
+      SELECT p.id, p.canonical_name, p.photo_url, p.category, p.category_context,
+        p.importants_count, p.quote_count, p.share_count, p.view_count,
+        (p.importants_count + p.quote_count + p.share_count + p.view_count) as composite_score
+      FROM persons p
+      WHERE p.quote_count > 0
+      ORDER BY composite_score DESC, p.importants_count DESC
+      LIMIT ?
+    `).all(limit);
+
+    res.json({ authors });
+  } catch (err) {
+    console.error('Top authors error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

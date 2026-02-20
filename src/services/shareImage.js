@@ -114,6 +114,8 @@ function getVerdictColor(verdict) {
   if (v === 'FALSE' || v === 'MOSTLY_FALSE') return COLORS.verdictFalse;
   if (v === 'MISLEADING' || v === 'LACKS_CONTEXT') return COLORS.verdictMisleading;
   if (v === 'UNVERIFIABLE') return COLORS.verdictUnverifiable;
+  if (v === 'OPINION') return COLORS.verdictOpinion;
+  if (v === 'FRAGMENT') return COLORS.textMuted;
   return COLORS.textMuted;
 }
 
@@ -124,6 +126,8 @@ function getVerdictLabel(verdict) {
     FALSE: 'FALSE', MOSTLY_FALSE: 'MOSTLY FALSE',
     MISLEADING: 'MISLEADING', LACKS_CONTEXT: 'LACKS CONTEXT',
     UNVERIFIABLE: 'UNVERIFIABLE',
+    OPINION: 'OPINION / SUBJECTIVE',
+    FRAGMENT: 'UNVERIFIABLE',
   };
   return map[verdict.toUpperCase()] || verdict;
 }

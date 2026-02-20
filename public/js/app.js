@@ -88,6 +88,10 @@ function initSocket() {
       console.warn(`Source disabled: ${data.domain} - ${data.reason}`);
     });
 
+    socket.on('fact_check_complete', (data) => {
+      if (typeof handleFactCheckComplete === 'function') handleFactCheckComplete(data);
+    });
+
     socket.on('disconnect', () => {
       console.log('Socket disconnected');
     });
@@ -177,6 +181,9 @@ function route() {
   } else if (path.startsWith('/category/')) {
     const id = path.split('/')[2];
     renderCategory(id);
+  } else if (path.startsWith('/topic/')) {
+    const id = path.split('/')[2];
+    renderTopic(id);
   } else if (path === '/analytics') {
     renderAnalytics();
   } else if (path === '/admin') {

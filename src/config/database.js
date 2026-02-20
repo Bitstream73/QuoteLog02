@@ -940,6 +940,79 @@ function initializeTables(db) {
     db.exec('CREATE INDEX IF NOT EXISTS idx_noteworthy_active ON noteworthy_items(active, display_order)');
   }
 
+  // Migration: add 'person' to noteworthy_items entity_type CHECK constraint
+  const nwSchema2 = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='noteworthy_items'").get();
+  if (nwSchema2 && !nwSchema2.sql.includes("'person'")) {
+    db.exec(`
+      ALTER TABLE noteworthy_items RENAME TO noteworthy_items_old2;
+      CREATE TABLE noteworthy_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_type TEXT NOT NULL CHECK(entity_type IN ('quote', 'article', 'topic', 'category', 'person')),
+        entity_id INTEGER NOT NULL,
+        display_order INTEGER NOT NULL DEFAULT 0,
+        active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(entity_type, entity_id)
+      );
+      INSERT INTO noteworthy_items SELECT * FROM noteworthy_items_old2;
+      DROP TABLE noteworthy_items_old2;
+    `);
+    db.exec('CREATE INDEX IF NOT EXISTS idx_noteworthy_active ON noteworthy_items(active, display_order)');
+  }
+
+  // Migration: add 'category' to importants entity_type CHECK constraint
+  const impSchema = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='importants'").get();
+  if (impSchema && !impSchema.sql.includes("'category'")) {
+    db.exec(`
+      ALTER TABLE importants RENAME TO importants_old;
+      CREATE TABLE importants (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_type TEXT NOT NULL CHECK(entity_type IN ('quote', 'article', 'person', 'topic', 'category')),
+        entity_id INTEGER NOT NULL,
+        voter_hash TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(entity_type, entity_id, voter_hash)
+      );
+      INSERT INTO importants SELECT * FROM importants_old;
+      DROP TABLE importants_old;
+    `);
+    db.exec('CREATE INDEX IF NOT EXISTS idx_importants_entity ON importants(entity_type, entity_id)');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_importants_voter ON importants(voter_hash)');
+  }
+
+  // topics: engagement counters (importants_count, share_count, view_count, trending_score)
+  const topicCols2 = db.prepare("PRAGMA table_info(topics)").all().map(c => c.name);
+  if (!topicCols2.includes('importants_count')) {
+    db.exec(`ALTER TABLE topics ADD COLUMN importants_count INTEGER NOT NULL DEFAULT 0`);
+  }
+  if (!topicCols2.includes('share_count')) {
+    db.exec(`ALTER TABLE topics ADD COLUMN share_count INTEGER NOT NULL DEFAULT 0`);
+  }
+  if (!topicCols2.includes('view_count')) {
+    db.exec(`ALTER TABLE topics ADD COLUMN view_count INTEGER NOT NULL DEFAULT 0`);
+  }
+  if (!topicCols2.includes('trending_score')) {
+    db.exec(`ALTER TABLE topics ADD COLUMN trending_score REAL NOT NULL DEFAULT 0.0`);
+  }
+
+  // categories: engagement counters (importants_count, share_count, view_count, trending_score)
+  const catCols2 = db.prepare("PRAGMA table_info(categories)").all().map(c => c.name);
+  if (!catCols2.includes('importants_count')) {
+    db.exec(`ALTER TABLE categories ADD COLUMN importants_count INTEGER NOT NULL DEFAULT 0`);
+  }
+  if (!catCols2.includes('share_count')) {
+    db.exec(`ALTER TABLE categories ADD COLUMN share_count INTEGER NOT NULL DEFAULT 0`);
+  }
+  if (!catCols2.includes('view_count')) {
+    db.exec(`ALTER TABLE categories ADD COLUMN view_count INTEGER NOT NULL DEFAULT 0`);
+  }
+  if (!catCols2.includes('trending_score')) {
+    db.exec(`ALTER TABLE categories ADD COLUMN trending_score REAL NOT NULL DEFAULT 0.0`);
+  }
+
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_topics_trending ON topics(trending_score DESC) WHERE status = 'active'`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_categories_trending ON categories(trending_score DESC)`);
+
   // Back-propagation log — tracks historical quote extraction runs
   db.exec(`
     CREATE TABLE IF NOT EXISTS backprop_log (
@@ -1348,6 +1421,22 @@ The output should be ONLY the HTML fragment, no explanation.`,
     console.log(`[migration] Normalized ${badDates.length} non-ISO quote_datetime values`);
   }
 
+  // --- Backfill OPINION/FRAGMENT verdicts for existing Category B/C quotes ---
+  const opinionBackfill = db.prepare(
+    `SELECT COUNT(*) as count FROM quotes WHERE fact_check_html LIKE '%fc-widget--opinion%' AND fact_check_verdict IS NULL`
+  ).get();
+  if (opinionBackfill.count > 0) {
+    db.exec(`UPDATE quotes SET fact_check_verdict = 'OPINION' WHERE fact_check_html LIKE '%fc-widget--opinion%' AND fact_check_verdict IS NULL`);
+    console.log(`[migration] Backfilled ${opinionBackfill.count} OPINION verdicts`);
+  }
+  const fragmentBackfill = db.prepare(
+    `SELECT COUNT(*) as count FROM quotes WHERE fact_check_html LIKE '%fc-widget--fragment%' AND fact_check_verdict IS NULL`
+  ).get();
+  if (fragmentBackfill.count > 0) {
+    db.exec(`UPDATE quotes SET fact_check_verdict = 'FRAGMENT' WHERE fact_check_html LIKE '%fc-widget--fragment%' AND fact_check_verdict IS NULL`);
+    console.log(`[migration] Backfilled ${fragmentBackfill.count} FRAGMENT verdicts`);
+  }
+
 }
 
 export function closeDb() {
@@ -1408,6 +1497,21 @@ export function verifyDatabaseState() {
     if (seeded > 0) {
       console.log(`[startup] Seeded ${seeded} sources from sources-seed.json`);
     }
+  }
+
+  // Auto-link sources to source_authors (runs after seeding so freshly-seeded sources get linked)
+  const unlinkedSources = db.prepare('SELECT COUNT(*) as count FROM sources WHERE source_author_id IS NULL').get().count;
+  if (unlinkedSources > 0) {
+    const distinctDomains = db.prepare('SELECT DISTINCT domain FROM sources WHERE source_author_id IS NULL').all();
+    for (const { domain } of distinctDomains) {
+      const derivedName = domain.split('.')[0].charAt(0).toUpperCase() + domain.split('.')[0].slice(1);
+      db.prepare('INSERT OR IGNORE INTO source_authors (name, domain) VALUES (?, ?)').run(derivedName, domain);
+      const sa = db.prepare('SELECT id FROM source_authors WHERE domain = ?').get(domain);
+      if (sa) {
+        db.prepare('UPDATE sources SET source_author_id = ? WHERE domain = ? AND source_author_id IS NULL').run(sa.id, domain);
+      }
+    }
+    console.log(`[startup] Linked ${unlinkedSources} sources to source_authors`);
   }
 
   return counts;

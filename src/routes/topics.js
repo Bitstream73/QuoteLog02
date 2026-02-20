@@ -16,46 +16,45 @@ function isAdminRequest(req) {
   }
 }
 
-// GET /:idOrSlug — Category detail
+// GET /:idOrSlug — Topic detail
 router.get('/:idOrSlug', (req, res) => {
   const db = getDb();
   const { idOrSlug } = req.params;
 
-  let category;
+  let topic;
   if (/^\d+$/.test(idOrSlug)) {
-    category = db.prepare('SELECT id, name, slug, sort_order FROM categories WHERE id = ?').get(idOrSlug);
+    topic = db.prepare('SELECT id, name, slug, description, status FROM topics WHERE id = ?').get(idOrSlug);
   } else {
-    category = db.prepare('SELECT id, name, slug, sort_order FROM categories WHERE slug = ?').get(decodeURIComponent(idOrSlug));
+    topic = db.prepare('SELECT id, name, slug, description, status FROM topics WHERE slug = ?').get(decodeURIComponent(idOrSlug));
   }
 
-  if (!category) {
-    return res.status(404).json({ error: 'Category not found' });
+  if (!topic) {
+    return res.status(404).json({ error: 'Topic not found' });
   }
 
-  const topics = db.prepare(`
-    SELECT t.id, t.name
-    FROM topics t
-    JOIN category_topics ct ON ct.topic_id = t.id
-    WHERE ct.category_id = ?
-    ORDER BY t.name
-  `).all(category.id);
+  const categories = db.prepare(`
+    SELECT c.id, c.name, c.slug
+    FROM categories c
+    JOIN category_topics ct ON ct.category_id = c.id
+    WHERE ct.topic_id = ?
+    ORDER BY c.name
+  `).all(topic.id);
 
   const quoteCount = db.prepare(`
     SELECT COUNT(DISTINCT qt.quote_id) as count
-    FROM category_topics ct
-    JOIN quote_topics qt ON qt.topic_id = ct.topic_id
+    FROM quote_topics qt
     JOIN quotes q ON q.id = qt.quote_id
-    WHERE ct.category_id = ? AND q.canonical_quote_id IS NULL AND q.is_visible = 1
-  `).get(category.id).count;
+    WHERE qt.topic_id = ? AND q.canonical_quote_id IS NULL AND q.is_visible = 1
+  `).get(topic.id).count;
 
   res.json({
-    category: { id: category.id, name: category.name, slug: category.slug },
-    topics,
+    topic: { id: topic.id, name: topic.name, slug: topic.slug, description: topic.description },
+    categories,
     quoteCount,
   });
 });
 
-// GET /:idOrSlug/quotes?page=1&limit=50&sort=date|importance — Paginated quotes for category
+// GET /:idOrSlug/quotes?page=1&limit=50&sort=date|importance — Paginated quotes for topic
 router.get('/:idOrSlug/quotes', (req, res) => {
   const db = getDb();
   const { idOrSlug } = req.params;
@@ -64,15 +63,15 @@ router.get('/:idOrSlug/quotes', (req, res) => {
   const offset = (page - 1) * limit;
   const sort = req.query.sort || 'date';
 
-  let category;
+  let topic;
   if (/^\d+$/.test(idOrSlug)) {
-    category = db.prepare('SELECT id FROM categories WHERE id = ?').get(idOrSlug);
+    topic = db.prepare('SELECT id FROM topics WHERE id = ?').get(idOrSlug);
   } else {
-    category = db.prepare('SELECT id FROM categories WHERE slug = ?').get(decodeURIComponent(idOrSlug));
+    topic = db.prepare('SELECT id FROM topics WHERE slug = ?').get(decodeURIComponent(idOrSlug));
   }
 
-  if (!category) {
-    return res.status(404).json({ error: 'Category not found' });
+  if (!topic) {
+    return res.status(404).json({ error: 'Topic not found' });
   }
 
   const admin = isAdminRequest(req);
@@ -82,9 +81,29 @@ router.get('/:idOrSlug/quotes', (req, res) => {
     SELECT COUNT(DISTINCT q.id) as count
     FROM quotes q
     JOIN quote_topics qt ON qt.quote_id = q.id
-    JOIN category_topics ct ON ct.topic_id = qt.topic_id
-    WHERE ct.category_id = ? AND q.canonical_quote_id IS NULL ${visFilter}
-  `).get(category.id).count;
+    WHERE qt.topic_id = ? AND q.canonical_quote_id IS NULL ${visFilter}
+  `).get(topic.id).count;
+
+  const dateExpr = `COALESCE(
+    CASE WHEN q.quote_datetime GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]*'
+      THEN q.quote_datetime ELSE NULL END,
+    q.created_at)`;
+
+  let orderBy;
+  if (sort === 'importance') {
+    orderBy = `
+      CASE
+        WHEN q.importants_count > 0 AND ${dateExpr} >= datetime('now', '-1 day') THEN 1
+        WHEN q.importants_count > 0 AND ${dateExpr} >= datetime('now', '-7 days') THEN 2
+        WHEN q.importants_count > 0 AND ${dateExpr} >= datetime('now', '-30 days') THEN 3
+        WHEN q.importants_count > 0 THEN 4
+        ELSE 5
+      END ASC,
+      q.importants_count DESC,
+      ${dateExpr} DESC`;
+  } else {
+    orderBy = `${dateExpr} DESC`;
+  }
 
   const quotes = db.prepare(`
     SELECT q.id, q.text, q.context, q.quote_type, q.source_urls, q.created_at,
@@ -92,42 +111,18 @@ router.get('/:idOrSlug/quotes', (req, res) => {
            q.fact_check_verdict,
            p.id AS person_id, p.canonical_name AS person_name, p.photo_url, p.category_context,
            a.id AS article_id, a.title AS article_title, a.published_at AS article_published_at, a.url AS article_url,
-           s.domain AS primary_source_domain, s.name AS primary_source_name,
-           COALESCE((SELECT SUM(vote_value) FROM votes WHERE votes.quote_id = q.id), 0) as vote_score
+           s.domain AS primary_source_domain, s.name AS primary_source_name
     FROM quotes q
     JOIN persons p ON p.id = q.person_id
     JOIN quote_topics qt ON qt.quote_id = q.id
-    JOIN category_topics ct ON ct.topic_id = qt.topic_id
     LEFT JOIN quote_articles qa ON qa.quote_id = q.id
     LEFT JOIN articles a ON qa.article_id = a.id
     LEFT JOIN sources s ON a.source_id = s.id
-    WHERE ct.category_id = ? AND q.canonical_quote_id IS NULL ${visFilter}
+    WHERE qt.topic_id = ? AND q.canonical_quote_id IS NULL ${visFilter}
     GROUP BY q.id
-    ORDER BY ${sort === 'importance' ? `
-      CASE
-        WHEN q.importants_count > 0 AND COALESCE(
-          CASE WHEN q.quote_datetime GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]*'
-            THEN q.quote_datetime ELSE NULL END,
-          q.created_at) >= datetime('now', '-1 day') THEN 1
-        WHEN q.importants_count > 0 AND COALESCE(
-          CASE WHEN q.quote_datetime GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]*'
-            THEN q.quote_datetime ELSE NULL END,
-          q.created_at) >= datetime('now', '-7 days') THEN 2
-        WHEN q.importants_count > 0 AND COALESCE(
-          CASE WHEN q.quote_datetime GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]*'
-            THEN q.quote_datetime ELSE NULL END,
-          q.created_at) >= datetime('now', '-30 days') THEN 3
-        WHEN q.importants_count > 0 THEN 4
-        ELSE 5
-      END ASC,
-      q.importants_count DESC,
-    ` : ''}
-    COALESCE(
-      CASE WHEN q.quote_datetime GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]*'
-        THEN q.quote_datetime ELSE NULL END,
-      q.created_at) DESC
+    ORDER BY ${orderBy}
     LIMIT ? OFFSET ?
-  `).all(category.id, limit, offset);
+  `).all(topic.id, limit, offset);
 
   res.json({
     quotes: quotes.map(q => ({
@@ -146,7 +141,6 @@ router.get('/:idOrSlug/quotes', (req, res) => {
       articleUrl: q.article_url || null,
       primarySourceDomain: q.primary_source_domain || null,
       primarySourceName: q.primary_source_name || null,
-      voteScore: q.vote_score,
       factCheckVerdict: q.fact_check_verdict || null,
       personId: q.person_id,
       personName: q.person_name,

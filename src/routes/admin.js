@@ -329,6 +329,7 @@ router.get('/noteworthy', requireAdmin, (req, res) => {
           WHEN n.entity_type = 'article' THEN (SELECT a.title FROM articles a WHERE a.id = n.entity_id)
           WHEN n.entity_type = 'topic' THEN (SELECT t.name FROM topics t WHERE t.id = n.entity_id)
           WHEN n.entity_type = 'category' THEN (SELECT c.name FROM categories c WHERE c.id = n.entity_id)
+          WHEN n.entity_type = 'person' THEN (SELECT p.canonical_name FROM persons p WHERE p.id = n.entity_id)
         END as entity_label
       FROM noteworthy_items n
       WHERE n.active = 1
@@ -350,8 +351,8 @@ router.post('/noteworthy', requireAdmin, (req, res) => {
       return res.status(400).json({ error: 'entity_type and entity_id are required' });
     }
 
-    if (!['quote', 'article', 'topic', 'category'].includes(entity_type)) {
-      return res.status(400).json({ error: 'entity_type must be quote, article, topic, or category' });
+    if (!['quote', 'article', 'topic', 'category', 'person'].includes(entity_type)) {
+      return res.status(400).json({ error: 'entity_type must be quote, article, topic, category, or person' });
     }
 
     const result = db.prepare(`

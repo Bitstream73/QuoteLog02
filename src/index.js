@@ -39,6 +39,7 @@ import factCheckRouter from './routes/factCheck.js';
 import searchRouter from './routes/search.js';
 import bugReportsRouter from './routes/bugReports.js';
 import categoriesRouter from './routes/categories.js';
+import topicsRouter from './routes/topics.js';
 import sourceAuthorsRouter from './routes/sourceAuthors.js';
 import { loadFonts } from './services/shareImage.js';
 
@@ -302,6 +303,7 @@ export function createApp({ skipDbInit = false } = {}) {
   app.use('/api/search', searchRouter);
   app.use('/api/bug-reports', bugReportsRouter);
   app.use('/api/categories', categoriesRouter);
+  app.use('/api/topics', topicsRouter);
   app.use('/api/source-authors', sourceAuthorsRouter);
 
   // SPA fallback - serve index.html for all non-API routes
@@ -463,6 +465,48 @@ export function createApp({ skipDbInit = false } = {}) {
       } catch {
         // Fall through
       }
+    }
+
+    // Topic page
+    const topicMatch = req.path.match(/^\/topic\/(.+)$/);
+    if (topicMatch && isDbReady()) {
+      try {
+        const db = getDb();
+        const param = decodeURIComponent(topicMatch[1]);
+        const topic = /^\d+$/.test(param)
+          ? db.prepare('SELECT id, name, slug, description FROM topics WHERE id = ?').get(param)
+          : db.prepare('SELECT id, name, slug, description FROM topics WHERE slug = ?').get(param);
+        if (topic) {
+          const quoteCount = db.prepare('SELECT COUNT(DISTINCT qt.quote_id) as count FROM quote_topics qt JOIN quotes q ON q.id = qt.quote_id WHERE qt.topic_id = ? AND q.is_visible = 1 AND q.canonical_quote_id IS NULL').get(topic.id).count;
+          meta = {
+            title: `${escapeHtmlAttr(topic.name)} - Quotes | WhatTheySaid.News`,
+            description: [topic.description, `${quoteCount} quotes`].filter(Boolean).join(' | '),
+            url: `${baseUrl}/topic/${topic.slug || topic.id}`,
+            type: 'website',
+          };
+        }
+      } catch { /* Fall through */ }
+    }
+
+    // Category page
+    const categoryMatch = req.path.match(/^\/category\/(.+)$/);
+    if (categoryMatch && !meta && isDbReady()) {
+      try {
+        const db = getDb();
+        const param = decodeURIComponent(categoryMatch[1]);
+        const cat = /^\d+$/.test(param)
+          ? db.prepare('SELECT id, name, slug FROM categories WHERE id = ?').get(param)
+          : db.prepare('SELECT id, name, slug FROM categories WHERE slug = ?').get(param);
+        if (cat) {
+          const quoteCount = db.prepare('SELECT COUNT(DISTINCT qt.quote_id) as count FROM category_topics ct JOIN quote_topics qt ON qt.topic_id = ct.topic_id JOIN quotes q ON q.id = qt.quote_id WHERE ct.category_id = ? AND q.is_visible = 1 AND q.canonical_quote_id IS NULL').get(cat.id).count;
+          meta = {
+            title: `${escapeHtmlAttr(cat.name)} - Quotes | WhatTheySaid.News`,
+            description: `${quoteCount} quotes in the ${cat.name} category`,
+            url: `${baseUrl}/category/${cat.slug || cat.id}`,
+            type: 'website',
+          };
+        }
+      } catch { /* Fall through */ }
     }
 
     // Inject meta tags if we have them

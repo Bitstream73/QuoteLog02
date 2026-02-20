@@ -231,7 +231,7 @@ describe('Fact Check Service', () => {
       const result = await factCheck.factCheckQuote(sampleQuoteData);
 
       expect(result.category).toBe('B');
-      expect(result.verdict).toBeNull();
+      expect(result.verdict).toBe('OPINION');
       expect(result.html).toContain('Opinion');
     });
 
@@ -243,7 +243,7 @@ describe('Fact Check Service', () => {
       const result = await factCheck.factCheckQuote(sampleQuoteData);
 
       expect(result.category).toBe('C');
-      expect(result.verdict).toBeNull();
+      expect(result.verdict).toBe('FRAGMENT');
       expect(result.html).toContain('Unverifiable Fragment');
     });
 
