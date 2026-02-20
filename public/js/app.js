@@ -346,6 +346,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initSocket();
   updateHeaderHeight();
   route();
+  initDonateNag();
 });
 
 // Update header height on window resize
@@ -393,5 +394,6 @@ if (document.readyState !== 'loading') {
     initSocket();
     updateHeaderHeight();
     route();
+    initDonateNag();
   })();
 }

@@ -384,6 +384,105 @@ router.get('/trending-authors', (req, res) => {
   }
 });
 
+// GET /api/analytics/highlights?days=N - Importance + truth/falsehood highlights
+router.get('/highlights', (req, res) => {
+  try {
+    const db = getDb();
+    const days = parseInt(req.query.days) || 30;
+    const dateFilter = `-${days} days`;
+
+    // Top 3 quotes by importants_count
+    const topQuotes = db.prepare(`
+      SELECT q.id, q.text, q.context, q.quote_datetime, q.importants_count, q.share_count,
+        q.created_at, q.fact_check_verdict,
+        p.id as person_id, p.canonical_name as person_name, p.photo_url,
+        p.category_context
+      FROM quotes q
+      JOIN persons p ON p.id = q.person_id
+      WHERE q.is_visible = 1 AND q.canonical_quote_id IS NULL
+        AND q.created_at >= datetime('now', ?)
+        AND q.importants_count > 0
+      ORDER BY q.importants_count DESC
+      LIMIT 3
+    `).all(dateFilter);
+
+    // Top 3 authors by SUM(importants_count)
+    const topAuthors = db.prepare(`
+      SELECT p.id, p.canonical_name, p.photo_url, p.category, p.category_context,
+        SUM(q.importants_count) as total_importants
+      FROM persons p
+      JOIN quotes q ON q.person_id = p.id AND q.is_visible = 1 AND q.canonical_quote_id IS NULL
+      WHERE q.created_at >= datetime('now', ?)
+      GROUP BY p.id
+      HAVING total_importants > 0
+      ORDER BY total_importants DESC
+      LIMIT 3
+    `).all(dateFilter);
+
+    // Top 3 topics by SUM(importants_count)
+    const topTopics = db.prepare(`
+      SELECT t.id, t.name, t.slug, SUM(q.importants_count) as total_importants
+      FROM topics t
+      JOIN quote_topics qt ON qt.topic_id = t.id
+      JOIN quotes q ON q.id = qt.quote_id AND q.is_visible = 1 AND q.canonical_quote_id IS NULL
+      WHERE t.status = 'active'
+        AND q.created_at >= datetime('now', ?)
+      GROUP BY t.id
+      HAVING total_importants > 0
+      ORDER BY total_importants DESC
+      LIMIT 3
+    `).all(dateFilter);
+
+    // Truthful authors (TRUE/MOSTLY_TRUE)
+    const truthful = db.prepare(`
+      SELECT p.id, p.canonical_name, p.photo_url, p.category,
+        COUNT(q.id) as verdict_count
+      FROM persons p
+      JOIN quotes q ON q.person_id = p.id AND q.is_visible = 1 AND q.canonical_quote_id IS NULL
+      WHERE q.fact_check_verdict IN ('TRUE', 'MOSTLY_TRUE')
+        AND q.created_at >= datetime('now', ?)
+      GROUP BY p.id
+      ORDER BY verdict_count DESC
+      LIMIT 3
+    `).all(dateFilter);
+
+    // Misleading authors
+    const misleading = db.prepare(`
+      SELECT p.id, p.canonical_name, p.photo_url, p.category,
+        COUNT(q.id) as verdict_count
+      FROM persons p
+      JOIN quotes q ON q.person_id = p.id AND q.is_visible = 1 AND q.canonical_quote_id IS NULL
+      WHERE q.fact_check_verdict = 'MISLEADING'
+        AND q.created_at >= datetime('now', ?)
+      GROUP BY p.id
+      ORDER BY verdict_count DESC
+      LIMIT 3
+    `).all(dateFilter);
+
+    // False authors (FALSE/MOSTLY_FALSE)
+    const falseAuthors = db.prepare(`
+      SELECT p.id, p.canonical_name, p.photo_url, p.category,
+        COUNT(q.id) as verdict_count
+      FROM persons p
+      JOIN quotes q ON q.person_id = p.id AND q.is_visible = 1 AND q.canonical_quote_id IS NULL
+      WHERE q.fact_check_verdict IN ('FALSE', 'MOSTLY_FALSE')
+        AND q.created_at >= datetime('now', ?)
+      GROUP BY p.id
+      ORDER BY verdict_count DESC
+      LIMIT 3
+    `).all(dateFilter);
+
+    res.json({
+      period_days: days,
+      importance: { quotes: topQuotes, authors: topAuthors, topics: topTopics },
+      truth_falsehood: { truthful, misleading, false: falseAuthors },
+    });
+  } catch (err) {
+    console.error('Highlights error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // GET /api/analytics/top-authors?limit=5 — Top N authors by composite score
 router.get('/top-authors', (req, res) => {
   try {

@@ -14,6 +14,7 @@ async function renderAnalytics() {
         <h1>Analytics</h1>
         <div class="analytics-period">
           <select id="analytics-period" onchange="changeAnalyticsPeriod(this.value)">
+            <option value="1">Last 24 hours</option>
             <option value="7">Last 7 days</option>
             <option value="30" selected>Last 30 days</option>
             <option value="90">Last 90 days</option>
@@ -35,11 +36,12 @@ async function changeAnalyticsPeriod(days) {
 
 async function loadAnalytics() {
   try {
-    const [data, trendingData] = await Promise.all([
+    const [data, trendingData, highlightsData] = await Promise.all([
       API.get(`/analytics/overview?days=${_analyticsDays}`),
       API.get('/analytics/trending-quotes'),
+      API.get(`/analytics/highlights?days=${_analyticsDays}`),
     ]);
-    renderAnalyticsData(data, trendingData);
+    renderAnalyticsData(data, trendingData, highlightsData);
   } catch (err) {
     const content = document.querySelector('.analytics-page');
     if (content) {
@@ -51,7 +53,7 @@ async function loadAnalytics() {
   }
 }
 
-async function renderAnalyticsData(data, trendingData) {
+async function renderAnalyticsData(data, trendingData, highlightsData) {
   const page = document.querySelector('.analytics-page');
   if (!page) return;
 
@@ -63,6 +65,7 @@ async function renderAnalyticsData(data, trendingData) {
   page.querySelectorAll('.analytics-section').forEach(el => el.remove());
   page.querySelectorAll('.analytics-stats').forEach(el => el.remove());
   page.querySelectorAll('.analytics-qotd-section').forEach(el => el.remove());
+  page.querySelectorAll('.analytics-highlights-section').forEach(el => el.remove());
 
   // Build QotD/W/M section
   let qotdHtml = '';
@@ -100,8 +103,8 @@ async function renderAnalyticsData(data, trendingData) {
     }
   }
 
-  // Stats summary
-  const statsHtml = `
+  // Stats summary (admin-only)
+  const statsHtml = (typeof isAdmin !== 'undefined' && isAdmin) ? `
     <div class="analytics-stats">
       <div class="stat-card">
         <div class="stat-number">${data.total_quotes.toLocaleString()}</div>
@@ -112,7 +115,11 @@ async function renderAnalyticsData(data, trendingData) {
         <div class="stat-label">Authors</div>
       </div>
     </div>
-  `;
+  ` : '';
+
+  // Highlights sections
+  const importanceHtml = renderHighestImportanceHtml(highlightsData);
+  const truthHtml = renderTruthFalsehoodHtml(highlightsData);
 
   // Top Authors section
   const authorsHtml = `
@@ -134,7 +141,81 @@ async function renderAnalyticsData(data, trendingData) {
     </div>
   `;
 
-  page.insertAdjacentHTML('beforeend', qotdHtml + statsHtml + authorsHtml);
+  page.insertAdjacentHTML('beforeend', qotdHtml + statsHtml + importanceHtml + truthHtml + authorsHtml);
+}
+
+function renderHighestImportanceHtml(highlightsData) {
+  if (!highlightsData || !highlightsData.importance) return '';
+  const imp = highlightsData.importance;
+  if (!imp.quotes.length && !imp.authors.length && !imp.topics.length) return '';
+
+  const quotesCol = imp.quotes.length
+    ? imp.quotes.map(q => renderQuoteCard(q)).join('')
+    : '<p class="analytics-empty">No data for this period</p>';
+
+  const authorsCol = imp.authors.length
+    ? imp.authors.map(a => `
+        <a href="#" class="verdict-author-row" onclick="navigate(event, '/author/${a.id}')">
+          <img src="${a.photo_url || '/img/default-avatar.svg'}" alt="" class="author-thumb" onerror="this.src='/img/default-avatar.svg'">
+          <div class="author-info">
+            <span class="author-name">${escapeHtml(a.canonical_name)}</span>
+            <span class="author-category">${escapeHtml(a.category || 'Other')}</span>
+          </div>
+          <span class="verdict-count">${a.total_importants}</span>
+        </a>
+      `).join('')
+    : '<p class="analytics-empty">No data for this period</p>';
+
+  const topicsCol = imp.topics.length
+    ? imp.topics.map(t => `
+        <a href="#" class="highlights-topic-row" onclick="navigate(event, '/topic/${escapeAttr(t.slug)}')">
+          <span class="topic-name">${escapeHtml(t.name)}</span>
+          <span class="topic-importants">${t.total_importants}</span>
+        </a>
+      `).join('')
+    : '<p class="analytics-empty">No data for this period</p>';
+
+  return `
+    <div class="analytics-highlights-section">
+      <div class="trending-section-header"><hr class="topic-section-rule"><h2 class="trending-section-heading">HIGHEST IMPORTANCE</h2><hr class="topic-section-rule"></div>
+      <div class="analytics-highlights-grid">
+        <div class="highlights-column"><h3>Top Quotes</h3>${quotesCol}</div>
+        <div class="highlights-column"><h3>Top Authors</h3>${authorsCol}</div>
+        <div class="highlights-column"><h3>Top Topics</h3>${topicsCol}</div>
+      </div>
+    </div>
+  `;
+}
+
+function renderTruthFalsehoodHtml(highlightsData) {
+  if (!highlightsData || !highlightsData.truth_falsehood) return '';
+  const tf = highlightsData.truth_falsehood;
+  if (!tf.truthful.length && !tf.misleading.length && !tf.false.length) return '';
+
+  function verdictAuthorRows(authors, colorVar) {
+    if (!authors.length) return '<p class="analytics-empty">No data for this period</p>';
+    return authors.map(a => `
+      <a href="#" class="verdict-author-row" onclick="navigate(event, '/author/${a.id}')">
+        <img src="${a.photo_url || '/img/default-avatar.svg'}" alt="" class="author-thumb" onerror="this.src='/img/default-avatar.svg'">
+        <div class="author-info">
+          <span class="author-name">${escapeHtml(a.canonical_name)}</span>
+          <span class="author-category">${escapeHtml(a.category || 'Other')}</span>
+        </div>
+        <span class="verdict-count" style="color: var(${colorVar})">${a.verdict_count}</span>
+      </a>
+    `).join('');
+  }
+
+  return `
+    <div class="analytics-highlights-section">
+      <div class="trending-section-header"><hr class="topic-section-rule"><h2 class="trending-section-heading">HIGHEST TRUTH AND FALSEHOOD</h2><hr class="topic-section-rule"></div>
+      <div class="analytics-highlights-grid">
+        <div class="highlights-column"><h3>Most Truthful</h3>${verdictAuthorRows(tf.truthful, '--success')}</div>
+        <div class="highlights-column"><h3>Most Misleading</h3>${verdictAuthorRows(tf.misleading, '--warning')}</div>
+        <div class="highlights-column"><h3>Most False</h3>${verdictAuthorRows(tf.false, '--error')}</div>
+      </div>
+    </div>
+  `;
 }
 
 function renderQuoteCard(q) {
