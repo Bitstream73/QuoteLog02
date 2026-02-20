@@ -7,7 +7,7 @@ const _quoteTexts = {};
 const _quoteMeta = {};
 
 // Current active tab
-let _activeTab = 'trending-quotes';
+let _activeTab = 'trending-authors';
 
 // ======= Verdict Badge =======
 
@@ -626,10 +626,9 @@ async function renderTrendingAuthorsTab(container, sortBy) {
   }
   await fetchImportantStatuses(entityKeys);
 
-  let html = `<div class="tab-sort-controls">
-    Sort: <a class="sort-toggle-text ${_authorsSortBy === 'date' ? 'active' : ''}" onclick="switchAuthorsSort('date')">Date</a>
-    <span class="sort-toggle-divider">|</span>
-    <a class="sort-toggle-text ${_authorsSortBy === 'importance' ? 'active' : ''}" onclick="switchAuthorsSort('importance')">Importance</a>
+  let html = `<div class="trending-quotes__sort">
+    Sort by: <button class="sort-btn ${_authorsSortBy === 'date' ? 'active' : ''}" onclick="switchAuthorsSort('date')">Date</button>
+    <button class="sort-btn ${_authorsSortBy === 'importance' ? 'active' : ''}" onclick="switchAuthorsSort('importance')">Importance</button>
   </div>`;
 
   for (const author of authors) {
@@ -707,10 +706,9 @@ async function renderTrendingSourcesTab(container, sortBy) {
 
   await fetchImportantStatuses(articles.map(a => `article:${a.id}`));
 
-  let html = `<div class="tab-sort-controls">
-    Sort: <a class="sort-toggle-text ${_sourcesSortBy === 'date' ? 'active' : ''}" onclick="switchSourcesSort('date')">Date</a>
-    <span class="sort-toggle-divider">|</span>
-    <a class="sort-toggle-text ${_sourcesSortBy === 'importance' ? 'active' : ''}" onclick="switchSourcesSort('importance')">Importance</a>
+  let html = `<div class="trending-quotes__sort">
+    Sort by: <button class="sort-btn ${_sourcesSortBy === 'date' ? 'active' : ''}" onclick="switchSourcesSort('date')">Date</button>
+    <button class="sort-btn ${_sourcesSortBy === 'importance' ? 'active' : ''}" onclick="switchSourcesSort('importance')">Importance</button>
   </div>`;
   for (const article of articles) {
     const isImp = _importantStatuses[`article:${article.id}`] || false;
@@ -1298,50 +1296,6 @@ function clearSearch() {
 }
 
 // ======= Socket.IO Handlers =======
-
-/**
- * Handle new quotes from Socket.IO
- */
-function handleNewQuotes(quotes) {
-  if (window.location.pathname === '/' || window.location.pathname === '') {
-    _pendingNewQuotes += (quotes ? quotes.length : 0);
-    showNewQuotesBanner();
-  }
-}
-
-function showNewQuotesBanner() {
-  if (_pendingNewQuotes <= 0) return;
-
-  let banner = document.getElementById('new-quotes-banner');
-  if (!banner) {
-    banner = document.createElement('div');
-    banner.id = 'new-quotes-banner';
-    banner.className = 'new-quotes-snackbar';
-    const content = document.getElementById('content');
-    if (content && content.firstChild) {
-      content.insertBefore(banner, content.firstChild);
-    }
-  }
-
-  const label = _pendingNewQuotes === 1 ? '1 new quote' : `${_pendingNewQuotes} new quotes`;
-  banner.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> ${label}`;
-  banner.style.display = '';
-  banner.onclick = function() { loadNewQuotes(); };
-
-  // Auto-dismiss after 10 seconds
-  if (banner._autoDismiss) clearTimeout(banner._autoDismiss);
-  banner._autoDismiss = setTimeout(() => {
-    if (banner) banner.style.display = 'none';
-  }, 10000);
-}
-
-function loadNewQuotes() {
-  _pendingNewQuotes = 0;
-  const banner = document.getElementById('new-quotes-banner');
-  if (banner) banner.remove();
-  _importantStatuses = {}; // Clear cache on refresh
-  renderHome();
-}
 
 /**
  * Handle Socket.IO fact_check_complete event — update verdict badges sitewide
