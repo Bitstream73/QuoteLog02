@@ -3274,35 +3274,6 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   display: none !important;
 }
 
-/* New quotes notification snackbar */
-.new-quotes-snackbar {
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-  border: none;
-  border-left: 3px solid var(--accent);
-  font-family: var(--font-ui);
-  font-weight: 600;
-  font-size: var(--text-sm);
-  letter-spacing: 0.02em;
-  padding: 0.6rem 1rem;
-  margin-bottom: 1rem;
-  border-radius: var(--radius);
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  cursor: pointer;
-  animation: snackbar-slide-in 0.3s ease-out;
-}
-
-.new-quotes-snackbar:hover {
-  background: var(--bg-hover);
-}
-
-@keyframes snackbar-slide-in {
-  from { transform: translateY(-100%); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
-}
-
 /* Tab badge */
 .tab-badge {
   font-size: 0.6rem;

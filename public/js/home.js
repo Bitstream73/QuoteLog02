@@ -79,9 +79,6 @@ async function runInlineFactCheck(quoteId, btn) {
   }
 }
 
-// Pending new quotes count (for non-jarring updates)
-let _pendingNewQuotes = 0;
-
 // Important status cache (entity_type:entity_id -> boolean)
 let _importantStatuses = {};
 
@@ -1298,50 +1295,6 @@ function clearSearch() {
 }
 
 // ======= Socket.IO Handlers =======
-
-/**
- * Handle new quotes from Socket.IO
- */
-function handleNewQuotes(quotes) {
-  if (window.location.pathname === '/' || window.location.pathname === '') {
-    _pendingNewQuotes += (quotes ? quotes.length : 0);
-    showNewQuotesBanner();
-  }
-}
-
-function showNewQuotesBanner() {
-  if (_pendingNewQuotes <= 0) return;
-
-  let banner = document.getElementById('new-quotes-banner');
-  if (!banner) {
-    banner = document.createElement('div');
-    banner.id = 'new-quotes-banner';
-    banner.className = 'new-quotes-snackbar';
-    const content = document.getElementById('content');
-    if (content && content.firstChild) {
-      content.insertBefore(banner, content.firstChild);
-    }
-  }
-
-  const label = _pendingNewQuotes === 1 ? '1 new quote' : `${_pendingNewQuotes} new quotes`;
-  banner.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> ${label}`;
-  banner.style.display = '';
-  banner.onclick = function() { loadNewQuotes(); };
-
-  // Auto-dismiss after 10 seconds
-  if (banner._autoDismiss) clearTimeout(banner._autoDismiss);
-  banner._autoDismiss = setTimeout(() => {
-    if (banner) banner.style.display = 'none';
-  }, 10000);
-}
-
-function loadNewQuotes() {
-  _pendingNewQuotes = 0;
-  const banner = document.getElementById('new-quotes-banner');
-  if (banner) banner.remove();
-  _importantStatuses = {}; // Clear cache on refresh
-  renderHome();
-}
 
 /**
  * Handle Socket.IO fact_check_complete event — update verdict badges sitewide
