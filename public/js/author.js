@@ -126,9 +126,11 @@ async function renderAuthor(id) {
         html += buildAuthorQuoteHtml(quotesData.featuredQuote, a.name, a.categoryContext, a.id, a.photoUrl, { variant: 'featured' });
       }
 
-      // Quote list
+      // Quote list (skip featured quote to avoid duplicate)
+      const featuredId = quotesData.featuredQuote ? quotesData.featuredQuote.id : null;
       html += '<div id="author-quotes-list">';
       for (const q of quotesData.quotes) {
+        if (q.id === featuredId) continue;
         html += buildAuthorQuoteHtml(q, a.name, a.categoryContext, a.id, a.photoUrl);
       }
       html += '</div>';
