@@ -28,10 +28,13 @@ const VERDICT_LABELS = {
   FRAGMENT: '\u2014 Fragment',
 };
 
-function buildVerdictBadgeHtml(quoteId, verdict) {
+function buildVerdictBadgeHtml(quoteId, verdict, options = {}) {
   if (verdict && VERDICT_LABELS[verdict]) {
     const color = VERDICT_COLORS[verdict] || 'var(--text-muted)';
-    return `<span class="wts-verdict-badge" style="background:${color}" onclick="event.stopPropagation(); navigateTo('/quote/${quoteId}')">${VERDICT_LABELS[verdict]}</span>`;
+    const confidenceHtml = (options.confidence != null && options.confidence > 0)
+      ? `<span class="wts-verdict-badge__confidence">${Math.round(options.confidence * 100)}%</span>`
+      : '';
+    return `<span class="wts-verdict-badge" style="background:${color}" onclick="event.stopPropagation(); navigateTo('/quote/${quoteId}')">${VERDICT_LABELS[verdict]}${confidenceHtml}</span>`;
   }
   return `<button class="wts-verdict-badge wts-verdict-badge--pending" onclick="event.stopPropagation(); runInlineFactCheck(${quoteId}, this)">Run Fact Check</button>`;
 }
@@ -1028,7 +1031,7 @@ function buildNoteworthySectionHtml(items) {
     if (item.entity_type === 'quote') {
       // Quote card with verdict badge + always-visible Important button
       const verdictHtml = (item.fact_check_verdict && typeof buildVerdictBadgeHtml === 'function')
-        ? `<div class="noteworthy-card__verdict">${buildVerdictBadgeHtml(item.entity_id, item.fact_check_verdict)}</div>`
+        ? `<div class="noteworthy-card__verdict">${buildVerdictBadgeHtml(item.entity_id, item.fact_check_verdict, { confidence: item.fact_check_confidence })}</div>`
         : '';
       const importantHtml = (typeof renderImportantButton === 'function')
         ? `<div class="noteworthy-card__important">${renderImportantButton('quote', item.entity_id, item.importants_count || 0, false)}</div>`

@@ -6652,6 +6652,15 @@ span.evidence-source-cite {
   line-height: 1.4;
 }
 
+.wts-verdict-badge__confidence {
+  margin-left: 0.35rem;
+  padding-left: 0.35rem;
+  border-left: 1px solid rgba(255, 255, 255, 0.4);
+  font-weight: 500;
+  font-size: 0.85em;
+  opacity: 0.9;
+}
+
 .wts-verdict-badge--pending {
   background: var(--text-muted);
 }
