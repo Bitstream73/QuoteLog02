@@ -60,8 +60,13 @@ async function renderCategory(id) {
       </p>
 
       <div class="category-header">
-        <h1 class="page-title">${escapeHtml(cat.name)}</h1>
-        <p class="page-subtitle" style="border-bottom:none;padding-bottom:0;margin-bottom:0">${catData.quoteCount} quote${catData.quoteCount !== 1 ? 's' : ''}</p>
+        <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.25rem">
+          ${typeof buildCategoryImageHtml === 'function' ? buildCategoryImageHtml(cat.name, 'lg') : ''}
+          <div>
+            <h1 class="page-title" style="margin-bottom:0.15rem">${escapeHtml(cat.name)}</h1>
+            <p class="page-subtitle" style="border-bottom:none;padding-bottom:0;margin-bottom:0">${catData.quoteCount} quote${catData.quoteCount !== 1 ? 's' : ''}</p>
+          </div>
+        </div>
       </div>
     `;
 

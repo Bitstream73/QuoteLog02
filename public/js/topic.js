@@ -69,7 +69,7 @@ async function renderTopic(id) {
     if (categories.length > 0) {
       html += `<div class="category-topics" style="margin-bottom:1rem">
         <div class="category-topics-list">
-          ${categories.map(c => `<span class="category-topic-chip" onclick="navigateTo('/category/${c.slug || c.id}')" style="cursor:pointer">${escapeHtml(c.name)}</span>`).join('')}
+          ${categories.map(c => `<span class="category-topic-chip" onclick="navigateTo('/category/${c.slug || c.id}')" style="cursor:pointer;display:inline-flex;align-items:center;gap:0.3rem">${typeof buildCategoryImageHtml === 'function' ? buildCategoryImageHtml(c.name, 'xs') : ''}${escapeHtml(c.name)}</span>`).join('')}
         </div>
       </div>`;
     }

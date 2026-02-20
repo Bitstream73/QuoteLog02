@@ -6879,6 +6879,44 @@ span.evidence-source-cite {
 
 .bug-card-select { display: flex; align-items: center; }
 
+/* ===== Category Icons ===== */
+.category-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.category-icon--xs {
+  width: 24px;
+  height: 24px;
+  font-size: 0.85rem;
+  border-radius: 6px;
+}
+
+.category-icon--sm {
+  width: 32px;
+  height: 32px;
+  font-size: 1.1rem;
+  border-radius: 6px;
+}
+
+.category-icon--md {
+  width: 48px;
+  height: 48px;
+  font-size: 1.5rem;
+  border-radius: 8px;
+}
+
+.category-icon--lg {
+  width: 80px;
+  height: 80px;
+  font-size: 2.5rem;
+  border-radius: 12px;
+}
+
 /* ===== Category Search Pills ===== */
 .search-categories-section {
   display: flex;

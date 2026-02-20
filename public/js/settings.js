@@ -1881,9 +1881,12 @@ function renderCategoryRow(cat) {
   return `
     <details class="keyword-card" data-category-id="${cat.id}">
       <summary class="keyword-card__summary">
-        <div class="keyword-card__info">
-          <span class="keyword-card__name" id="category-name-${cat.id}">${escapeHtml(cat.name)}</span>
-          <span class="keyword-card__stats">${cat.topic_count || 0} topics &middot; Order: ${cat.sort_order ?? 0}</span>
+        <div class="keyword-card__info" style="display:flex;align-items:center;gap:0.5rem">
+          ${typeof buildCategoryImageHtml === 'function' ? buildCategoryImageHtml(cat.name, 'sm') : ''}
+          <div>
+            <span class="keyword-card__name" id="category-name-${cat.id}">${escapeHtml(cat.name)}</span>
+            <span class="keyword-card__stats">${cat.topic_count || 0} topics &middot; Order: ${cat.sort_order ?? 0}</span>
+          </div>
         </div>
         <div class="keyword-card__actions" onclick="event.stopPropagation()">
           <button class="btn btn-secondary btn-sm" onclick="categoryMoveUp(${cat.id})" title="Move up">&uarr;</button>

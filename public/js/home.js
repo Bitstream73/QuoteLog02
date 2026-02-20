@@ -148,6 +148,164 @@ function escapeHtml(str) {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+// ======= Category Icons =======
+
+const CATEGORY_ICON_MAP = {
+  // Politics & Government
+  'politics': { icon: '\uD83C\uDFDB\uFE0F', bg: '#4A90D9' },
+  'government': { icon: '\uD83C\uDFDB\uFE0F', bg: '#4A90D9' },
+  'elections': { icon: '\uD83D\uDDF3\uFE0F', bg: '#5B6ABF' },
+  'democracy': { icon: '\uD83D\uDDF3\uFE0F', bg: '#5B6ABF' },
+  'congress': { icon: '\uD83C\uDFDB\uFE0F', bg: '#4A7DC9' },
+  'legislation': { icon: '\uD83D\uDCDC', bg: '#4A7DC9' },
+  'law': { icon: '\u2696\uFE0F', bg: '#6B7BA8' },
+  'legal': { icon: '\u2696\uFE0F', bg: '#6B7BA8' },
+  'justice': { icon: '\u2696\uFE0F', bg: '#6B7BA8' },
+  'policy': { icon: '\uD83D\uDCCB', bg: '#5A6FA0' },
+  'diplomacy': { icon: '\uD83E\uDD1D', bg: '#4A90D9' },
+  'foreign policy': { icon: '\uD83C\uDF10', bg: '#4A90D9' },
+  'military': { icon: '\uD83C\uDF96\uFE0F', bg: '#5A6D50' },
+  'defense': { icon: '\uD83D\uDEE1\uFE0F', bg: '#5A6D50' },
+  'immigration': { icon: '\uD83D\uDEC2', bg: '#7B8BA0' },
+
+  // Economy & Business
+  'economy': { icon: '\uD83D\uDCB0', bg: '#2D8F5E' },
+  'economics': { icon: '\uD83D\uDCC8', bg: '#2D8F5E' },
+  'business': { icon: '\uD83D\uDCBC', bg: '#3D7A4F' },
+  'finance': { icon: '\uD83D\uDCB5', bg: '#2D8F5E' },
+  'trade': { icon: '\uD83D\uDEA2', bg: '#3D7A70' },
+  'markets': { icon: '\uD83D\uDCC9', bg: '#2D8F5E' },
+  'jobs': { icon: '\uD83D\uDC77', bg: '#5A8060' },
+  'labor': { icon: '\uD83D\uDC77', bg: '#5A8060' },
+  'taxes': { icon: '\uD83D\uDCB8', bg: '#4A8050' },
+  'wall street': { icon: '\uD83D\uDCC8', bg: '#2D8F5E' },
+  'cryptocurrency': { icon: '\u20BF', bg: '#F7931A' },
+  'crypto': { icon: '\u20BF', bg: '#F7931A' },
+  'real estate': { icon: '\uD83C\uDFE0', bg: '#8B6914' },
+  'housing': { icon: '\uD83C\uDFE0', bg: '#8B6914' },
+
+  // Technology
+  'technology': { icon: '\uD83D\uDCBB', bg: '#6C5CE7' },
+  'tech': { icon: '\uD83D\uDCBB', bg: '#6C5CE7' },
+  'ai': { icon: '\uD83E\uDD16', bg: '#7C5CE7' },
+  'artificial intelligence': { icon: '\uD83E\uDD16', bg: '#7C5CE7' },
+  'science': { icon: '\uD83D\uDD2C', bg: '#6C8CE7' },
+  'space': { icon: '\uD83D\uDE80', bg: '#2C3E7B' },
+  'cybersecurity': { icon: '\uD83D\uDD12', bg: '#5C5070' },
+  'social media': { icon: '\uD83D\uDCF1', bg: '#6C5CE7' },
+  'internet': { icon: '\uD83C\uDF10', bg: '#6C5CE7' },
+
+  // Health & Science
+  'health': { icon: '\uD83C\uDFE5', bg: '#E74C3C' },
+  'healthcare': { icon: '\uD83C\uDFE5', bg: '#E74C3C' },
+  'medicine': { icon: '\uD83D\uDC8A', bg: '#C0392B' },
+  'pandemic': { icon: '\uD83E\uDDA0', bg: '#B33939' },
+  'covid': { icon: '\uD83E\uDDA0', bg: '#B33939' },
+  'mental health': { icon: '\uD83E\uDDE0', bg: '#D35400' },
+  'drugs': { icon: '\uD83D\uDC8A', bg: '#C0392B' },
+
+  // Environment
+  'environment': { icon: '\uD83C\uDF0D', bg: '#27AE60' },
+  'climate': { icon: '\uD83C\uDF21\uFE0F', bg: '#16A085' },
+  'climate change': { icon: '\uD83C\uDF21\uFE0F', bg: '#16A085' },
+  'energy': { icon: '\u26A1', bg: '#F39C12' },
+  'weather': { icon: '\u26C5', bg: '#5DADE2' },
+  'nature': { icon: '\uD83C\uDF3F', bg: '#27AE60' },
+
+  // Education & Culture
+  'education': { icon: '\uD83C\uDF93', bg: '#8E44AD' },
+  'culture': { icon: '\uD83C\uDFA8', bg: '#9B59B6' },
+  'arts': { icon: '\uD83C\uDFA8', bg: '#9B59B6' },
+  'religion': { icon: '\uD83D\uDD4A\uFE0F', bg: '#7D6B91' },
+  'sports': { icon: '\u26BD', bg: '#E67E22' },
+  'entertainment': { icon: '\uD83C\uDFAC', bg: '#E74C8B' },
+  'media': { icon: '\uD83D\uDCFA', bg: '#9B59B6' },
+  'books': { icon: '\uD83D\uDCDA', bg: '#8E44AD' },
+  'music': { icon: '\uD83C\uDFB5', bg: '#E74C8B' },
+  'film': { icon: '\uD83C\uDFAC', bg: '#E74C8B' },
+  'movies': { icon: '\uD83C\uDFAC', bg: '#E74C8B' },
+  'television': { icon: '\uD83D\uDCFA', bg: '#9B59B6' },
+  'food': { icon: '\uD83C\uDF7D\uFE0F', bg: '#E67E22' },
+
+  // Social Issues
+  'social': { icon: '\uD83D\uDC65', bg: '#E67E22' },
+  'civil rights': { icon: '\u270A', bg: '#D35400' },
+  'human rights': { icon: '\u270A', bg: '#D35400' },
+  'equality': { icon: '\u270A', bg: '#D35400' },
+  'crime': { icon: '\uD83D\uDEA8', bg: '#C0392B' },
+  'safety': { icon: '\uD83D\uDEE1\uFE0F', bg: '#5A6D50' },
+  'gun control': { icon: '\uD83D\uDEAB', bg: '#C0392B' },
+  'guns': { icon: '\uD83D\uDEAB', bg: '#C0392B' },
+  'abortion': { icon: '\u2695\uFE0F', bg: '#8E44AD' },
+  'race': { icon: '\uD83E\uDD1D', bg: '#D35400' },
+  'gender': { icon: '\u2695\uFE0F', bg: '#8E44AD' },
+  'lgbtq': { icon: '\uD83C\uDFF3\uFE0F', bg: '#9B59B6' },
+  'poverty': { icon: '\uD83E\uDD32', bg: '#7D6B50' },
+  'homelessness': { icon: '\uD83C\uDFDA\uFE0F', bg: '#7D6B50' },
+
+  // International
+  'international': { icon: '\uD83C\uDF0E', bg: '#2980B9' },
+  'world': { icon: '\uD83C\uDF0D', bg: '#2980B9' },
+  'war': { icon: '\u2694\uFE0F', bg: '#7B241C' },
+  'conflict': { icon: '\u2694\uFE0F', bg: '#7B241C' },
+  'terrorism': { icon: '\uD83D\uDEA8', bg: '#7B241C' },
+  'middle east': { icon: '\uD83C\uDF0D', bg: '#C9963B' },
+  'europe': { icon: '\uD83C\uDF0D', bg: '#2980B9' },
+  'asia': { icon: '\uD83C\uDF0F', bg: '#2980B9' },
+  'africa': { icon: '\uD83C\uDF0D', bg: '#D4A017' },
+  'china': { icon: '\uD83C\uDF0F', bg: '#C0392B' },
+  'russia': { icon: '\uD83C\uDF0D', bg: '#4A6FA5' },
+  'ukraine': { icon: '\uD83C\uDF0D', bg: '#3B7DD8' },
+  'israel': { icon: '\uD83C\uDF0D', bg: '#3B7DD8' },
+  'gaza': { icon: '\uD83C\uDF0D', bg: '#C9963B' },
+
+  // Transportation
+  'transportation': { icon: '\uD83D\uDE8C', bg: '#5DADE2' },
+  'infrastructure': { icon: '\uD83C\uDF09', bg: '#5B7DAD' },
+  'aviation': { icon: '\u2708\uFE0F', bg: '#5DADE2' },
+
+  // Miscellaneous
+  'opinion': { icon: '\uD83D\uDCAC', bg: '#7F8C8D' },
+  'breaking': { icon: '\uD83D\uDEA8', bg: '#E74C3C' },
+  'scandal': { icon: '\uD83D\uDCA5', bg: '#C0392B' },
+  'investigation': { icon: '\uD83D\uDD0D', bg: '#7F8C8D' },
+  'corruption': { icon: '\uD83D\uDCA5', bg: '#C0392B' },
+  'misinformation': { icon: '\u26A0\uFE0F', bg: '#E67E22' },
+  'disinformation': { icon: '\u26A0\uFE0F', bg: '#E67E22' },
+  'conspiracy': { icon: '\uD83D\uDC41\uFE0F', bg: '#7F6C8D' },
+};
+
+// Fallback pastel colors for unmatched categories
+const CATEGORY_FALLBACK_COLORS = [
+  '#6C5CE7', '#E17055', '#00B894', '#FDCB6E', '#E84393',
+  '#0984E3', '#D63031', '#6AB04C', '#F9CA24', '#7C5295',
+];
+
+function getCategoryIcon(categoryName) {
+  if (!categoryName) return { icon: '\uD83D\uDCC1', bg: '#7F8C8D' };
+  const lower = categoryName.toLowerCase().trim();
+
+  // Exact match first
+  if (CATEGORY_ICON_MAP[lower]) return CATEGORY_ICON_MAP[lower];
+
+  // Partial keyword match
+  for (const [key, val] of Object.entries(CATEGORY_ICON_MAP)) {
+    if (lower.includes(key) || key.includes(lower)) return val;
+  }
+
+  // Deterministic fallback color based on name
+  let hash = 0;
+  for (let i = 0; i < lower.length; i++) hash = ((hash << 5) - hash + lower.charCodeAt(i)) | 0;
+  const bg = CATEGORY_FALLBACK_COLORS[Math.abs(hash) % CATEGORY_FALLBACK_COLORS.length];
+  return { icon: '\uD83D\uDCC1', bg };
+}
+
+function buildCategoryImageHtml(categoryName, size = 'sm') {
+  const { icon, bg } = getCategoryIcon(categoryName);
+  const cls = `category-icon category-icon--${size}`;
+  return `<span class="${cls}" style="background:${bg}" title="${escapeHtml(categoryName)}">${icon}</span>`;
+}
+
 // ======= Share Buttons =======
 
 /**
@@ -1086,6 +1244,7 @@ function buildNoteworthySectionHtml(items) {
     } else if (item.entity_type === 'category') {
       cardsHtml += `<div class="noteworthy-card noteworthy-card--category" onclick="navigateTo('/category/${item.slug || item.entity_id}')">
         <span class="noteworthy-card__type">Category</span>
+        ${buildCategoryImageHtml(item.entity_label || 'Unknown Category', 'md')}
         <p class="noteworthy-card__title">${escapeHtml(item.entity_label || 'Unknown Category')}</p>
         ${buildMiniQuotesHtml(item.top_quotes)}
       </div>`;
@@ -1210,6 +1369,7 @@ async function renderSearchResults(content, searchQuery) {
         html += `<div class="search-categories-section">`;
         for (const cat of data.categories) {
           html += `<div class="search-category-pill" onclick="navigateTo('/category/${cat.id}')">
+            ${buildCategoryImageHtml(cat.name, 'xs')}
             <span class="search-category-pill__name">${escapeHtml(cat.name)}</span>
             <span class="search-category-pill__count">${cat.quote_count || 0} quotes</span>
           </div>`;
