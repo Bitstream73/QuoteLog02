@@ -74,7 +74,7 @@ function injectMetaTags(htmlContent, meta, jsonLd) {
     <title>${esc(meta.title)}</title>${jsonLd ? `
     <script type="application/ld+json">${jsonLd}</script>` : ''}`;
 
-  return htmlContent.replace('<title>WhatTheySaid.News</title>', metaTags);
+  return htmlContent.replace('<title>TrueOrFalse.News</title>', metaTags);
 }
 
 export function createApp({ skipDbInit = false } = {}) {
@@ -237,7 +237,7 @@ export function createApp({ skipDbInit = false } = {}) {
     const baseUrl = `${proto}://${host}`;
     let html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf-8');
     const meta = {
-      title: 'WhatTheySaid.News - Accountability Through Quotes',
+      title: 'TrueOrFalse.News - What they said - Fact Checked',
       description: 'Track what public figures say with AI-powered quote extraction from news sources.',
       url: baseUrl + '/',
       type: 'website',
@@ -245,7 +245,7 @@ export function createApp({ skipDbInit = false } = {}) {
     const jsonLd = JSON.stringify({
       '@context': 'https://schema.org',
       '@type': 'WebSite',
-      name: 'WhatTheySaid.News',
+      name: 'TrueOrFalse.News',
       url: baseUrl + '/',
       potentialAction: {
         '@type': 'SearchAction',
@@ -339,7 +339,7 @@ export function createApp({ skipDbInit = false } = {}) {
     // Analytics
     if (req.path === '/analytics') {
       meta = {
-        title: 'Quote Analytics & Trends | WhatTheySaid.News',
+        title: 'Quote Analytics & Trends | TrueOrFalse.News',
         description: 'Explore trends in public statements, top quoted figures, and source analytics.',
         url: baseUrl + '/analytics',
         type: 'website',
@@ -409,7 +409,7 @@ export function createApp({ skipDbInit = false } = {}) {
             `${person.quote_count} quote${person.quote_count !== 1 ? 's' : ''} tracked`,
           ].filter(Boolean);
           meta = {
-            title: `${escapeHtmlAttr(person.canonical_name)} - Quotes & Statements | WhatTheySaid.News`,
+            title: `${escapeHtmlAttr(person.canonical_name)} - Quotes & Statements | TrueOrFalse.News`,
             description: descParts.join(' | '),
             url: `${baseUrl}/author/${person.id}`,
             image: person.photo_url || null,
@@ -449,7 +449,7 @@ export function createApp({ skipDbInit = false } = {}) {
             `${quoteCount} quote${quoteCount !== 1 ? 's' : ''} extracted`,
           ].filter(Boolean);
           meta = {
-            title: `${escapeHtmlAttr(article.title || 'Untitled')} | ${escapeHtmlAttr(sourceName)} - WhatTheySaid.News`,
+            title: `${escapeHtmlAttr(article.title || 'Untitled')} | ${escapeHtmlAttr(sourceName)} - TrueOrFalse.News`,
             description: descParts.join(' | '),
             url: `${baseUrl}/article/${article.id}`,
             type: 'article',
@@ -479,7 +479,7 @@ export function createApp({ skipDbInit = false } = {}) {
         if (topic) {
           const quoteCount = db.prepare('SELECT COUNT(DISTINCT qt.quote_id) as count FROM quote_topics qt JOIN quotes q ON q.id = qt.quote_id WHERE qt.topic_id = ? AND q.is_visible = 1 AND q.canonical_quote_id IS NULL').get(topic.id).count;
           meta = {
-            title: `${escapeHtmlAttr(topic.name)} - Quotes | WhatTheySaid.News`,
+            title: `${escapeHtmlAttr(topic.name)} - Quotes | TrueOrFalse.News`,
             description: [topic.description, `${quoteCount} quotes`].filter(Boolean).join(' | '),
             url: `${baseUrl}/topic/${topic.slug || topic.id}`,
             type: 'website',
@@ -500,7 +500,7 @@ export function createApp({ skipDbInit = false } = {}) {
         if (cat) {
           const quoteCount = db.prepare('SELECT COUNT(DISTINCT qt.quote_id) as count FROM category_topics ct JOIN quote_topics qt ON qt.topic_id = ct.topic_id JOIN quotes q ON q.id = qt.quote_id WHERE ct.category_id = ? AND q.is_visible = 1 AND q.canonical_quote_id IS NULL').get(cat.id).count;
           meta = {
-            title: `${escapeHtmlAttr(cat.name)} - Quotes | WhatTheySaid.News`,
+            title: `${escapeHtmlAttr(cat.name)} - Quotes | TrueOrFalse.News`,
             description: `${quoteCount} quotes in the ${cat.name} category`,
             url: `${baseUrl}/category/${cat.slug || cat.id}`,
             type: 'website',

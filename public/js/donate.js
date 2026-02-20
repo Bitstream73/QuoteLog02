@@ -41,7 +41,7 @@ function showDonateModal() {
       <button class="donate-modal-close" onclick="closeDonateModal()">&times;</button>
       <h3 class="donate-modal-title">This'll just take a sec!</h3>
       <p class="donate-modal-body">
-        WhatTheySaid.News is built and maintained by one person. No ads, no paywalls, no corporate sponsors.
+        TrueOrFalse.News is built and maintained by one person. No ads, no paywalls, no corporate sponsors.
         If you find value in what we do, a small donation helps keep the lights on and the quotes flowing.
       </p>
       <a href="${DONATE_URL}" target="_blank" rel="noopener" class="btn btn-primary donate-modal-btn" onclick="closeDonateModal()">

@@ -110,7 +110,7 @@ describe('Phase 3: Server-side meta tags', () => {
     const res = await request(app).get('/');
     expect(res.status).toBe(200);
     expect(res.text).toContain('og:title');
-    expect(res.text).toContain('WhatTheySaid.News');
+    expect(res.text).toContain('TrueOrFalse.News');
     expect(res.text).toContain('rel="canonical"');
   });
 
@@ -152,13 +152,13 @@ describe('Phase 3: Server-side meta tags', () => {
   it('non-existent quote should serve default HTML without crash', async () => {
     const res = await request(app).get('/quote/999999999');
     expect(res.status).toBe(200);
-    expect(res.text).toContain('WhatTheySaid.News');
+    expect(res.text).toContain('TrueOrFalse.News');
   });
 
   it('non-existent author should serve default HTML without crash', async () => {
     const res = await request(app).get('/author/999999999');
     expect(res.status).toBe(200);
-    expect(res.text).toContain('WhatTheySaid.News');
+    expect(res.text).toContain('TrueOrFalse.News');
   });
 });
 
@@ -177,7 +177,7 @@ describe('Phase 5: Author URL deduplication', () => {
     const res = await request(app).get('/author/999999999');
     expect(res.status).toBe(200);
     // Should be regular HTML (not a redirect)
-    expect(res.text).toContain('WhatTheySaid.News');
+    expect(res.text).toContain('TrueOrFalse.News');
   });
 
   it('API should 301 redirect name-based author lookup', async () => {

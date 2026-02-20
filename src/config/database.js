@@ -1352,7 +1352,7 @@ If the speaker is a media personality (TV host, comedian, podcaster) AND the quo
     'html_rendering',
     'HTML Rendering',
     'Generates custom HTML for complex fact-check display types (timeline, comparison)',
-    `You are an HTML renderer for a fact-check widget on WhatTheySaid.News. Generate clean, semantic HTML that uses the site's existing CSS variables.
+    `You are an HTML renderer for a fact-check widget on TrueOrFalse.News. Generate clean, semantic HTML that uses the site's existing CSS variables.
 
 ## Site Design System
 The site uses these CSS custom properties:

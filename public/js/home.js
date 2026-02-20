@@ -208,11 +208,11 @@ async function shareEntity(event, entityType, entityId, platform) {
       window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`, '_blank');
       break;
     case 'email': {
-      const subject = encodeURIComponent(`Quote from ${authorName} - WhatTheySaid.News`);
+      const subject = encodeURIComponent(`Quote from ${authorName} - TrueOrFalse.News`);
       const imageUrl = entityType === 'quote' ? `${window.location.origin}/api/quotes/${entityId}/share-image?orientation=landscape` : '';
       const bodyParts = [fullText, '', `Read more: ${url}`];
       if (imageUrl) bodyParts.push(`View quote image: ${imageUrl}`);
-      bodyParts.push('', '---', 'Shared from WhatTheySaid.News');
+      bodyParts.push('', '---', 'Shared from TrueOrFalse.News');
       const body = encodeURIComponent(bodyParts.join('\n'));
       window.location.href = `mailto:?subject=${subject}&body=${body}`;
       break;
@@ -250,12 +250,12 @@ async function downloadShareImage(event, quoteId) {
       const res = await fetch(`/api/quotes/${quoteId}/share-image?format=portrait&t=${Date.now()}`);
       if (!res.ok) throw new Error('Failed to fetch image');
       const blob = await res.blob();
-      const file = new File([blob], `whattheysaid-quote-${quoteId}.jpg`, { type: 'image/jpeg' });
+      const file = new File([blob], `trueorfalse-quote-${quoteId}.jpg`, { type: 'image/jpeg' });
 
       if (navigator.canShare({ files: [file] })) {
         await navigator.share({
           files: [file],
-          title: 'Quote from WhatTheySaid.News',
+          title: 'Quote from TrueOrFalse.News',
           url: window.location.origin + '/quote/' + quoteId,
         });
         btn.classList.remove('share-btn--loading');
@@ -270,7 +270,7 @@ async function downloadShareImage(event, quoteId) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `whattheysaid-quote-${quoteId}.jpg`;
+    a.download = `trueorfalse-quote-${quoteId}.jpg`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -1160,7 +1160,7 @@ async function renderHome() {
   }
 
   // Render noteworthy + top authors bar + tab bar with visually-hidden H1
-  content.innerHTML = '<h1 class="sr-only">WhatTheySaid.News - Accountability Through Quotes</h1>' + noteworthyHtml + topAuthorsHtml + buildTabBarHtml(_activeTab);
+  content.innerHTML = '<h1 class="sr-only">TrueOrFalse.News - What they said - Fact Checked</h1>' + noteworthyHtml + topAuthorsHtml + buildTabBarHtml(_activeTab);
 
   // Render active tab content
   await renderTabContent(_activeTab);

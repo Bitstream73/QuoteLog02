@@ -25,7 +25,7 @@ window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e)
 
 // Update page metadata for SPA navigation
 function updatePageMeta(title, description, canonicalPath) {
-  document.title = title ? title + ' | WhatTheySaid.News' : 'WhatTheySaid.News';
+  document.title = title ? title + ' | TrueOrFalse.News' : 'TrueOrFalse.News';
   const descMeta = document.querySelector('meta[name="description"]');
   if (descMeta && description) descMeta.setAttribute('content', description);
   let canonical = document.querySelector('link[rel="canonical"]');
