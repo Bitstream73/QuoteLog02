@@ -367,10 +367,11 @@ function buildQuoteBlockHtml(q, isImportant, options = {}) {
 
   const variantClass = variant !== 'default' ? ' quote-block--' + variant : '';
   const verdict = q.fact_check_verdict || q.factCheckVerdict || null;
+  const confidence = q.fact_check_confidence || q.factCheckConfidence || null;
 
   return `
     <div class="quote-block${variantClass}" data-quote-id="${q.id}" data-track-type="quote" data-track-id="${q.id}" data-created-at="${quoteDateTime || q.created_at || ''}" data-importance="${(importantsCount + shareCount + viewCount) || 0}" data-share-view="${(shareCount + viewCount) || 0}">
-      ${buildVerdictBadgeHtml(q.id, verdict)}
+      ${buildVerdictBadgeHtml(q.id, verdict, { confidence })}
       <div class="quote-block__text" onclick="navigateTo('/quote/${q.id}')">
         <span class="quote-mark quote-mark--open">\u201C</span>${escapeHtml(truncatedText)}${isLong ? `<a href="#" class="show-more-toggle" onclick="toggleQuoteText(event, ${q.id})">show more</a>` : ''}<span class="quote-mark quote-mark--close">\u201D</span>
       </div>
@@ -1030,9 +1031,6 @@ function buildNoteworthySectionHtml(items) {
   for (const item of items) {
     if (item.entity_type === 'quote') {
       // Quote card with verdict badge + always-visible Important button
-      const verdictHtml = (item.fact_check_verdict && typeof buildVerdictBadgeHtml === 'function')
-        ? `<div class="noteworthy-card__verdict">${buildVerdictBadgeHtml(item.entity_id, item.fact_check_verdict, { confidence: item.fact_check_confidence })}</div>`
-        : '';
       const importantHtml = (typeof renderImportantButton === 'function')
         ? `<div class="noteworthy-card__important">${renderImportantButton('quote', item.entity_id, item.importants_count || 0, false)}</div>`
         : '';
@@ -1046,16 +1044,21 @@ function buildNoteworthySectionHtml(items) {
           person_id: '',
           photo_url: item.photo_url || '',
           importants_count: item.importants_count || 0,
+          fact_check_verdict: item.fact_check_verdict || null,
+          fact_check_confidence: item.fact_check_confidence || null,
           quote_datetime: '',
           article_id: '',
           article_title: '',
           source_domain: '',
           source_name: '',
         };
-        cardsHtml += `<div class="noteworthy-card noteworthy-card--quote">${verdictHtml}${buildQuoteBlockHtml(quoteData, false, { variant: 'compact', showAvatar: true, showSummary: false })}${importantHtml}</div>`;
+        cardsHtml += `<div class="noteworthy-card noteworthy-card--quote">${buildQuoteBlockHtml(quoteData, false, { variant: 'compact', showAvatar: true, showSummary: false })}${importantHtml}</div>`;
       } else {
+        const fallbackVerdictHtml = (item.fact_check_verdict && typeof buildVerdictBadgeHtml === 'function')
+          ? `<div class="noteworthy-card__verdict">${buildVerdictBadgeHtml(item.entity_id, item.fact_check_verdict, { confidence: item.fact_check_confidence })}</div>`
+          : '';
         cardsHtml += `<div class="noteworthy-card noteworthy-card--quote" onclick="navigateTo('/quote/${item.entity_id}')">
-          ${verdictHtml}
+          ${fallbackVerdictHtml}
           <p class="noteworthy-card__text">${escapeHtml((item.entity_label || '').substring(0, 120))}${(item.entity_label || '').length > 120 ? '...' : ''}</p>
           ${item.person_name ? `<span class="noteworthy-card__author">${escapeHtml(item.person_name)}</span>` : ''}
           ${importantHtml}
