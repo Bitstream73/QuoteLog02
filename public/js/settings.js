@@ -235,9 +235,11 @@ async function renderSettings() {
               ${sourceAuthors.length === 0 ? '<p class="empty-message">No source authors yet. They are created automatically when sources are added.</p>'
                 : sourceAuthors.map(sa => {
                   const initial = (sa.name || '?').charAt(0).toUpperCase();
+                  const fallbackSpan = '<span style="width:32px;height:32px;border-radius:4px;background:var(--bg-secondary);display:inline-flex;align-items:center;justify-content:center;font-size:0.9rem;border:1px solid var(--border)">' + initial + '</span>';
                   const imgHtml = sa.image_url
-                    ? '<img src="' + escapeHtml(sa.image_url) + '" alt="' + escapeHtml(sa.name) + '" style="width:32px;height:32px;border-radius:4px;object-fit:cover" onerror="this.outerHTML=\\'<span style=&quot;width:32px;height:32px;border-radius:4px;background:var(--bg-secondary);display:inline-flex;align-items:center;justify-content:center;font-size:0.9rem;border:1px solid var(--border)&quot;>' + initial + '</span>\\'">'
-                    : '<span style="width:32px;height:32px;border-radius:4px;background:var(--bg-secondary);display:inline-flex;align-items:center;justify-content:center;font-size:0.9rem;border:1px solid var(--border)">' + initial + '</span>';
+                    ? '<img src="' + escapeHtml(sa.image_url) + '" alt="' + escapeHtml(sa.name) + '" style="width:32px;height:32px;border-radius:4px;object-fit:cover" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'inline-flex\'">'
+                      + '<span style="width:32px;height:32px;border-radius:4px;background:var(--bg-secondary);display:none;align-items:center;justify-content:center;font-size:0.9rem;border:1px solid var(--border)">' + initial + '</span>'
+                    : fallbackSpan;
                   return '<div style="display:flex;align-items:center;gap:0.75rem;padding:0.5rem 0;border-bottom:1px solid var(--border)">'
                     + imgHtml
                     + '<div style="flex:1;min-width:0">'
@@ -245,8 +247,8 @@ async function renderSettings() {
                     + '<span style="font-size:0.8rem;color:var(--text-muted);margin-left:0.5rem">' + escapeHtml(sa.domain) + '</span>'
                     + (sa.source_count ? '<span style="font-size:0.75rem;color:var(--text-muted);margin-left:0.5rem">(' + sa.source_count + ' feeds)</span>' : '')
                     + '</div>'
-                    + '<button class="btn btn-sm" onclick="adminChangeSourceAuthorImage(' + sa.id + ', \\'' + escapeHtml(sa.name.replace(/'/g, "\\\\'")) + '\\', function(){ renderSettings(); })">Image</button>'
-                    + '<button class="btn btn-sm" onclick="editSourceAuthorName(' + sa.id + ', \\'' + escapeHtml(sa.name.replace(/'/g, "\\\\'")) + '\\')">Edit</button>'
+                    + '<button class="btn btn-sm" onclick="adminChangeSourceAuthorImage(' + sa.id + ', \'' + escapeHtml(sa.name.replace(/'/g, "\\'")) + '\', function(){ renderSettings(); })">Image</button>'
+                    + '<button class="btn btn-sm" onclick="editSourceAuthorName(' + sa.id + ', \'' + escapeHtml(sa.name.replace(/'/g, "\\'")) + '\')">Edit</button>'
                     + '</div>';
                 }).join('')}
             </div>
