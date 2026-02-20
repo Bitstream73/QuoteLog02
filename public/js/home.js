@@ -7,7 +7,7 @@ const _quoteTexts = {};
 const _quoteMeta = {};
 
 // Current active tab
-let _activeTab = 'trending-quotes';
+let _activeTab = 'trending-authors';
 
 // ======= Verdict Badge =======
 
@@ -623,10 +623,9 @@ async function renderTrendingAuthorsTab(container, sortBy) {
   }
   await fetchImportantStatuses(entityKeys);
 
-  let html = `<div class="tab-sort-controls">
-    Sort: <a class="sort-toggle-text ${_authorsSortBy === 'date' ? 'active' : ''}" onclick="switchAuthorsSort('date')">Date</a>
-    <span class="sort-toggle-divider">|</span>
-    <a class="sort-toggle-text ${_authorsSortBy === 'importance' ? 'active' : ''}" onclick="switchAuthorsSort('importance')">Importance</a>
+  let html = `<div class="trending-quotes__sort">
+    Sort by: <button class="sort-btn ${_authorsSortBy === 'date' ? 'active' : ''}" onclick="switchAuthorsSort('date')">Date</button>
+    <button class="sort-btn ${_authorsSortBy === 'importance' ? 'active' : ''}" onclick="switchAuthorsSort('importance')">Importance</button>
   </div>`;
 
   for (const author of authors) {
@@ -704,10 +703,9 @@ async function renderTrendingSourcesTab(container, sortBy) {
 
   await fetchImportantStatuses(articles.map(a => `article:${a.id}`));
 
-  let html = `<div class="tab-sort-controls">
-    Sort: <a class="sort-toggle-text ${_sourcesSortBy === 'date' ? 'active' : ''}" onclick="switchSourcesSort('date')">Date</a>
-    <span class="sort-toggle-divider">|</span>
-    <a class="sort-toggle-text ${_sourcesSortBy === 'importance' ? 'active' : ''}" onclick="switchSourcesSort('importance')">Importance</a>
+  let html = `<div class="trending-quotes__sort">
+    Sort by: <button class="sort-btn ${_sourcesSortBy === 'date' ? 'active' : ''}" onclick="switchSourcesSort('date')">Date</button>
+    <button class="sort-btn ${_sourcesSortBy === 'importance' ? 'active' : ''}" onclick="switchSourcesSort('importance')">Importance</button>
   </div>`;
   for (const article of articles) {
     const isImp = _importantStatuses[`article:${article.id}`] || false;
