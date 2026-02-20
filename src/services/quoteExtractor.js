@@ -232,6 +232,25 @@ export async function extractQuotesFromArticle(articleText, article, db, io) {
         }
       }
 
+      // Check ingest filter — skip quotes from excluded categories
+      const excludedCategories = JSON.parse(getSettingValue('ingest_filter_excluded_categories', '[]'));
+      if (excludedCategories.length > 0) {
+        // Use extraction-provided category first; fall back to DB
+        let personCategory = q.speaker_category;
+        if (!personCategory) {
+          const personRow = db.prepare('SELECT category FROM persons WHERE id = ?').get(personId);
+          personCategory = personRow?.category || 'Other';
+        }
+        if (excludedCategories.includes(personCategory)) {
+          logger.info('extractor', 'quote_filtered_by_category', {
+            speaker: q.speaker,
+            category: personCategory,
+            quote: q.quote_text.substring(0, 50),
+          });
+          continue;
+        }
+      }
+
       // Fire-and-forget headshot fetch
       fetchAndStoreHeadshot(personId, q.speaker).catch(() => {});
 

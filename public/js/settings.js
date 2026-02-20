@@ -103,6 +103,28 @@ async function renderSettings() {
         </div>
       </div>
 
+      <!-- Ingest Filters Section -->
+      <div class="settings-section">
+        <h2>Ingest Filters</h2>
+        <p class="section-description">Toggle author categories on/off. Quotes from authors in disabled categories will be silently discarded during ingestion.</p>
+        ${(() => {
+          const allCategories = ['Politician','Government Official','Business Leader','Entertainer','Athlete','Pundit','Journalist','Scientist/Academic','Legal/Judicial','Military/Defense','Activist/Advocate','Religious Leader','Other'];
+          const excluded = (() => { try { return JSON.parse(settings.ingest_filter_excluded_categories || '[]'); } catch { return []; } })();
+          return allCategories.map(cat => `
+            <div class="setting-row" style="align-items:center">
+              <label>
+                <span class="setting-label">${cat}</span>
+              </label>
+              <label class="toggle">
+                <input type="checkbox" ${!excluded.includes(cat) ? 'checked' : ''}
+                       onchange="toggleIngestCategory('${cat}', this.checked)">
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          `).join('');
+        })()}
+      </div>
+
       <!-- Appearance Section -->
       <div class="settings-section">
         <h2>Appearance</h2>
@@ -569,6 +591,25 @@ async function updateSetting(key, value) {
   } catch (err) {
     showToast('Error updating setting: ' + err.message, 'error', 5000);
   }
+}
+
+async function toggleIngestCategory(category, isAllowed) {
+  const allCategories = ['Politician','Government Official','Business Leader','Entertainer','Athlete','Pundit','Journalist','Scientist/Academic','Legal/Judicial','Military/Defense','Activist/Advocate','Religious Leader','Other'];
+  const excluded = [];
+  const sections = document.querySelectorAll('.settings-section');
+  for (const section of sections) {
+    const h2 = section.querySelector('h2');
+    if (h2 && h2.textContent === 'Ingest Filters') {
+      const checkboxes = section.querySelectorAll('input[type="checkbox"]');
+      checkboxes.forEach((cb, i) => {
+        if (!cb.checked && allCategories[i]) {
+          excluded.push(allCategories[i]);
+        }
+      });
+      break;
+    }
+  }
+  await updateSetting('ingest_filter_excluded_categories', JSON.stringify(excluded));
 }
 
 async function updateTheme(theme) {

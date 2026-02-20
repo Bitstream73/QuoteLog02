@@ -62,6 +62,18 @@ router.patch('/', requireAdmin, (req, res) => {
   for (const [key, value] of Object.entries(req.body)) {
     let validatedValue = value;
 
+    // Validate ingest filter excluded categories
+    if (key === 'ingest_filter_excluded_categories') {
+      try {
+        const arr = JSON.parse(value);
+        if (!Array.isArray(arr) || !arr.every(v => typeof v === 'string')) {
+          return res.status(400).json({ error: 'ingest_filter_excluded_categories must be a JSON array of strings' });
+        }
+      } catch {
+        return res.status(400).json({ error: 'ingest_filter_excluded_categories must be valid JSON' });
+      }
+    }
+
     if (key in numericSettings) {
       const num = parseInt(value, 10);
       const constraints = numericSettings[key];
