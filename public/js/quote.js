@@ -275,6 +275,9 @@ let quoteTextAnnotated = false;
 // Flag: true while a first-time fact-check is running (blocks sharing)
 let _factCheckInProgress = false;
 
+// Quote ID awaiting async fact-check result via Socket.IO
+let _awaitingFactCheckQuoteId = null;
+
 // ---------------------------------------------------------------------------
 // Fact-check loading animation
 // ---------------------------------------------------------------------------
@@ -416,6 +419,13 @@ async function runFactCheck(quoteId, force) {
       sourceDate,
     });
 
+    // Async 202 — result will arrive via Socket.IO
+    if (result.queued) {
+      _awaitingFactCheckQuoteId = quoteId;
+      // Loading animation continues until Socket.IO delivers result
+      return;
+    }
+
     // Cache result
     try {
       sessionStorage.setItem(FC_CACHE_PREFIX + quoteId, JSON.stringify({
@@ -430,6 +440,7 @@ async function runFactCheck(quoteId, force) {
 
   } catch (err) {
     _factCheckInProgress = false;
+    _awaitingFactCheckQuoteId = null;
     stopFactCheckLoadingAnimation();
     container.innerHTML = `<div class="context-error"><p>Fact check unavailable.</p><button class="context-btn" onclick="runFactCheck(${quoteId}, false)">Try Again</button></div>`;
   }
@@ -441,6 +452,46 @@ function renderFactCheckResult(container, result, quoteId) {
 
   // Load feedback counts and apply session state
   initFactCheckFeedback(quoteId, result);
+}
+
+function handleQuotePageFactCheckComplete(data) {
+  const quoteId = parseInt(data.quoteId, 10);
+  if (!_awaitingFactCheckQuoteId || parseInt(_awaitingFactCheckQuoteId, 10) !== quoteId) return;
+  _awaitingFactCheckQuoteId = null;
+
+  const container = document.getElementById('fact-check-content');
+  if (!container) return;
+
+  // Fetch the full result from DB cache
+  API.get('/fact-check/check/' + quoteId).then(result => {
+    try {
+      sessionStorage.setItem(FC_CACHE_PREFIX + quoteId, JSON.stringify({
+        data: result,
+        timestamp: Date.now(),
+      }));
+    } catch { /* sessionStorage full */ }
+
+    renderFactCheckResult(container, result, quoteId);
+    annotateQuoteText(result);
+    _factCheckInProgress = false;
+  }).catch(() => {
+    _factCheckInProgress = false;
+    stopFactCheckLoadingAnimation();
+    container.innerHTML = `<div class="context-error"><p>Fact check unavailable.</p><button class="context-btn" onclick="runFactCheck(${quoteId}, false)">Try Again</button></div>`;
+  });
+}
+
+function handleQuotePageFactCheckError(data) {
+  const quoteId = parseInt(data.quoteId, 10);
+  if (!_awaitingFactCheckQuoteId || parseInt(_awaitingFactCheckQuoteId, 10) !== quoteId) return;
+  _awaitingFactCheckQuoteId = null;
+  _factCheckInProgress = false;
+
+  const container = document.getElementById('fact-check-content');
+  if (!container) return;
+
+  stopFactCheckLoadingAnimation();
+  container.innerHTML = `<div class="context-error"><p>Fact check failed: ${escapeHtml(data.error || 'Unknown error')}</p><button class="context-btn" onclick="runFactCheck(${quoteId}, false)">Try Again</button></div>`;
 }
 
 /**

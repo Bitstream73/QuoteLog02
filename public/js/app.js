@@ -90,6 +90,12 @@ function initSocket() {
 
     socket.on('fact_check_complete', (data) => {
       if (typeof handleFactCheckComplete === 'function') handleFactCheckComplete(data);
+      if (typeof handleQuotePageFactCheckComplete === 'function') handleQuotePageFactCheckComplete(data);
+    });
+
+    socket.on('fact_check_error', (data) => {
+      if (typeof handleFactCheckError === 'function') handleFactCheckError(data);
+      if (typeof handleQuotePageFactCheckError === 'function') handleQuotePageFactCheckError(data);
     });
 
     socket.on('disconnect', () => {

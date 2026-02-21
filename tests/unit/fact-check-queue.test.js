@@ -99,6 +99,42 @@ describe('FactCheckQueue', () => {
     expect(results).toEqual(['ok']);
   });
 
+  it('positionOf should return -1 for unknown key', () => {
+    const queue = new FactCheckQueue(2);
+    expect(queue.positionOf('unknown')).toBe(-1);
+  });
+
+  it('positionOf should return 0 for in-flight key', async () => {
+    const queue = new FactCheckQueue(1);
+
+    let unblock;
+    const blocker = new Promise(r => { unblock = r; });
+    queue.enqueue('inflight', () => blocker);
+
+    // Allow microtask for _drain to start execution
+    await new Promise(r => setTimeout(r, 10));
+
+    expect(queue.positionOf('inflight')).toBe(0);
+
+    unblock('done');
+  });
+
+  it('positionOf should return 1-based position for pending keys', async () => {
+    const queue = new FactCheckQueue(1);
+
+    let unblock;
+    const blocker = new Promise(r => { unblock = r; });
+    queue.enqueue('active', () => blocker);
+
+    queue.enqueue('wait1', async () => 'a');
+    queue.enqueue('wait2', async () => 'b');
+
+    expect(queue.positionOf('wait1')).toBe(1);
+    expect(queue.positionOf('wait2')).toBe(2);
+
+    unblock('done');
+  });
+
   it('should report pending and active counts', async () => {
     const queue = new FactCheckQueue(1);
 

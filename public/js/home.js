@@ -58,6 +58,13 @@ async function runInlineFactCheck(quoteId, btn) {
       context: meta.context || '',
     });
 
+    // Async 202 — result will arrive via Socket.IO
+    if (result.queued) {
+      btn.textContent = result.position > 0 ? `Queued (#${result.position})...` : 'Checking...';
+      btn.dataset.pendingQuoteId = quoteId;
+      return;
+    }
+
     const verdict = result.verdict || result.factCheck?.verdict;
     if (verdict && VERDICT_LABELS[verdict]) {
       const color = VERDICT_COLORS[verdict] || 'var(--text-muted)';
@@ -77,6 +84,20 @@ async function runInlineFactCheck(quoteId, btn) {
     btn.textContent = 'Run Fact Check';
     showToast('Fact check failed: ' + (err.message || 'Unknown error'), 'error');
   }
+}
+
+function handleFactCheckError(data) {
+  const { quoteId, error } = data;
+  if (!quoteId) return;
+
+  // Re-enable any pending inline buttons for this quote
+  document.querySelectorAll(`button.wts-verdict-badge--pending[data-pending-quote-id="${quoteId}"]`).forEach(btn => {
+    btn.disabled = false;
+    btn.textContent = 'Run Fact Check';
+    delete btn.dataset.pendingQuoteId;
+  });
+
+  showToast('Fact check failed: ' + (error || 'Unknown error'), 'error');
 }
 
 // Important status cache (entity_type:entity_id -> boolean)
