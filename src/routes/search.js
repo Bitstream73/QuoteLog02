@@ -148,12 +148,11 @@ router.get('/noteworthy', (req, res) => {
     for (const item of items) {
       if (item.entity_type === 'quote') {
         const extra = db.prepare(`
-          SELECT q.fact_check_verdict, q.fact_check_confidence, q.importants_count
+          SELECT q.fact_check_verdict, q.importants_count
           FROM quotes q WHERE q.id = ?
         `).get(item.entity_id);
         if (extra) {
           item.fact_check_verdict = extra.fact_check_verdict;
-          item.fact_check_confidence = extra.fact_check_confidence;
           item.importants_count = extra.importants_count;
         }
       } else if (item.entity_type === 'person') {
@@ -165,7 +164,7 @@ router.get('/noteworthy', (req, res) => {
         }
         // Top 3 quotes by importants_count (last 24h)
         item.top_quotes = db.prepare(`
-          SELECT q.id, SUBSTR(q.text, 1, 80) as text, p.canonical_name as person_name,
+          SELECT q.id, SUBSTR(q.text, 1, 200) as text, q.context, p.canonical_name as person_name,
             q.importants_count, q.fact_check_verdict
           FROM quotes q
           JOIN persons p ON p.id = q.person_id
@@ -196,7 +195,7 @@ router.get('/noteworthy', (req, res) => {
         }
         // Top 3 quotes by importants_count (last 1 day) via quote_topics
         item.top_quotes = db.prepare(`
-          SELECT q.id, SUBSTR(q.text, 1, 80) as text, p.canonical_name as person_name,
+          SELECT q.id, SUBSTR(q.text, 1, 200) as text, q.context, p.canonical_name as person_name,
             q.importants_count, q.fact_check_verdict
           FROM quotes q
           JOIN persons p ON p.id = q.person_id
@@ -227,7 +226,7 @@ router.get('/noteworthy', (req, res) => {
         }
         // Top 3 quotes by importants_count (last 1 day) via category_topics -> quote_topics
         item.top_quotes = db.prepare(`
-          SELECT q.id, SUBSTR(q.text, 1, 80) as text, p.canonical_name as person_name,
+          SELECT q.id, SUBSTR(q.text, 1, 200) as text, q.context, p.canonical_name as person_name,
             q.importants_count, q.fact_check_verdict
           FROM quotes q
           JOIN persons p ON p.id = q.person_id
