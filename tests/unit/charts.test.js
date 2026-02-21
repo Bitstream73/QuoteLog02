@@ -22,6 +22,7 @@ describe('Charts Factory', () => {
     // Mock DOM
     global.document = {
       getElementById: vi.fn(() => ({ getContext: vi.fn() })),
+      documentElement: { getAttribute: vi.fn(() => null) },
     };
 
     fns = {};

@@ -3008,11 +3008,6 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   border-color: var(--accent);
 }
 
-.share-btn.share-copied {
-  color: var(--success);
-  border-color: var(--success);
-}
-
 .share-btn--loading {
   opacity: 0.5;
   pointer-events: none;

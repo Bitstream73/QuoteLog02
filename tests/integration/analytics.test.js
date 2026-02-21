@@ -226,6 +226,15 @@ describe('Analytics API', () => {
       expect(res.status).toBe(404);
       expect(res.body.error).toBe('Author not found');
     });
+
+    it('returns topics array for author with linked topics', async () => {
+      const res = await request(app).get('/api/analytics/trends/author/1');
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body.topics)).toBe(true);
+      expect(res.body.topics.length).toBeGreaterThan(0);
+      expect(res.body.topics[0]).toHaveProperty('keyword');
+      expect(res.body.topics[0]).toHaveProperty('count');
+    });
   });
 
 });
