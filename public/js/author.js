@@ -23,6 +23,7 @@ function buildAuthorQuoteHtml(q, authorName, authorCategoryContext, authorId, au
     share_count: q.shareCount || q.share_count || 0,
     view_count: q.viewCount || q.view_count || 0,
     is_visible: q.isVisible,
+    fact_check_verdict: q.factCheckVerdict || q.fact_check_verdict || null,
   };
   const isImp = typeof _importantStatuses !== 'undefined' ? (_importantStatuses[`quote:${q.id}`] || false) : false;
   return buildQuoteBlockHtml(mapped, isImp, options);
