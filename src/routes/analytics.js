@@ -94,7 +94,7 @@ router.get('/trending-sources', (req, res) => {
 
     const baseWhere = `
       WHERE a.trending_score > 0
-        AND (SELECT COUNT(*) FROM quote_articles qa3 JOIN quotes q ON q.id = qa3.quote_id AND q.is_visible = 1 WHERE qa3.article_id = a.id) > 0
+        AND EXISTS (SELECT 1 FROM quote_articles qa3 JOIN quotes q ON q.id = qa3.quote_id AND q.is_visible = 1 WHERE qa3.article_id = a.id)
         ${searchFilter}
     `;
 
@@ -102,8 +102,7 @@ router.get('/trending-sources', (req, res) => {
     const articles = db.prepare(`
       SELECT a.id, a.url, a.title, a.published_at, a.importants_count, a.share_count,
         a.view_count, a.trending_score,
-        s.domain as source_domain, s.name as source_name,
-        (SELECT COUNT(*) FROM quote_articles qa2 JOIN quotes q ON q.id = qa2.quote_id AND q.is_visible = 1 WHERE qa2.article_id = a.id) as quote_count
+        s.domain as source_domain, s.name as source_name
       FROM articles a
       LEFT JOIN sources s ON s.id = a.source_id
       ${baseWhere}
@@ -117,7 +116,7 @@ router.get('/trending-sources', (req, res) => {
       ${baseWhere}
     `).get(...countParams).count;
 
-    // For each article, get top 3 quotes
+    // For each article, get top 3 quotes and quote count
     const getTopQuotes = db.prepare(`
       SELECT q.id, q.text, q.context, q.quote_datetime, q.importants_count, q.share_count,
         q.created_at, q.fact_check_verdict,
@@ -130,9 +129,15 @@ router.get('/trending-sources', (req, res) => {
       ORDER BY ${QUOTE_DATE_EXPR} DESC
       LIMIT 3
     `);
+    const getQuoteCount = db.prepare(`
+      SELECT COUNT(*) as count FROM quote_articles qa
+      JOIN quotes q ON q.id = qa.quote_id AND q.is_visible = 1
+      WHERE qa.article_id = ?
+    `);
 
     const articlesWithQuotes = articles.map(a => ({
       ...a,
+      quote_count: getQuoteCount.get(a.id).count,
       quotes: getTopQuotes.all(a.id).map(q => ({
         ...q,
         article_id: a.id,
