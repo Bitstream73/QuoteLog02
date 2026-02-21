@@ -79,7 +79,9 @@ router.post('/check', async (req, res) => {
     }
 
     const queueKey = quoteId ? `q:${quoteId}` : `t:${quoteText.substring(0, 100)}`;
-    const result = await factCheckQueue.enqueue(queueKey, () => factCheckQuote(
+    const io = req.app.get('io');
+
+    const promise = factCheckQueue.enqueue(queueKey, () => factCheckQuote(
       {
         quoteText,
         authorName: authorName || 'Unknown',
@@ -96,61 +98,73 @@ router.post('/check', async (req, res) => {
       }
     ));
 
-    cache.set(cacheKey, { data: result, timestamp: Date.now() });
+    // Background: when the queue task completes, cache + emit + pre-warm
+    promise.then(result => {
+      cache.set(cacheKey, { data: result, timestamp: Date.now() });
 
-    // Broadcast fact-check completion via Socket.IO
-    if (quoteId) {
-      const io = req.app.get('io');
-      if (io) {
+      // Broadcast fact-check completion via Socket.IO
+      if (quoteId && io) {
         io.emit('fact_check_complete', { quoteId, verdict: result.verdict || null, category: result.category || null });
       }
-    }
 
-    // Pre-generate share images (fire-and-forget) so they're cached for later
-    if (quoteId) {
-      invalidateShareImageCache(quoteId);
-      try {
-        const db = getDb();
-        const row = db.prepare(
-          `SELECT q.id, q.text, q.context, q.fact_check_verdict, q.fact_check_claim, q.fact_check_explanation,
-                  q.fact_check_category,
-                  p.canonical_name, p.disambiguation, p.photo_url
-           FROM quotes q
-           LEFT JOIN persons p ON q.person_id = p.id
-           WHERE q.id = ?`
-        ).get(quoteId);
+      // Pre-generate share images (fire-and-forget) so they're cached for later
+      if (quoteId) {
+        invalidateShareImageCache(quoteId);
+        try {
+          const db = getDb();
+          const row = db.prepare(
+            `SELECT q.id, q.text, q.context, q.fact_check_verdict, q.fact_check_claim, q.fact_check_explanation,
+                    q.fact_check_category,
+                    p.canonical_name, p.disambiguation, p.photo_url
+             FROM quotes q
+             LEFT JOIN persons p ON q.person_id = p.id
+             WHERE q.id = ?`
+          ).get(quoteId);
 
-        if (row) {
-          const imgData = {
-            quoteId: row.id,
-            quoteText: row.text,
-            authorName: row.canonical_name || 'Unknown',
-            disambiguation: row.disambiguation || '',
-            verdict: row.fact_check_verdict || null,
-            category: row.fact_check_category || null,
-            photoUrl: row.photo_url || null,
-            claim: row.fact_check_claim || '',
-            explanation: row.fact_check_explanation || '',
-          };
-          Promise.all([
-            generateShareImage(imgData, 'landscape'),
-            generateShareImage(imgData, 'portrait'),
-          ]).catch(err => logger.warn('factcheck', 'share_image_prewarm_failed', { quoteId, error: err.message }));
+          if (row) {
+            const imgData = {
+              quoteId: row.id,
+              quoteText: row.text,
+              authorName: row.canonical_name || 'Unknown',
+              disambiguation: row.disambiguation || '',
+              verdict: row.fact_check_verdict || null,
+              category: row.fact_check_category || null,
+              photoUrl: row.photo_url || null,
+              claim: row.fact_check_claim || '',
+              explanation: row.fact_check_explanation || '',
+            };
+            Promise.all([
+              generateShareImage(imgData, 'landscape'),
+              generateShareImage(imgData, 'portrait'),
+            ]).catch(err => logger.warn('factcheck', 'share_image_prewarm_failed', { quoteId, error: err.message }));
+          }
+        } catch (err) {
+          logger.warn('factcheck', 'share_image_prewarm_query_failed', { quoteId, error: err.message });
         }
-      } catch (err) {
-        logger.warn('factcheck', 'share_image_prewarm_query_failed', { quoteId, error: err.message });
       }
-    }
 
-    // Prune old cache entries periodically
-    if (cache.size > 1000) {
-      const now = Date.now();
-      for (const [key, val] of cache) {
-        if (now - val.timestamp > CACHE_TTL_MS) cache.delete(key);
+      // Prune old cache entries periodically
+      if (cache.size > 1000) {
+        const now = Date.now();
+        for (const [key, val] of cache) {
+          if (now - val.timestamp > CACHE_TTL_MS) cache.delete(key);
+        }
       }
-    }
+    }).catch(err => {
+      logger.error('factcheck', 'check_failed_background', { quoteId }, err);
+      if (quoteId && io) {
+        io.emit('fact_check_error', { quoteId, error: err.message || 'Fact-check failed' });
+      }
+    });
 
-    return res.json(result);
+    const position = factCheckQueue.positionOf(queueKey);
+    return res.status(202).json({
+      queued: true,
+      quoteId: quoteId || null,
+      position,
+      pending: factCheckQueue.pending,
+      active: factCheckQueue.active,
+    });
 
   } catch (err) {
     logger.error('factcheck', 'check_failed', {}, err);
@@ -254,6 +268,43 @@ router.get('/status', (req, res) => {
     cacheSize: cache.size,
     geminiConfigured: !!config.geminiApiKey,
   });
+});
+
+// ---------------------------------------------------------------------------
+// GET /check/:quoteId — Fetch cached fact-check result for a quote
+// ---------------------------------------------------------------------------
+
+router.get('/check/:quoteId', (req, res) => {
+  try {
+    const quoteId = parseInt(req.params.quoteId, 10);
+    if (!quoteId || isNaN(quoteId)) {
+      return res.status(400).json({ error: 'Invalid quoteId' });
+    }
+
+    const db = getDb();
+    const row = db.prepare(
+      `SELECT fact_check_html, fact_check_references_json, fact_check_verdict,
+              fact_check_agree_count, fact_check_disagree_count
+       FROM quotes WHERE id = ?`
+    ).get(quoteId);
+
+    if (!row || !row.fact_check_html) {
+      return res.status(404).json({ error: 'No fact-check result yet' });
+    }
+
+    return res.json({
+      combinedHtml: row.fact_check_html,
+      html: row.fact_check_html,
+      references: row.fact_check_references_json ? JSON.parse(row.fact_check_references_json) : null,
+      verdict: row.fact_check_verdict || null,
+      agree_count: row.fact_check_agree_count || 0,
+      disagree_count: row.fact_check_disagree_count || 0,
+      fromCache: true,
+    });
+  } catch (err) {
+    logger.error('factcheck', 'get_check_failed', { quoteId: req.params.quoteId }, err);
+    return res.status(500).json({ error: 'Failed to fetch fact-check result' });
+  }
 });
 
 // ---------------------------------------------------------------------------

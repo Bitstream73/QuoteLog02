@@ -18,6 +18,13 @@ class FactCheckQueue {
   get pending() { return this._queue.length; }
   get active() { return this._active; }
 
+  positionOf(key) {
+    if (!this._promises.has(key)) return -1;   // not in queue
+    const idx = this._queue.findIndex(item => item.key === key);
+    if (idx === -1) return 0;                   // in-flight (running now)
+    return idx + 1;                             // 1-based waiting position
+  }
+
   /**
    * Enqueue a task. If a task with the same key is already queued or in-flight,
    * returns the existing promise (deduplication).
