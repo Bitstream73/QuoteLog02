@@ -1505,8 +1505,8 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
 
 .quote-context {
   font-family: var(--font-ui);
-  font-size: 0.85rem;
-  color: var(--text-secondary);
+  font-size: 1.02rem;
+  color: var(--text-primary);
   padding: 0.5rem 0.75rem;
   margin-top: 0.25rem;
   border-left: 3px solid var(--accent);
@@ -4045,7 +4045,7 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   text-align: left;
 }
 
-.quote-block__text .quote-mark {
+.quote-mark {
   color: var(--accent);
   font-size: 1.5em;
   font-weight: 400;
@@ -4054,12 +4054,16 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   vertical-align: -0.15em;
 }
 
-.quote-block__text .quote-mark--open {
+.quote-mark--open {
   margin-right: 2px;
 }
 
-.quote-block__text .quote-mark--close {
+.quote-mark--close {
   margin-left: 2px;
+}
+
+.noteworthy-quote__text .quote-mark {
+  font-size: 1.3em;
 }
 
 /* Byline — single inline line */
@@ -4088,8 +4092,8 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
 /* AI Summary */
 .quote-block__summary {
   font-family: var(--font-ui);
-  font-size: var(--text-sm);
-  color: var(--text-faint);
+  font-size: 0.96rem;
+  color: var(--text-secondary);
   border-left: 2px solid var(--accent-muted);
   padding-left: var(--space-3);
   margin-bottom: var(--space-3);
@@ -4226,8 +4230,8 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
 
 .quote-block__context {
   font-family: var(--font-ui);
-  font-size: var(--text-sm);
-  color: var(--text-faint);
+  font-size: 0.96rem;
+  color: var(--text-secondary);
   border-left: 2px solid var(--accent-muted);
   padding-left: var(--space-3);
   margin-top: var(--space-2);
@@ -5485,8 +5489,8 @@ span.evidence-source-cite {
 /* ======= Author Chart Enhancements ======= */
 
 .chart-panel--full {
-  background: var(--card-bg, #fff);
-  border: 1px solid var(--card-border, #e5e7eb);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 1.25rem;
   margin-bottom: 1rem;
@@ -5519,7 +5523,7 @@ span.evidence-source-cite {
 .period-selector {
   display: flex;
   gap: 2px;
-  background: var(--bg-muted, #f3f4f6);
+  background: var(--bg-secondary);
   border-radius: 6px;
   padding: 2px;
 }
@@ -5556,7 +5560,7 @@ span.evidence-source-cite {
   padding: 4px 8px;
   font-size: 0.8rem;
   font-family: var(--font-ui);
-  border: 1px solid var(--card-border, #e5e7eb);
+  border: 1px solid var(--border);
   border-radius: 4px;
   background: var(--bg-primary, #fff);
   color: var(--text-primary);
@@ -5577,7 +5581,7 @@ span.evidence-source-cite {
   left: 0;
   right: 0;
   background: var(--bg-primary, #fff);
-  border: 1px solid var(--card-border, #e5e7eb);
+  border: 1px solid var(--border);
   border-radius: 4px;
   box-shadow: 0 4px 12px rgba(0,0,0,0.1);
   z-index: 50;
@@ -5593,7 +5597,7 @@ span.evidence-source-cite {
 }
 
 .compare-author-dropdown .ac-item:hover {
-  background: var(--bg-muted, #f3f4f6);
+  background: var(--bg-secondary);
 }
 
 .compare-clear-btn {
@@ -5990,6 +5994,7 @@ span.evidence-source-cite {
   letter-spacing: 0.12em;
   color: var(--text-muted);
   margin: 0 0 0.75rem;
+  text-align: center;
 }
 
 /* Horizontal scroll on mobile */
@@ -6251,11 +6256,19 @@ span.evidence-source-cite {
 
 .noteworthy-quote__context {
   font-family: var(--font-ui);
-  font-size: 0.7rem;
-  color: var(--text-muted);
+  font-size: 0.84rem;
+  color: var(--text-secondary);
   font-style: italic;
   line-height: 1.3;
   margin: 0;
+}
+
+.noteworthy-quote__avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
 }
 
 /* Top Authors Bar */
