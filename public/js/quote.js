@@ -108,7 +108,7 @@ async function renderQuote(id) {
         }
 
         html += `
-          <div class="quote-detail-source-item" style="display:flex;gap:0.75rem;align-items:flex-start">
+          <div class="quote-detail-source-item" style="display:flex;gap:0.75rem;align-items:stretch">
             ${avatarHtml}
             <div class="source-author-content">
               <a href="/article/${a.id}" onclick="navigate(event, '/article/${a.id}')" class="quote-article-title-link">${escapeHtml(a.title || 'Untitled Article')}</a>

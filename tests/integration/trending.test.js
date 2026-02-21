@@ -20,7 +20,7 @@ describe('Trending System', () => {
     const db = getDb();
 
     // Seed test data
-    const personResult = db.prepare('INSERT INTO persons (canonical_name) VALUES (?)').run('Trending Author');
+    const personResult = db.prepare('INSERT INTO persons (canonical_name, quote_count) VALUES (?, 3)').run('Trending Author');
     testPersonId = Number(personResult.lastInsertRowid);
 
     // Create article
@@ -154,6 +154,97 @@ describe('Trending System', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.articles).toBeDefined();
+    });
+
+    it('GET /api/analytics/trending-authors returns total, page, limit fields', async () => {
+      const res = await request(app).get('/api/analytics/trending-authors');
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveProperty('total');
+      expect(res.body).toHaveProperty('page');
+      expect(res.body).toHaveProperty('limit');
+      expect(typeof res.body.total).toBe('number');
+      expect(res.body.page).toBe(1);
+    });
+
+    it('GET /api/analytics/trending-sources returns total, page, limit fields', async () => {
+      const res = await request(app).get('/api/analytics/trending-sources');
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveProperty('total');
+      expect(res.body).toHaveProperty('page');
+      expect(res.body).toHaveProperty('limit');
+      expect(typeof res.body.total).toBe('number');
+      expect(res.body.page).toBe(1);
+    });
+
+    it('GET /api/analytics/trending-authors?search=X filters by name', async () => {
+      const res = await request(app).get('/api/analytics/trending-authors?search=Trending');
+
+      expect(res.status).toBe(200);
+      expect(res.body.authors.length).toBeGreaterThan(0);
+      expect(res.body.authors[0].canonical_name).toContain('Trending');
+    });
+
+    it('GET /api/analytics/trending-authors?search=X returns empty for no match', async () => {
+      const res = await request(app).get('/api/analytics/trending-authors?search=ZZZnonexistent');
+
+      expect(res.status).toBe(200);
+      expect(res.body.authors).toHaveLength(0);
+      expect(res.body.total).toBe(0);
+    });
+
+    it('GET /api/analytics/trending-sources?search=X filters by title', async () => {
+      const res = await request(app).get('/api/analytics/trending-sources?search=Trending');
+
+      expect(res.status).toBe(200);
+      expect(res.body.articles.length).toBeGreaterThan(0);
+      expect(res.body.articles[0].title).toContain('Trending');
+    });
+
+    it('GET /api/analytics/trending-quotes?search=X filters quotes', async () => {
+      const res = await request(app).get('/api/analytics/trending-quotes?search=Important');
+
+      expect(res.status).toBe(200);
+      expect(res.body.recent_quotes.length).toBeGreaterThan(0);
+      // quote_of_day/week/month should be null when searching
+      expect(res.body.quote_of_day).toBeNull();
+      expect(res.body.quote_of_week).toBeNull();
+      expect(res.body.quote_of_month).toBeNull();
+    });
+
+    it('GET /api/analytics/trending-authors?page=2&limit=1 returns offset results', async () => {
+      // First check we have at least 1 author total
+      const fullRes = await request(app).get('/api/analytics/trending-authors?limit=50');
+      const totalAuthors = fullRes.body.total;
+
+      if (totalAuthors > 1) {
+        const res = await request(app).get('/api/analytics/trending-authors?page=2&limit=1');
+        expect(res.status).toBe(200);
+        expect(res.body.page).toBe(2);
+        expect(res.body.limit).toBe(1);
+      } else {
+        // With only 1 author, page 2 should return empty
+        const res = await request(app).get('/api/analytics/trending-authors?page=2&limit=1');
+        expect(res.status).toBe(200);
+        expect(res.body.authors).toHaveLength(0);
+      }
+    });
+
+    it('GET /api/analytics/trending-sources?page=2&limit=1 returns offset results', async () => {
+      const fullRes = await request(app).get('/api/analytics/trending-sources?limit=50');
+      const totalSources = fullRes.body.total;
+
+      if (totalSources > 1) {
+        const res = await request(app).get('/api/analytics/trending-sources?page=2&limit=1');
+        expect(res.status).toBe(200);
+        expect(res.body.page).toBe(2);
+        expect(res.body.limit).toBe(1);
+      } else {
+        const res = await request(app).get('/api/analytics/trending-sources?page=2&limit=1');
+        expect(res.status).toBe(200);
+        expect(res.body.articles).toHaveLength(0);
+      }
     });
   });
 });
