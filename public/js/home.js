@@ -231,8 +231,8 @@ function escapeHtml(str) {
  */
 function buildShareButtonsHtml(entityType, entityId, text, authorName) {
   const downloadBtn = entityType === 'quote' ? `
-      <button class="share-btn share-btn--download" onclick="downloadShareImage(event, ${entityId})" title="Download Image">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+      <button class="share-btn share-btn--download" onclick="downloadShareImage(event, ${entityId})" title="Share Image">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
       </button>` : '';
 
   return `
@@ -243,12 +243,7 @@ function buildShareButtonsHtml(entityType, entityId, text, authorName) {
       <button class="share-btn" onclick="shareEntity(event, '${entityType}', ${entityId}, 'facebook')" title="Share on Facebook">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
       </button>
-      <button class="share-btn" onclick="shareEntity(event, '${entityType}', ${entityId}, 'email')" title="Share via Email">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
-      </button>
-      <button class="share-btn" onclick="shareEntity(event, '${entityType}', ${entityId}, 'copy')" title="Copy link">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
-      </button>${downloadBtn}
+${downloadBtn}
     </div>
   `;
 }
@@ -285,24 +280,6 @@ async function shareEntity(event, entityType, entityId, platform) {
       break;
     case 'facebook':
       window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`, '_blank');
-      break;
-    case 'email': {
-      const subject = encodeURIComponent(`Quote from ${authorName} - TrueOrFalse.News`);
-      const imageUrl = entityType === 'quote' ? `${window.location.origin}/api/quotes/${entityId}/share-image?orientation=landscape` : '';
-      const bodyParts = [fullText, '', `Read more: ${url}`];
-      if (imageUrl) bodyParts.push(`View quote image: ${imageUrl}`);
-      bodyParts.push('', '---', 'Shared from TrueOrFalse.News');
-      const body = encodeURIComponent(bodyParts.join('\n'));
-      window.location.href = `mailto:?subject=${subject}&body=${body}`;
-      break;
-    }
-    case 'copy':
-      navigator.clipboard.writeText(`${fullText}\n${url}`).then(() => {
-        const btn = event.currentTarget;
-        btn.classList.add('share-copied');
-        setTimeout(() => btn.classList.remove('share-copied'), 1500);
-        showToast('Link copied to clipboard', 'success');
-      }).catch(() => {});
       break;
   }
 }
