@@ -19,6 +19,7 @@ async function renderReview() {
       <button class="review-tab ${_reviewActiveTab === 'disambiguation' ? 'active' : ''}" data-tab="disambiguation" onclick="switchReviewTab('disambiguation')">Disambiguation Review <span class="disambig-tab-badge" id="disambig-tab-badge" style="display:none"></span></button>
       <button class="review-tab ${_reviewActiveTab === 'taxonomy' ? 'active' : ''}" data-tab="taxonomy" onclick="switchReviewTab('taxonomy')">Taxonomy Review <span class="taxonomy-tab-badge" id="taxonomy-tab-badge" style="display:none"></span></button>
       <button class="review-tab ${_reviewActiveTab === 'bugs' ? 'active' : ''}" data-tab="bugs" onclick="switchReviewTab('bugs')">Bug Reports <span class="bugs-tab-badge" id="bugs-tab-badge" style="display:none"></span></button>
+      <button class="review-tab ${_reviewActiveTab === 'orphans' ? 'active' : ''}" data-tab="orphans" onclick="switchReviewTab('orphans')">Topic Orphans <span class="orphans-tab-badge" id="orphans-tab-badge" style="display:none"></span></button>
     </div>
     <div id="review-tab-content"></div>
   `;
@@ -27,8 +28,11 @@ async function renderReview() {
   // Load taxonomy badge count in background
   loadTaxonomyBadgeCount();
   loadBugReportsBadgeCount();
+  loadOrphansBadgeCount();
 
-  if (_reviewActiveTab === 'bugs') {
+  if (_reviewActiveTab === 'orphans') {
+    await renderTopicOrphansTab();
+  } else if (_reviewActiveTab === 'bugs') {
     await renderBugReportsTab();
   } else if (_reviewActiveTab === 'taxonomy') {
     await renderTaxonomyTab();
@@ -48,7 +52,9 @@ function switchReviewTab(tab) {
   const container = document.getElementById('review-tab-content');
   if (!container) return;
   container.innerHTML = '<div class="loading">Loading...</div>';
-  if (tab === 'bugs') {
+  if (tab === 'orphans') {
+    renderTopicOrphansTab();
+  } else if (tab === 'bugs') {
     renderBugReportsTab();
   } else if (tab === 'taxonomy') {
     renderTaxonomyTab();
@@ -1296,4 +1302,185 @@ function bulkDeleteBugReports() {
       showToast('Error: ' + err.message, 'error');
     }
   });
+}
+
+// ===================================
+// Topic Orphans Tab
+// ===================================
+
+async function loadOrphansBadgeCount() {
+  try {
+    const data = await API.get('/admin/topics/orphans');
+    updateOrphansTabBadge(data.count || 0);
+  } catch (_) { /* ignore */ }
+}
+
+function updateOrphansTabBadge(count) {
+  const badge = document.getElementById('orphans-tab-badge');
+  if (!badge) return;
+  if (count > 0) {
+    badge.textContent = count > 99 ? '99+' : count;
+    badge.style.display = '';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+async function renderTopicOrphansTab() {
+  const container = document.getElementById('review-tab-content');
+  if (!container) return;
+
+  try {
+    const [orphanData, catData] = await Promise.all([
+      API.get('/admin/topics/orphans'),
+      API.get('/admin/categories'),
+    ]);
+    const orphans = orphanData.topics || [];
+    const categories = catData.categories || [];
+
+    updateOrphansTabBadge(orphans.length);
+
+    let html = `
+      <p class="page-subtitle">Topics not assigned to any category</p>
+      <div class="review-stats">
+        <span class="stat"><strong>${orphans.length}</strong> orphan topic${orphans.length !== 1 ? 's' : ''}</span>
+        <span class="stat"><strong>${categories.length}</strong> available categor${categories.length !== 1 ? 'ies' : 'y'}</span>
+      </div>
+    `;
+
+    if (orphans.length === 0) {
+      html += '<div class="empty-state"><p>All topics are assigned to at least one category.</p></div>';
+      container.innerHTML = html;
+      return;
+    }
+
+    // Bulk action bar
+    html += `
+      <div class="orphan-bulk-actions">
+        <label style="display:flex;align-items:center;gap:0.25rem;cursor:pointer">
+          <input type="checkbox" id="orphan-select-all" onchange="toggleOrphanSelectAll()">
+          <span style="font-size:0.85rem">Select All</span>
+        </label>
+        <select id="orphan-bulk-category" style="padding:0.25rem 0.5rem;border-radius:var(--radius);border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:0.85rem">
+          <option value="">— Assign to category —</option>
+          ${categories.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('')}
+        </select>
+        <button class="btn btn-sm" onclick="bulkAssignOrphans()">Assign Selected</button>
+      </div>
+    `;
+
+    for (const topic of orphans) {
+      html += renderOrphanCard(topic, categories);
+    }
+
+    container.innerHTML = html;
+  } catch (err) {
+    container.innerHTML = `<div class="error">Error loading orphan topics: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+function renderOrphanCard(topic, categories) {
+  const statusColors = { active: '#22c55e', draft: '#f59e0b', archived: '#6b7280' };
+  const statusColor = statusColors[topic.status] || '#6b7280';
+
+  const catCheckboxes = categories.map(c =>
+    `<label style="display:inline-flex;align-items:center;gap:0.25rem;margin-right:0.75rem;font-size:0.85rem;cursor:pointer">
+      <input type="checkbox" class="orphan-cat-cb-${topic.id}" value="${c.id}">
+      ${escapeHtml(c.name)}
+    </label>`
+  ).join('');
+
+  return `
+    <div class="tax-card" id="orphan-card-${topic.id}">
+      <div class="tax-card-header">
+        <input type="checkbox" class="tax-card-select orphan-select-cb" value="${topic.id}" onchange="toggleOrphanSelect(${topic.id})">
+        <strong>${escapeHtml(topic.name)}</strong>
+        <span class="tax-badge" style="background:${statusColor}">${escapeHtml(topic.status || 'active')}</span>
+      </div>
+      <div class="tax-card-body">
+        <div class="tax-card-field"><strong>Quotes:</strong> ${topic.quote_count || 0}</div>
+        <div class="tax-card-field"><strong>Keywords:</strong> ${topic.keyword_count || 0}</div>
+        ${topic.description ? `<div class="tax-card-field"><strong>Description:</strong> ${escapeHtml(topic.description)}</div>` : ''}
+      </div>
+      <div class="tax-card-actions" style="flex-wrap:wrap">
+        ${catCheckboxes}
+        <button class="btn btn-sm" onclick="assignOrphanTopic(${topic.id})">Assign</button>
+      </div>
+    </div>
+  `;
+}
+
+let _orphanSelectedIds = new Set();
+
+function toggleOrphanSelectAll() {
+  const allCb = document.getElementById('orphan-select-all');
+  const checkboxes = document.querySelectorAll('.orphan-select-cb');
+  _orphanSelectedIds.clear();
+  checkboxes.forEach(cb => {
+    cb.checked = allCb.checked;
+    if (allCb.checked) _orphanSelectedIds.add(parseInt(cb.value));
+  });
+}
+
+function toggleOrphanSelect(id) {
+  if (_orphanSelectedIds.has(id)) {
+    _orphanSelectedIds.delete(id);
+  } else {
+    _orphanSelectedIds.add(id);
+  }
+}
+
+async function assignOrphanTopic(topicId) {
+  const checkboxes = document.querySelectorAll(`.orphan-cat-cb-${topicId}:checked`);
+  const catIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
+  if (catIds.length === 0) {
+    showToast('Select at least one category', 'error');
+    return;
+  }
+
+  const card = document.getElementById('orphan-card-' + topicId);
+  if (card) card.classList.add('processing');
+
+  try {
+    for (const catId of catIds) {
+      await API.post(`/admin/categories/${catId}/topics`, { topic_id: topicId });
+    }
+    if (card) {
+      card.style.transition = 'opacity 0.3s';
+      card.style.opacity = '0';
+      setTimeout(() => card.remove(), 300);
+    }
+    _orphanSelectedIds.delete(topicId);
+    showToast('Topic assigned to ' + catIds.length + ' category(ies)', 'success');
+    loadOrphansBadgeCount();
+  } catch (err) {
+    if (card) card.classList.remove('processing');
+    showToast('Error: ' + err.message, 'error');
+  }
+}
+
+async function bulkAssignOrphans() {
+  const catId = document.getElementById('orphan-bulk-category')?.value;
+  if (!catId) {
+    showToast('Select a category first', 'error');
+    return;
+  }
+  const ids = Array.from(_orphanSelectedIds);
+  if (ids.length === 0) {
+    showToast('Select at least one topic', 'error');
+    return;
+  }
+
+  try {
+    let assigned = 0;
+    for (const topicId of ids) {
+      await API.post(`/admin/categories/${catId}/topics`, { topic_id: topicId });
+      assigned++;
+    }
+    showToast(`Assigned ${assigned} topic(s) to category`, 'success');
+    _orphanSelectedIds.clear();
+    renderTopicOrphansTab();
+  } catch (err) {
+    showToast('Error: ' + err.message, 'error');
+  }
 }

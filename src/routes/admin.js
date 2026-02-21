@@ -650,6 +650,24 @@ router.get('/topics', (req, res) => {
   }
 });
 
+// GET /api/admin/topics/orphans — topics not assigned to any category
+router.get('/topics/orphans', (req, res) => {
+  try {
+    const db = getDb();
+    const topics = db.prepare(`
+      SELECT t.*,
+        (SELECT COUNT(*) FROM topic_keywords WHERE topic_id = t.id) AS keyword_count,
+        (SELECT COUNT(DISTINCT qt.quote_id) FROM quote_topics qt WHERE qt.topic_id = t.id) AS quote_count
+      FROM topics t
+      WHERE t.id NOT IN (SELECT topic_id FROM category_topics)
+      ORDER BY t.name
+    `).all();
+    res.json({ topics, count: topics.length });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to list orphan topics: ' + err.message });
+  }
+});
+
 // GET /api/admin/topics/:id — get single topic with keywords and aliases
 router.get('/topics/:id', (req, res) => {
   try {
