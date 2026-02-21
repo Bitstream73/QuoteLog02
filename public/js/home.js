@@ -9,6 +9,24 @@ const _quoteMeta = {};
 // Current active tab
 let _activeTab = 'trending-authors';
 
+// Per-tab state: sort, page, search, hasMore
+let _quotesSortBy = 'date';
+let _quotesPage = 1;
+let _quotesSearch = '';
+let _quotesHasMore = true;
+
+let _authorsPage = 1;
+let _authorsSearch = '';
+let _authorsHasMore = true;
+
+let _sourcesPage = 1;
+let _sourcesSearch = '';
+let _sourcesHasMore = true;
+
+let _isLoadingMore = false;
+let _infiniteScrollObserver = null;
+let _tabSearchDebounceTimer = null;
+
 // ======= Verdict Badge =======
 
 const VERDICT_COLORS = {
@@ -562,16 +580,263 @@ function navigateTo(path) {
   }
 }
 
+// ======= Tab Search + Sort Bar =======
+
+function getTabSearchState(tabKey) {
+  if (tabKey === 'trending-quotes') return { search: _quotesSearch, sort: _quotesSortBy };
+  if (tabKey === 'trending-authors') return { search: _authorsSearch, sort: _authorsSortBy };
+  if (tabKey === 'trending-sources') return { search: _sourcesSearch, sort: _sourcesSortBy };
+  return { search: '', sort: 'date' };
+}
+
+function buildSearchSortBarHtml(tabKey) {
+  const state = getTabSearchState(tabKey);
+  const isExpanded = state.search.length > 0;
+  const sortFn = tabKey === 'trending-quotes' ? 'switchQuotesSort'
+    : tabKey === 'trending-authors' ? 'switchAuthorsSort' : 'switchSourcesSort';
+
+  const searchIcon = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>`;
+
+  if (isExpanded) {
+    return `<div class="tab-search-sort-bar">
+      <div class="tab-search-input-wrap">
+        <input type="search" class="tab-search-input" id="tab-search-input" placeholder="Search..." value="${escapeHtml(state.search)}" onkeydown="onTabSearchKeydown(event)" oninput="onTabSearchInput()">
+        <button class="tab-search-close" onclick="clearTabSearch()">&times;</button>
+      </div>
+    </div>`;
+  }
+
+  return `<div class="tab-search-sort-bar">
+    <button class="tab-search-toggle" onclick="toggleTabSearch()" title="Search">${searchIcon}</button>
+    <div class="tab-sort-buttons">
+      Sort by:
+      <button class="sort-btn ${state.sort === 'date' ? 'active' : ''}" onclick="${sortFn}('date')">Date</button>
+      <button class="sort-btn ${state.sort === 'importance' ? 'active' : ''}" onclick="${sortFn}('importance')">Importance</button>
+    </div>
+  </div>`;
+}
+
+function toggleTabSearch() {
+  // Store current sort/search state and show search input
+  const tabKey = _activeTab;
+  // Set a temporary flag so buildSearchSortBarHtml shows expanded mode
+  if (tabKey === 'trending-quotes') _quotesSearch = ' ';
+  else if (tabKey === 'trending-authors') _authorsSearch = ' ';
+  else if (tabKey === 'trending-sources') _sourcesSearch = ' ';
+
+  // Re-render just the search bar
+  const bar = document.querySelector('.tab-search-sort-bar');
+  if (bar) {
+    const temp = document.createElement('div');
+    temp.innerHTML = buildSearchSortBarHtml(tabKey);
+    bar.replaceWith(temp.firstElementChild);
+    const input = document.getElementById('tab-search-input');
+    if (input) {
+      input.value = '';
+      input.focus();
+    }
+    // Reset the search state back to empty (we just want the UI expanded)
+    if (tabKey === 'trending-quotes') _quotesSearch = '';
+    else if (tabKey === 'trending-authors') _authorsSearch = '';
+    else if (tabKey === 'trending-sources') _sourcesSearch = '';
+  }
+}
+
+function onTabSearchKeydown(event) {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    clearTimeout(_tabSearchDebounceTimer);
+    executeTabSearch();
+  } else if (event.key === 'Escape') {
+    clearTabSearch();
+  }
+}
+
+function onTabSearchInput() {
+  clearTimeout(_tabSearchDebounceTimer);
+  _tabSearchDebounceTimer = setTimeout(() => executeTabSearch(), 300);
+}
+
+function executeTabSearch() {
+  const input = document.getElementById('tab-search-input');
+  const val = input ? input.value.trim() : '';
+  const tabKey = _activeTab;
+
+  if (tabKey === 'trending-quotes') { _quotesSearch = val; _quotesPage = 1; }
+  else if (tabKey === 'trending-authors') { _authorsSearch = val; _authorsPage = 1; }
+  else if (tabKey === 'trending-sources') { _sourcesSearch = val; _sourcesPage = 1; }
+
+  renderTabContent(tabKey);
+}
+
+function clearTabSearch() {
+  const tabKey = _activeTab;
+  if (tabKey === 'trending-quotes') { _quotesSearch = ''; _quotesPage = 1; }
+  else if (tabKey === 'trending-authors') { _authorsSearch = ''; _authorsPage = 1; }
+  else if (tabKey === 'trending-sources') { _sourcesSearch = ''; _sourcesPage = 1; }
+
+  renderTabContent(tabKey);
+}
+
+// ======= Infinite Scroll =======
+
+function setupInfiniteScroll() {
+  if (_infiniteScrollObserver) {
+    _infiniteScrollObserver.disconnect();
+    _infiniteScrollObserver = null;
+  }
+
+  const sentinel = document.getElementById('infinite-scroll-sentinel');
+  if (!sentinel) return;
+
+  // Check if current tab has more items
+  const tabKey = _activeTab;
+  let hasMore = false;
+  if (tabKey === 'trending-quotes') hasMore = _quotesHasMore;
+  else if (tabKey === 'trending-authors') hasMore = _authorsHasMore;
+  else if (tabKey === 'trending-sources') hasMore = _sourcesHasMore;
+
+  if (!hasMore) {
+    sentinel.innerHTML = '';
+    return;
+  }
+
+  sentinel.innerHTML = '<div class="infinite-scroll-loading" style="visibility:hidden">Loading more...</div>';
+
+  _infiniteScrollObserver = new IntersectionObserver((entries) => {
+    if (entries[0].isIntersecting) {
+      loadMoreItems();
+    }
+  }, { rootMargin: '200px' });
+
+  _infiniteScrollObserver.observe(sentinel);
+}
+
+async function loadMoreItems() {
+  if (_isLoadingMore) return;
+  _isLoadingMore = true;
+
+  const sentinel = document.getElementById('infinite-scroll-sentinel');
+  if (sentinel) sentinel.innerHTML = '<div class="infinite-scroll-loading">Loading more...</div>';
+
+  try {
+    const tabKey = _activeTab;
+    if (tabKey === 'trending-quotes') await loadMoreQuotes();
+    else if (tabKey === 'trending-authors') await loadMoreAuthors();
+    else if (tabKey === 'trending-sources') await loadMoreSources();
+  } finally {
+    _isLoadingMore = false;
+  }
+}
+
+async function loadMoreQuotes() {
+  _quotesPage++;
+  const searchParam = _quotesSearch.length >= 2 ? `&search=${encodeURIComponent(_quotesSearch)}` : '';
+  const sortParam = _quotesSortBy === 'importance' ? '&sort=importance' : '';
+  const data = await API.get(`/analytics/trending-quotes?page=${_quotesPage}&limit=20${sortParam}${searchParam}`);
+
+  if (_activeTab !== 'trending-quotes') return; // Tab changed during fetch
+
+  const recentQuotes = data.recent_quotes || [];
+  _quotesHasMore = recentQuotes.length >= 20 && (_quotesPage * 20) < data.total;
+
+  if (recentQuotes.length > 0) {
+    const entityKeys = recentQuotes.map(q => `quote:${q.id}`);
+    await fetchImportantStatuses(entityKeys);
+
+    let html = '';
+    for (const q of recentQuotes) {
+      html += buildQuoteBlockHtml(q, _importantStatuses[`quote:${q.id}`] || false);
+    }
+    const list = document.getElementById('tab-items-list');
+    if (list) list.insertAdjacentHTML('beforeend', html);
+    initViewTracking();
+  }
+
+  updateSentinel();
+}
+
+async function loadMoreAuthors() {
+  _authorsPage++;
+  const searchParam = _authorsSearch.length >= 2 ? `&search=${encodeURIComponent(_authorsSearch)}` : '';
+  const sortParam = _authorsSortBy === 'importance' ? '&sort=importance' : '';
+  const data = await API.get(`/analytics/trending-authors?page=${_authorsPage}&limit=20${sortParam}${searchParam}`);
+
+  if (_activeTab !== 'trending-authors') return;
+
+  const authors = data.authors || [];
+  _authorsHasMore = authors.length >= 20 && (_authorsPage * 20) < data.total;
+
+  if (authors.length > 0) {
+    const entityKeys = authors.map(a => `person:${a.id}`);
+    await fetchImportantStatuses(entityKeys);
+
+    let html = '';
+    for (const author of authors) {
+      html += buildAuthorCardHtml(author);
+    }
+    const list = document.getElementById('tab-items-list');
+    if (list) list.insertAdjacentHTML('beforeend', html);
+    initViewTracking();
+  }
+
+  updateSentinel();
+}
+
+async function loadMoreSources() {
+  _sourcesPage++;
+  const searchParam = _sourcesSearch.length >= 2 ? `&search=${encodeURIComponent(_sourcesSearch)}` : '';
+  const sortParam = _sourcesSortBy === 'importance' ? '&sort=importance' : '';
+  const data = await API.get(`/analytics/trending-sources?page=${_sourcesPage}&limit=20${sortParam}${searchParam}`);
+
+  if (_activeTab !== 'trending-sources') return;
+
+  const articles = data.articles || [];
+  _sourcesHasMore = articles.length >= 20 && (_sourcesPage * 20) < data.total;
+
+  if (articles.length > 0) {
+    await fetchImportantStatuses(articles.map(a => `article:${a.id}`));
+
+    let html = '';
+    for (const article of articles) {
+      const isImp = _importantStatuses[`article:${article.id}`] || false;
+      html += buildSourceCardHtml(article, isImp);
+    }
+    const list = document.getElementById('tab-items-list');
+    if (list) list.insertAdjacentHTML('beforeend', html);
+    initViewTracking();
+  }
+
+  updateSentinel();
+}
+
+function updateSentinel() {
+  const tabKey = _activeTab;
+  let hasMore = false;
+  if (tabKey === 'trending-quotes') hasMore = _quotesHasMore;
+  else if (tabKey === 'trending-authors') hasMore = _authorsHasMore;
+  else if (tabKey === 'trending-sources') hasMore = _sourcesHasMore;
+
+  const sentinel = document.getElementById('infinite-scroll-sentinel');
+  if (!hasMore && sentinel) {
+    sentinel.innerHTML = '';
+    if (_infiniteScrollObserver) {
+      _infiniteScrollObserver.disconnect();
+      _infiniteScrollObserver = null;
+    }
+  }
+}
+
 // ======= Tab System =======
 
 /**
- * Build the 4-tab bar HTML
+ * Build the 3-tab bar HTML
  */
 function buildTabBarHtml(activeTab) {
   const tabs = [
-    { key: 'trending-quotes', label: 'Trending Quotes' },
-    { key: 'trending-authors', label: 'Trending Authors' },
-    { key: 'trending-sources', label: 'Trending Sources' },
+    { key: 'trending-quotes', label: 'Quotes' },
+    { key: 'trending-authors', label: 'Authors' },
+    { key: 'trending-sources', label: 'Sources' },
   ];
 
   return `
@@ -626,39 +891,42 @@ async function renderTabContent(tabKey) {
 
 let _authorsSortBy = 'importance';
 
-async function renderTrendingAuthorsTab(container, sortBy) {
-  _authorsSortBy = sortBy || 'importance';
-  const sortParam = _authorsSortBy === 'importance' ? '?sort=importance' : '';
-  const data = await API.get('/analytics/trending-authors' + sortParam);
+async function renderTrendingAuthorsTab(container) {
+  const searchParam = _authorsSearch.length >= 2 ? `&search=${encodeURIComponent(_authorsSearch)}` : '';
+  const sortParam = _authorsSortBy === 'importance' ? '&sort=importance' : '';
+  const data = await API.get(`/analytics/trending-authors?page=1&limit=20${sortParam}${searchParam}`);
   const authors = data.authors || [];
+  const total = data.total || 0;
+
+  _authorsPage = 1;
+  _authorsHasMore = authors.length >= 20 && 20 < total;
 
   if (authors.length === 0) {
-    container.innerHTML = `<div class="empty-state"><h3>No trending authors yet</h3><p>Authors will appear as quotes are extracted.</p></div>`;
+    const msg = _authorsSearch ? 'No authors match your search.' : 'No trending authors yet';
+    container.innerHTML = buildSearchSortBarHtml('trending-authors') + `<div class="empty-state"><h3>${msg}</h3><p>Authors will appear as quotes are extracted.</p></div>`;
     return;
   }
 
   // Collect person IDs for importance status
-  const entityKeys = [];
-  for (const a of authors) {
-    entityKeys.push(`person:${a.id}`);
-  }
+  const entityKeys = authors.map(a => `person:${a.id}`);
   await fetchImportantStatuses(entityKeys);
 
-  let html = `<div class="trending-quotes__sort">
-    Sort by: <button class="sort-btn ${_authorsSortBy === 'date' ? 'active' : ''}" onclick="switchAuthorsSort('date')">Date</button>
-    <button class="sort-btn ${_authorsSortBy === 'importance' ? 'active' : ''}" onclick="switchAuthorsSort('importance')">Importance</button>
-  </div>`;
-
+  let html = buildSearchSortBarHtml('trending-authors');
+  html += `<div id="tab-items-list">`;
   for (const author of authors) {
     html += buildAuthorCardHtml(author);
   }
+  html += `</div>`;
+  html += `<div id="infinite-scroll-sentinel"></div>`;
 
   container.innerHTML = html;
+  setupInfiniteScroll();
 }
 
 function switchAuthorsSort(sortBy) {
-  const container = document.getElementById('homepage-tab-content');
-  if (container) renderTrendingAuthorsTab(container, sortBy);
+  _authorsSortBy = sortBy;
+  _authorsPage = 1;
+  renderTabContent('trending-authors');
 }
 
 function buildAuthorCardHtml(author) {
@@ -711,34 +979,41 @@ function sortCardQuotes(btn, cardId, sortBy) {
 
 let _sourcesSortBy = 'date';
 
-async function renderTrendingSourcesTab(container, sortBy) {
-  _sourcesSortBy = sortBy || 'date';
-  const sortParam = _sourcesSortBy === 'importance' ? '?sort=importance' : '';
-  const data = await API.get('/analytics/trending-sources' + sortParam);
+async function renderTrendingSourcesTab(container) {
+  const searchParam = _sourcesSearch.length >= 2 ? `&search=${encodeURIComponent(_sourcesSearch)}` : '';
+  const sortParam = _sourcesSortBy === 'importance' ? '&sort=importance' : '';
+  const data = await API.get(`/analytics/trending-sources?page=1&limit=20${sortParam}${searchParam}`);
   const articles = data.articles || [];
+  const total = data.total || 0;
+
+  _sourcesPage = 1;
+  _sourcesHasMore = articles.length >= 20 && 20 < total;
 
   if (articles.length === 0) {
-    container.innerHTML = `<div class="empty-state"><h3>No trending sources yet</h3><p>Sources will appear as articles are processed.</p></div>`;
+    const msg = _sourcesSearch ? 'No sources match your search.' : 'No trending sources yet';
+    container.innerHTML = buildSearchSortBarHtml('trending-sources') + `<div class="empty-state"><h3>${msg}</h3><p>Sources will appear as articles are processed.</p></div>`;
     return;
   }
 
   await fetchImportantStatuses(articles.map(a => `article:${a.id}`));
 
-  let html = `<div class="trending-quotes__sort">
-    Sort by: <button class="sort-btn ${_sourcesSortBy === 'date' ? 'active' : ''}" onclick="switchSourcesSort('date')">Date</button>
-    <button class="sort-btn ${_sourcesSortBy === 'importance' ? 'active' : ''}" onclick="switchSourcesSort('importance')">Importance</button>
-  </div>`;
+  let html = buildSearchSortBarHtml('trending-sources');
+  html += `<div id="tab-items-list">`;
   for (const article of articles) {
     const isImp = _importantStatuses[`article:${article.id}`] || false;
     html += buildSourceCardHtml(article, isImp);
   }
+  html += `</div>`;
+  html += `<div id="infinite-scroll-sentinel"></div>`;
 
   container.innerHTML = html;
+  setupInfiniteScroll();
 }
 
 function switchSourcesSort(sortBy) {
-  const container = document.getElementById('homepage-tab-content');
-  if (container) renderTrendingSourcesTab(container, sortBy);
+  _sourcesSortBy = sortBy;
+  _sourcesPage = 1;
+  renderTabContent('trending-sources');
 }
 
 function buildSourceCardHtml(article, isImportant) {
@@ -797,55 +1072,43 @@ function expandSourceQuotes(btn, articleId) {
 // ======= Trending Quotes Tab =======
 
 async function renderTrendingQuotesTab(container) {
-  const data = await API.get('/analytics/trending-quotes');
+  const searchParam = _quotesSearch.length >= 2 ? `&search=${encodeURIComponent(_quotesSearch)}` : '';
+  const sortParam = _quotesSortBy === 'importance' ? '&sort=importance' : '';
+  const data = await API.get(`/analytics/trending-quotes?page=1&limit=20${sortParam}${searchParam}`);
 
   // Collect recent quote IDs for important status batch fetch
   const allQuoteIds = [];
   (data.recent_quotes || []).forEach(q => allQuoteIds.push(`quote:${q.id}`));
   await fetchImportantStatuses(allQuoteIds);
 
-  let html = '';
-
-  // Recent Quotes
   const recentQuotes = data.recent_quotes || [];
+  const total = data.total || 0;
+
+  _quotesPage = 1;
+  _quotesHasMore = recentQuotes.length >= 20 && 20 < total;
+
+  let html = buildSearchSortBarHtml('trending-quotes');
+
   if (recentQuotes.length > 0) {
-    html += `<h2 class="trending-section-heading">Recent Quotes</h2>`;
-    html += `<div class="trending-quotes__sort">
-      Sort by: <button class="sort-btn active" data-sort="date" onclick="sortRecentQuotes('date')">Date</button>
-      <button class="sort-btn" data-sort="importance" onclick="sortRecentQuotes('importance')">Importance</button>
-    </div>`;
-    html += `<div id="recent-quotes-list" class="quotes-grid">`;
+    html += `<div id="tab-items-list">`;
     for (const q of recentQuotes) {
       html += buildQuoteBlockHtml(q, _importantStatuses[`quote:${q.id}`] || false);
     }
     html += `</div>`;
-  }
-
-  if (recentQuotes.length === 0) {
-    html = `<div class="empty-state"><h3>No quotes yet</h3><p>Quotes will appear here as they are extracted from news articles.</p></div>`;
+    html += `<div id="infinite-scroll-sentinel"></div>`;
+  } else {
+    const msg = _quotesSearch ? 'No quotes match your search.' : 'No quotes yet';
+    html += `<div class="empty-state"><h3>${msg}</h3><p>Quotes will appear here as they are extracted from news articles.</p></div>`;
   }
 
   container.innerHTML = html;
+  setupInfiniteScroll();
 }
 
-async function sortRecentQuotes(sortBy) {
-  // Update active sort button
-  document.querySelectorAll('.trending-quotes__sort .sort-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.sort === sortBy);
-  });
-
-  const sortParam = sortBy === 'importance' ? '&sort=importance' : '';
-  const data = await API.get('/analytics/trending-quotes?limit=20' + sortParam);
-  const recentQuotes = data.recent_quotes || [];
-  const listEl = document.getElementById('recent-quotes-list');
-  if (!listEl) return;
-
-  let html = '';
-  for (const q of recentQuotes) {
-    html += buildQuoteBlockHtml(q, _importantStatuses[`quote:${q.id}`] || false);
-  }
-  listEl.innerHTML = html;
-  initViewTracking();
+function switchQuotesSort(sortBy) {
+  _quotesSortBy = sortBy;
+  _quotesPage = 1;
+  renderTabContent('trending-quotes');
 }
 
 // ======= All Tab =======

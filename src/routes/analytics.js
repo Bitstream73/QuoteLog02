@@ -72,20 +72,33 @@ router.get('/overview', (req, res) => {
   });
 });
 
-// GET /api/analytics/trending-sources - Articles sorted by trending_score, each with top 3 quotes
+// GET /api/analytics/trending-sources - Articles sorted by date or importance, each with top 3 quotes
 router.get('/trending-sources', (req, res) => {
   try {
     const db = getDb();
+    const page = parseInt(req.query.page) || 1;
     const limit = Math.min(parseInt(req.query.limit) || 20, 50);
+    const offset = (page - 1) * limit;
+    const search = (req.query.search || '').trim();
 
     const sortMode = req.query.sort;
     let sourceOrder;
     if (sortMode === 'importance') {
       sourceOrder = tieredImportanceOrder('COALESCE(a.published_at, a.created_at)', 'a.importants_count');
     } else {
-      sourceOrder = 'a.trending_score DESC';
+      sourceOrder = 'COALESCE(a.published_at, a.created_at) DESC';
     }
 
+    const searchFilter = search.length >= 2 ? 'AND a.title LIKE ?' : '';
+    const searchParam = search.length >= 2 ? `%${search}%` : null;
+
+    const baseWhere = `
+      WHERE a.trending_score > 0
+        AND (SELECT COUNT(*) FROM quote_articles qa3 JOIN quotes q ON q.id = qa3.quote_id AND q.is_visible = 1 WHERE qa3.article_id = a.id) > 0
+        ${searchFilter}
+    `;
+
+    const queryParams = searchParam ? [searchParam, limit, offset] : [limit, offset];
     const articles = db.prepare(`
       SELECT a.id, a.url, a.title, a.published_at, a.importants_count, a.share_count,
         a.view_count, a.trending_score,
@@ -93,11 +106,16 @@ router.get('/trending-sources', (req, res) => {
         (SELECT COUNT(*) FROM quote_articles qa2 JOIN quotes q ON q.id = qa2.quote_id AND q.is_visible = 1 WHERE qa2.article_id = a.id) as quote_count
       FROM articles a
       LEFT JOIN sources s ON s.id = a.source_id
-      WHERE a.trending_score > 0
-        AND (SELECT COUNT(*) FROM quote_articles qa3 JOIN quotes q ON q.id = qa3.quote_id AND q.is_visible = 1 WHERE qa3.article_id = a.id) > 0
+      ${baseWhere}
       ORDER BY ${sourceOrder}
-      LIMIT ?
-    `).all(limit);
+      LIMIT ? OFFSET ?
+    `).all(...queryParams);
+
+    const countParams = searchParam ? [searchParam] : [];
+    const total = db.prepare(`
+      SELECT COUNT(*) as count FROM articles a
+      ${baseWhere}
+    `).get(...countParams).count;
 
     // For each article, get top 3 quotes
     const getTopQuotes = db.prepare(`
@@ -125,7 +143,7 @@ router.get('/trending-sources', (req, res) => {
       })),
     }));
 
-    res.json({ articles: articlesWithQuotes });
+    res.json({ articles: articlesWithQuotes, total, page, limit });
   } catch (err) {
     console.error('Trending sources error:', err);
     res.status(500).json({ error: 'Internal server error' });
@@ -139,6 +157,7 @@ router.get('/trending-quotes', (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = Math.min(parseInt(req.query.limit) || 20, 50);
     const offset = (page - 1) * limit;
+    const search = (req.query.search || '').trim();
 
     const baseSelect = `
       SELECT q.id, q.text, q.context, q.quote_datetime, q.importants_count, q.share_count,
@@ -155,36 +174,46 @@ router.get('/trending-quotes', (req, res) => {
       WHERE q.is_visible = 1 AND q.canonical_quote_id IS NULL
     `;
 
-    const quoteOfDay = db.prepare(`${baseSelect}
-      AND q.created_at >= datetime('now', '-1 day')
-      GROUP BY q.id ORDER BY q.importants_count DESC LIMIT 1
-    `).get();
+    const isSearching = search.length >= 2;
 
-    const quoteOfWeek = db.prepare(`${baseSelect}
-      AND q.created_at >= datetime('now', '-7 days')
-      GROUP BY q.id ORDER BY q.importants_count DESC LIMIT 1
-    `).get();
+    // Skip quote_of_day/week/month when searching
+    let quoteOfDay = null, quoteOfWeek = null, quoteOfMonth = null;
+    if (!isSearching) {
+      quoteOfDay = db.prepare(`${baseSelect}
+        AND q.created_at >= datetime('now', '-1 day')
+        GROUP BY q.id ORDER BY q.importants_count DESC LIMIT 1
+      `).get() || null;
 
-    const quoteOfMonth = db.prepare(`${baseSelect}
-      AND q.created_at >= datetime('now', '-30 days')
-      GROUP BY q.id ORDER BY q.importants_count DESC LIMIT 1
-    `).get();
+      quoteOfWeek = db.prepare(`${baseSelect}
+        AND q.created_at >= datetime('now', '-7 days')
+        GROUP BY q.id ORDER BY q.importants_count DESC LIMIT 1
+      `).get() || null;
+
+      quoteOfMonth = db.prepare(`${baseSelect}
+        AND q.created_at >= datetime('now', '-30 days')
+        GROUP BY q.id ORDER BY q.importants_count DESC LIMIT 1
+      `).get() || null;
+    }
+
+    const searchFilter = isSearching ? 'AND (q.text LIKE ? OR q.context LIKE ?)' : '';
+    const searchParams = isSearching ? [`%${search}%`, `%${search}%`] : [];
 
     const recentSort = req.query.sort === 'importance'
       ? tieredImportanceOrder(QUOTE_DATE_EXPR, 'q.importants_count')
       : `${QUOTE_DATE_EXPR} DESC`;
     const recentQuotes = db.prepare(`${baseSelect}
+      ${searchFilter}
       GROUP BY q.id ORDER BY ${recentSort} LIMIT ? OFFSET ?
-    `).all(limit, offset);
+    `).all(...searchParams, limit, offset);
 
     const total = db.prepare(
-      'SELECT COUNT(*) as count FROM quotes WHERE is_visible = 1 AND canonical_quote_id IS NULL'
-    ).get().count;
+      `SELECT COUNT(*) as count FROM quotes q WHERE q.is_visible = 1 AND q.canonical_quote_id IS NULL ${searchFilter}`
+    ).get(...searchParams).count;
 
     res.json({
-      quote_of_day: quoteOfDay || null,
-      quote_of_week: quoteOfWeek || null,
-      quote_of_month: quoteOfMonth || null,
+      quote_of_day: quoteOfDay,
+      quote_of_week: quoteOfWeek,
+      quote_of_month: quoteOfMonth,
       recent_quotes: recentQuotes,
       total,
       page,
@@ -319,11 +348,14 @@ router.get('/trends/author/:id', (req, res) => {
   }
 });
 
-// GET /api/analytics/trending-authors - Authors sorted by trending_score with top quotes
+// GET /api/analytics/trending-authors - Authors sorted by date or importance with top quotes
 router.get('/trending-authors', (req, res) => {
   try {
     const db = getDb();
+    const page = parseInt(req.query.page) || 1;
     const limit = Math.min(parseInt(req.query.limit) || 20, 50);
+    const offset = (page - 1) * limit;
+    const search = (req.query.search || '').trim();
 
     const sortMode = req.query.sort;
     let authorOrder;
@@ -341,17 +373,27 @@ router.get('/trending-authors', (req, res) => {
         p.trending_score DESC
       `;
     } else {
-      authorOrder = 'p.trending_score DESC';
+      authorOrder = 'p.last_seen_at DESC';
     }
 
+    const searchFilter = search.length >= 2 ? 'AND p.canonical_name LIKE ?' : '';
+    const searchParam = search.length >= 2 ? `%${search}%` : null;
+
+    const queryParams = searchParam ? [searchParam, limit, offset] : [limit, offset];
     const authors = db.prepare(`
       SELECT p.id, p.canonical_name, p.photo_url, p.category, p.category_context,
         p.importants_count, p.share_count, p.view_count, p.quote_count, p.trending_score
       FROM persons p
       WHERE p.quote_count > 0
+      ${searchFilter}
       ORDER BY ${authorOrder}
-      LIMIT ?
-    `).all(limit);
+      LIMIT ? OFFSET ?
+    `).all(...queryParams);
+
+    const countParams = searchParam ? [searchParam] : [];
+    const total = db.prepare(
+      `SELECT COUNT(*) as count FROM persons p WHERE p.quote_count > 0 ${searchFilter}`
+    ).get(...countParams).count;
 
     // For each author, get top 4 recent quotes
     const getTopQuotes = db.prepare(`
@@ -377,7 +419,7 @@ router.get('/trending-authors', (req, res) => {
       quotes: getTopQuotes.all(a.id),
     }));
 
-    res.json({ authors: authorsWithQuotes });
+    res.json({ authors: authorsWithQuotes, total, page, limit });
   } catch (err) {
     console.error('Trending authors error:', err);
     res.status(500).json({ error: 'Internal server error' });

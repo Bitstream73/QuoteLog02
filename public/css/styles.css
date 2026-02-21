@@ -2351,13 +2351,13 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
 }
 
 /* Source Author Avatar (rounded square to distinguish from person headshots) */
-.source-author-avatar { flex-shrink: 0; width: 96px; height: 96px; }
-.source-author-avatar__img { width: 96px; height: 96px; border-radius: 4px; object-fit: cover; display: block; }
+.source-author-avatar { flex-shrink: 0; width: 56px; min-height: 40px; }
+.source-author-avatar__img { width: 100%; height: 100%; border-radius: 4px; object-fit: contain; display: block; background: var(--bg-secondary); }
 .source-author-avatar__placeholder {
-  width: 96px; height: 96px; border-radius: 4px;
+  width: 100%; height: 100%; min-height: 40px; border-radius: 4px;
   background: var(--bg-secondary); color: var(--text-muted);
   display: flex; align-items: center; justify-content: center;
-  font-family: var(--font-ui); font-size: 2.5rem; font-weight: 600;
+  font-family: var(--font-ui); font-size: 1.5rem; font-weight: 600;
   border: 1px solid var(--border);
 }
 .source-author-content { flex: 1; min-width: 0; }
@@ -4396,6 +4396,114 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   color: var(--text-muted);
 }
 
+/* ======= Tab Search + Sort Bar ======= */
+
+.tab-search-sort-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 1rem;
+}
+
+.tab-search-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.tab-search-toggle:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.tab-search-input-wrap {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.tab-search-input-wrap:focus-within {
+  border-color: var(--accent);
+}
+
+.tab-search-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 6px 10px;
+  font-size: 0.85rem;
+  color: var(--text);
+  outline: none;
+  font-family: var(--font-ui);
+}
+
+.tab-search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.tab-search-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.tab-search-close:hover {
+  color: var(--text);
+}
+
+.tab-sort-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.infinite-scroll-sentinel {
+  min-height: 1px;
+  margin-top: 1rem;
+}
+
+.infinite-scroll-loading {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 1rem;
+  font-size: 0.85rem;
+}
+
+@media (max-width: 480px) {
+  .tab-sort-buttons {
+    font-size: 0.75rem;
+    gap: 4px;
+  }
+  .tab-sort-buttons .sort-btn {
+    padding: 3px 7px;
+  }
+}
+
 /* ======= Phase 6: Trending Section Headings ======= */
 
 .trending-section-heading {
@@ -5536,7 +5644,7 @@ span.evidence-source-cite {
 .quote-page__text {
   text-align: left;
   font-family: var(--font-headline);
-  font-size: calc(var(--text-2xl) * 0.5);
+  font-size: var(--text-lg);
   font-weight: 400;
   font-style: italic;
   color: var(--text-primary);
@@ -5564,11 +5672,13 @@ span.evidence-source-cite {
 .quote-page__context .quote-hero__summary {
   max-width: none;
   margin: 0;
-  padding: 0;
+  padding: 0 0 0 var(--space-3);
   text-align: left;
   display: block;
   -webkit-line-clamp: unset;
   overflow: visible;
+  border-left: 2px solid var(--accent-muted);
+  line-height: 1.5;
 }
 
 /* Fact-check container — stacking context prevents AI-generated sticky
