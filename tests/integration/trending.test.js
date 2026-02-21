@@ -178,6 +178,50 @@ describe('Trending System', () => {
       expect(res.body.page).toBe(1);
     });
 
+    it('GET /api/analytics/trending-authors?sort=importance orders by SUM of quote importants_count', async () => {
+      const { getDb } = await import('../../src/config/database.js');
+      const db = getDb();
+
+      // Create 3 authors with different total quote importance
+      const pA = db.prepare("INSERT INTO persons (canonical_name, quote_count) VALUES ('Author A', 2)").run();
+      const pB = db.prepare("INSERT INTO persons (canonical_name, quote_count) VALUES ('Author B', 1)").run();
+      const pC = db.prepare("INSERT INTO persons (canonical_name, quote_count) VALUES ('Author C', 1)").run();
+
+      // Author A: 10 + 5 = 15 total importance
+      db.prepare("INSERT INTO quotes (person_id, text, is_visible, importants_count) VALUES (?, 'A quote 1', 1, 10)").run(Number(pA.lastInsertRowid));
+      db.prepare("INSERT INTO quotes (person_id, text, is_visible, importants_count) VALUES (?, 'A quote 2', 1, 5)").run(Number(pA.lastInsertRowid));
+      // Author B: 20 total importance
+      db.prepare("INSERT INTO quotes (person_id, text, is_visible, importants_count) VALUES (?, 'B quote 1', 1, 20)").run(Number(pB.lastInsertRowid));
+      // Author C: 0 total importance
+      db.prepare("INSERT INTO quotes (person_id, text, is_visible, importants_count) VALUES (?, 'C quote 1', 1, 0)").run(Number(pC.lastInsertRowid));
+
+      const res = await request(app).get('/api/analytics/trending-authors?sort=importance');
+      expect(res.status).toBe(200);
+
+      const authors = res.body.authors;
+      const names = authors.map(a => a.canonical_name);
+
+      // B (20) should come before A (15) should come before C (0)
+      const idxB = names.indexOf('Author B');
+      const idxA = names.indexOf('Author A');
+      const idxC = names.indexOf('Author C');
+
+      expect(idxB).toBeLessThan(idxA);
+      expect(idxA).toBeLessThan(idxC);
+
+      // Verify actual importants_count values
+      const authorB = authors.find(a => a.canonical_name === 'Author B');
+      const authorA = authors.find(a => a.canonical_name === 'Author A');
+      const authorC = authors.find(a => a.canonical_name === 'Author C');
+      expect(authorB.importants_count).toBe(20);
+      expect(authorA.importants_count).toBe(15);
+      expect(authorC.importants_count).toBe(0);
+
+      // Cleanup
+      db.prepare('DELETE FROM quotes WHERE person_id IN (?, ?, ?)').run(Number(pA.lastInsertRowid), Number(pB.lastInsertRowid), Number(pC.lastInsertRowid));
+      db.prepare('DELETE FROM persons WHERE id IN (?, ?, ?)').run(Number(pA.lastInsertRowid), Number(pB.lastInsertRowid), Number(pC.lastInsertRowid));
+    });
+
     it('GET /api/analytics/trending-authors?search=X filters by name', async () => {
       const res = await request(app).get('/api/analytics/trending-authors?search=Trending');
 
