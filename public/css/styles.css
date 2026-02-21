@@ -7169,6 +7169,24 @@ span.evidence-source-cite {
   vertical-align: middle;
 }
 
+.orphans-tab-badge {
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.7rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 8px;
+  margin-left: 0.25rem;
+  vertical-align: middle;
+}
+
+.orphan-bulk-actions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
 .bug-card-select { display: flex; align-items: center; }
 
 /* ===== Category Search Pills ===== */
