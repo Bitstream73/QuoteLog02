@@ -94,7 +94,7 @@ router.get('/trending-sources', (req, res) => {
 
     const baseWhere = `
       WHERE a.trending_score > 0
-        AND (SELECT COUNT(*) FROM quote_articles qa3 JOIN quotes q ON q.id = qa3.quote_id AND q.is_visible = 1 WHERE qa3.article_id = a.id) > 0
+        AND EXISTS (SELECT 1 FROM quote_articles qa3 JOIN quotes q ON q.id = qa3.quote_id AND q.is_visible = 1 WHERE qa3.article_id = a.id)
         ${searchFilter}
     `;
 
@@ -102,8 +102,7 @@ router.get('/trending-sources', (req, res) => {
     const articles = db.prepare(`
       SELECT a.id, a.url, a.title, a.published_at, a.importants_count, a.share_count,
         a.view_count, a.trending_score,
-        s.domain as source_domain, s.name as source_name,
-        (SELECT COUNT(*) FROM quote_articles qa2 JOIN quotes q ON q.id = qa2.quote_id AND q.is_visible = 1 WHERE qa2.article_id = a.id) as quote_count
+        s.domain as source_domain, s.name as source_name
       FROM articles a
       LEFT JOIN sources s ON s.id = a.source_id
       ${baseWhere}
@@ -117,7 +116,7 @@ router.get('/trending-sources', (req, res) => {
       ${baseWhere}
     `).get(...countParams).count;
 
-    // For each article, get top 3 quotes
+    // For each article, get top 3 quotes and quote count
     const getTopQuotes = db.prepare(`
       SELECT q.id, q.text, q.context, q.quote_datetime, q.importants_count, q.share_count,
         q.created_at, q.fact_check_verdict,
@@ -130,9 +129,15 @@ router.get('/trending-sources', (req, res) => {
       ORDER BY ${QUOTE_DATE_EXPR} DESC
       LIMIT 3
     `);
+    const getQuoteCount = db.prepare(`
+      SELECT COUNT(*) as count FROM quote_articles qa
+      JOIN quotes q ON q.id = qa.quote_id AND q.is_visible = 1
+      WHERE qa.article_id = ?
+    `);
 
     const articlesWithQuotes = articles.map(a => ({
       ...a,
+      quote_count: getQuoteCount.get(a.id).count,
       quotes: getTopQuotes.all(a.id).map(q => ({
         ...q,
         article_id: a.id,
@@ -324,69 +329,24 @@ router.get('/trends/author/:id', (req, res) => {
   try {
     const db = getDb();
     const authorId = parseInt(req.params.id);
-    const periodMap = { week: 7, month: 30, year: 365 };
-    const period = periodMap[req.query.period] || 30;
+    const period = req.query.period === 'week' ? 7 : 30;
 
     const author = db.prepare(
       'SELECT id, canonical_name as name FROM persons WHERE id = ?'
     ).get(authorId);
     if (!author) return res.status(404).json({ error: 'Author not found' });
 
-    // Bucket by day for week/month, by week for year
-    const bucketExpr = period <= 30
-      ? "date(q.created_at)"
-      : "strftime('%Y-%W', q.created_at)";
-
-    // Timeline: quotes per bucket for the period
+    // Timeline: quotes per day for the period
     const timeline = db.prepare(`
-      SELECT ${bucketExpr} as bucket, COUNT(*) as count
+      SELECT date(q.created_at) as bucket, COUNT(*) as count
       FROM quotes q
       WHERE q.person_id = ? AND q.is_visible = 1
-        AND q.canonical_quote_id IS NULL
         AND q.created_at >= datetime('now', ?)
       GROUP BY bucket
       ORDER BY bucket
     `).all(authorId, `-${period} days`);
 
-    // Verdict breakdown
-    const verdictRows = db.prepare(`
-      SELECT fact_check_verdict as verdict, COUNT(*) as count
-      FROM quotes q
-      WHERE q.person_id = ? AND q.is_visible = 1
-        AND q.canonical_quote_id IS NULL
-        AND q.fact_check_verdict IS NOT NULL
-      GROUP BY fact_check_verdict
-    `).all(authorId);
-
-    const verdictTotal = verdictRows.reduce((sum, r) => sum + r.count, 0);
-    const verdicts = verdictRows.map(r => ({
-      verdict: r.verdict,
-      count: r.count,
-      percentage: verdictTotal > 0 ? Math.round((r.count / verdictTotal) * 100) : 0,
-    }));
-
-    // Comparison author (optional)
-    let comparison = null;
-    const compareWith = parseInt(req.query.compareWith);
-    if (compareWith && !isNaN(compareWith)) {
-      const compareAuthor = db.prepare(
-        'SELECT id, canonical_name as name FROM persons WHERE id = ?'
-      ).get(compareWith);
-      if (compareAuthor) {
-        const compareTimeline = db.prepare(`
-          SELECT ${bucketExpr} as bucket, COUNT(*) as count
-          FROM quotes q
-          WHERE q.person_id = ? AND q.is_visible = 1
-            AND q.canonical_quote_id IS NULL
-            AND q.created_at >= datetime('now', ?)
-          GROUP BY bucket
-          ORDER BY bucket
-        `).all(compareWith, `-${period} days`);
-        comparison = { author: compareAuthor, timeline: compareTimeline };
-      }
-    }
-
-    res.json({ author, timeline, verdicts, comparison });
+    res.json({ author, timeline });
   } catch (err) {
     console.error('Author trends error:', err);
     res.status(500).json({ error: 'Internal server error' });
