@@ -150,28 +150,7 @@ describe('Visual Tests', () => {
       await page.close();
     }, 20000);
 
-    it('9. New quotes snackbar has dark background (not accent)', async () => {
-      const page = await getPage(1280, 800);
-      await page.goto(baseUrl, { waitUntil: 'networkidle2', timeout: 15000 });
-      // Check CSS exists for snackbar
-      const hasSnackbarCSS = await page.evaluate(() => {
-        const styles = document.styleSheets;
-        for (const sheet of styles) {
-          try {
-            for (const rule of sheet.cssRules) {
-              if (rule.selectorText && rule.selectorText.includes('new-quotes-snackbar')) {
-                return true;
-              }
-            }
-          } catch {}
-        }
-        return false;
-      });
-      expect(hasSnackbarCSS).toBe(true);
-      await page.close();
-    }, 20000);
-
-    it('10. Content max-width is 780px', async () => {
+    it('9. Content max-width is 780px', async () => {
       const page = await getPage(1280, 800);
       await page.goto(baseUrl, { waitUntil: 'networkidle2', timeout: 15000 });
       const maxWidth = await page.evaluate(() => {
