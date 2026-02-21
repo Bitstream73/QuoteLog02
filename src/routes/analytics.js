@@ -92,16 +92,19 @@ router.get('/trending-sources', (req, res) => {
     const searchFilter = search.length >= 2 ? 'AND a.title LIKE ?' : '';
     const searchParam = search.length >= 2 ? `%${search}%` : null;
 
-    // Simple query: trending articles are expected to have quotes (trending_score is set from engagement)
-    const baseWhere = `WHERE a.trending_score > 0 ${searchFilter}`;
+    // Filter to articles that have visible quotes (EXISTS is fast with idx_qa_article index)
+    const hasQuotesFilter = `AND EXISTS (SELECT 1 FROM quote_articles qa JOIN quotes q ON q.id = qa.quote_id WHERE qa.article_id = a.id AND q.is_visible = 1)`;
+    const baseWhere = `WHERE a.trending_score > 0 ${hasQuotesFilter} ${searchFilter}`;
 
     const queryParams = searchParam ? [searchParam, limit, offset] : [limit, offset];
     const articles = db.prepare(`
       SELECT a.id, a.url, a.title, a.published_at, a.importants_count, a.share_count,
         a.view_count, a.trending_score,
-        s.domain as source_domain, s.name as source_name
+        s.domain as source_domain, s.name as source_name,
+        sa.image_url as source_author_image_url
       FROM articles a
       LEFT JOIN sources s ON s.id = a.source_id
+      LEFT JOIN source_authors sa ON sa.id = s.source_author_id
       ${baseWhere}
       ORDER BY ${sourceOrder}
       LIMIT ? OFFSET ?
@@ -136,7 +139,7 @@ router.get('/trending-sources', (req, res) => {
         source_name: a.source_name,
       }));
       return { ...a, quote_count: quotes.length, quotes };
-    }).filter(a => a.quotes.length > 0);
+    });
 
     res.json({ articles: articlesWithQuotes, total, page, limit });
   } catch (err) {

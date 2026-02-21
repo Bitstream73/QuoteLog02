@@ -4341,6 +4341,14 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   color: var(--text-muted);
 }
 
+.source-card__source-img {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  object-fit: contain;
+  vertical-align: middle;
+}
+
 .source-card__actions {
   display: flex;
   align-items: center;
@@ -6012,10 +6020,10 @@ span.evidence-source-cite {
   cursor: pointer;
   transition: border-color 0.15s, box-shadow 0.15s;
   position: relative;
-  text-align: left;
+  text-align: center;
   display: flex;
   flex-direction: column;
-  align-items: stretch;
+  align-items: center;
   overflow: hidden;
 }
 
@@ -6111,6 +6119,56 @@ span.evidence-source-cite {
 /* Single-item full-width noteworthy */
 .noteworthy-section__scroll--single .noteworthy-card {
   flex: 1 1 100%;
+}
+
+/* Noteworthy card header (portrait block) */
+.noteworthy-card__header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--divider-light);
+  margin-bottom: 0.5rem;
+  flex-shrink: 0;
+  width: 100%;
+}
+
+.noteworthy-card__avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+}
+
+.noteworthy-card__avatar-placeholder {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: var(--bg-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-headline);
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.noteworthy-card__name {
+  font-family: var(--font-headline);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0.25rem 0 0;
+  text-align: center;
+}
+
+.noteworthy-card__desc {
+  font-family: var(--font-ui);
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-align: center;
 }
 
 /* Noteworthy card content area with fade */
@@ -6262,6 +6320,15 @@ span.evidence-source-cite {
   .noteworthy-section__scroll--odd .noteworthy-card:last-child {
     grid-column: 1 / -1;
   }
+}
+
+/* Quote card flex layout for bottom-justified important button */
+.noteworthy-card--quote {
+  display: flex;
+  flex-direction: column;
+}
+.noteworthy-card--quote .noteworthy-card__important {
+  margin-top: auto;
 }
 
 /* ===================================
