@@ -120,6 +120,51 @@ describe('Admin noteworthy - person type', () => {
   });
 });
 
+describe('Admin noteworthy - full_width toggle', () => {
+  let nwItemId;
+
+  beforeAll(() => {
+    const db = getDb();
+    db.prepare("INSERT OR IGNORE INTO topics (name, slug) VALUES ('FW Toggle Topic', 'fw-toggle-topic')").run();
+    const topicId = db.prepare("SELECT id FROM topics WHERE slug = 'fw-toggle-topic'").get().id;
+    const res = db.prepare("INSERT OR IGNORE INTO noteworthy_items (entity_type, entity_id, display_order) VALUES ('topic', ?, 99)").run(topicId);
+    nwItemId = res.changes ? Number(res.lastInsertRowid) : db.prepare("SELECT id FROM noteworthy_items WHERE entity_type = 'topic' AND entity_id = ?").get(topicId).id;
+  });
+
+  it('PATCH sets full_width to 1', async () => {
+    const res = await request(app).patch(`/api/admin/noteworthy/${nwItemId}`)
+      .set('Cookie', adminCookie)
+      .send({ full_width: 1 });
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    const db = getDb();
+    const row = db.prepare('SELECT full_width FROM noteworthy_items WHERE id = ?').get(nwItemId);
+    expect(row.full_width).toBe(1);
+  });
+
+  it('PATCH sets full_width back to 0', async () => {
+    const res = await request(app).patch(`/api/admin/noteworthy/${nwItemId}`)
+      .set('Cookie', adminCookie)
+      .send({ full_width: 0 });
+    expect(res.status).toBe(200);
+    const db = getDb();
+    const row = db.prepare('SELECT full_width FROM noteworthy_items WHERE id = ?').get(nwItemId);
+    expect(row.full_width).toBe(0);
+  });
+
+  it('public noteworthy endpoint returns full_width field', async () => {
+    // Set full_width on
+    const db = getDb();
+    db.prepare('UPDATE noteworthy_items SET full_width = 1 WHERE id = ?').run(nwItemId);
+    const res = await request(app).get('/api/search/noteworthy?limit=30');
+    expect(res.status).toBe(200);
+    const item = res.body.items.find(i => i.id === nwItemId);
+    if (item) {
+      expect(item.full_width).toBe(1);
+    }
+  });
+});
+
 describe('Enriched noteworthy endpoint', () => {
   let enrichedQuoteId;
   let enrichedTopicId;

@@ -961,6 +961,12 @@ function initializeTables(db) {
     db.exec('CREATE INDEX IF NOT EXISTS idx_noteworthy_active ON noteworthy_items(active, display_order)');
   }
 
+  // Migration: add full_width column to noteworthy_items
+  const nwCols = db.prepare("PRAGMA table_info(noteworthy_items)").all();
+  if (!nwCols.find(c => c.name === 'full_width')) {
+    db.exec("ALTER TABLE noteworthy_items ADD COLUMN full_width INTEGER NOT NULL DEFAULT 0");
+  }
+
   // Migration: add 'category' to importants entity_type CHECK constraint
   const impSchema = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='importants'").get();
   if (impSchema && !impSchema.sql.includes("'category'")) {

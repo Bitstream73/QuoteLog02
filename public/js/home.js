@@ -1327,12 +1327,22 @@ function toggleQuoteText(event, quoteId) {
 function buildMiniQuotesHtml(topQuotes) {
   if (!topQuotes || topQuotes.length === 0) return '';
   return topQuotes.map(tq => {
-    const verdictHtml = (tq.fact_check_verdict && typeof buildVerdictBadgeHtml === 'function')
+    _quoteMeta[tq.id] = {
+      text: tq.text || '',
+      personName: tq.person_name || '',
+      personCategoryContext: '',
+      context: tq.context || '',
+    };
+    const verdictHtml = (typeof buildVerdictBadgeHtml === 'function')
       ? buildVerdictBadgeHtml(tq.id, tq.fact_check_verdict)
       : '';
+    const avatarHtml = tq.photo_url
+      ? `<img class="noteworthy-quote__avatar" src="${escapeHtml(tq.photo_url)}" alt="" onerror="this.style.display='none'">`
+      : '';
     return `<div class="noteworthy-quote" onclick="event.stopPropagation(); navigateTo('/quote/${tq.id}')">
-      <p class="noteworthy-quote__text">${escapeHtml(tq.text || '')}</p>
+      <p class="noteworthy-quote__text"><span class="quote-mark quote-mark--open">\u201C</span>${escapeHtml(tq.text || '')}<span class="quote-mark quote-mark--close">\u201D</span></p>
       <div class="noteworthy-quote__meta">
+        ${avatarHtml}
         ${verdictHtml}
         <span class="noteworthy-quote__author">${escapeHtml(tq.person_name || '')}</span>
       </div>
@@ -1374,10 +1384,16 @@ function buildNoteworthySectionHtml(items) {
         ? `<img class="noteworthy-card__avatar" src="${escapeHtml(item.photo_url)}" alt="" onerror="this.style.display='none'">`
         : `<div class="noteworthy-card__avatar-placeholder">${escapeHtml((item.person_name || '?')[0])}</div>`;
       headerHtml = buildNoteworthyCardHeader(avatarHtml, item.person_name || '', item.person_category_context || '');
-      const verdictHtml = (item.fact_check_verdict && typeof buildVerdictBadgeHtml === 'function')
+      _quoteMeta[item.entity_id] = {
+        text: item.entity_label || '',
+        personName: item.person_name || '',
+        personCategoryContext: item.person_category_context || '',
+        context: item.context || '',
+      };
+      const verdictHtml = (typeof buildVerdictBadgeHtml === 'function')
         ? buildVerdictBadgeHtml(item.entity_id, item.fact_check_verdict) : '';
       contentHtml = `<div class="noteworthy-quote">
-        <p class="noteworthy-quote__text">${escapeHtml(item.entity_label || '')}</p>
+        <p class="noteworthy-quote__text"><span class="quote-mark quote-mark--open">\u201C</span>${escapeHtml(item.entity_label || '')}<span class="quote-mark quote-mark--close">\u201D</span></p>
         <div class="noteworthy-quote__meta">
           ${verdictHtml}
           <span class="noteworthy-quote__author">${escapeHtml(item.person_name || '')}</span>
@@ -1415,7 +1431,7 @@ function buildNoteworthySectionHtml(items) {
       contentHtml = buildMiniArticlesHtml(item.top_articles);
     }
 
-    cardsHtml += `<div class="noteworthy-card noteworthy-card--${item.entity_type}" onclick="navigateTo('${clickTarget}')">
+    cardsHtml += `<div class="noteworthy-card noteworthy-card--${item.entity_type}${item.full_width ? ' noteworthy-card--full-width' : ''}" onclick="navigateTo('${clickTarget}')">
       ${headerHtml}
       <div class="noteworthy-card__content">${contentHtml}</div>
     </div>`;
@@ -1423,7 +1439,7 @@ function buildNoteworthySectionHtml(items) {
 
   return `
     <div class="noteworthy-section">
-      <h2 class="noteworthy-section__heading">Noteworthy</h2>
+      <h2 class="noteworthy-section__heading">Latest Claims</h2>
       <div class="noteworthy-section__scroll${singleClass}${oddClass}">
         ${cardsHtml}
       </div>

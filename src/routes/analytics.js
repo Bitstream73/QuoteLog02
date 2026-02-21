@@ -364,6 +364,19 @@ router.get('/trends/author/:id', (req, res) => {
       percentage: verdictTotal > 0 ? Math.round((r.count / verdictTotal) * 100) : 0,
     }));
 
+    // Topic distribution
+    const topics = db.prepare(`
+      SELECT t.name as keyword, COUNT(*) as count
+      FROM quote_topics qt
+      JOIN topics t ON t.id = qt.topic_id
+      JOIN quotes q ON q.id = qt.quote_id
+      WHERE q.person_id = ? AND q.is_visible = 1
+        AND q.canonical_quote_id IS NULL
+      GROUP BY t.id, t.name
+      ORDER BY count DESC
+      LIMIT 10
+    `).all(authorId);
+
     // Comparison author (optional)
     let comparison = null;
     const compareWith = parseInt(req.query.compareWith);
@@ -385,7 +398,7 @@ router.get('/trends/author/:id', (req, res) => {
       }
     }
 
-    res.json({ author, timeline, verdicts, comparison });
+    res.json({ author, timeline, verdicts, topics, comparison });
   } catch (err) {
     console.error('Author trends error:', err);
     res.status(500).json({ error: 'Internal server error' });
@@ -402,37 +415,37 @@ router.get('/trending-authors', (req, res) => {
     const search = (req.query.search || '').trim();
 
     const sortMode = req.query.sort;
-    let authorOrder;
-    if (sortMode === 'importance') {
-      // For authors, use most recent quote date for tiering
-      authorOrder = `
-        CASE
-          WHEN p.importants_count > 0 AND p.last_seen_at >= datetime('now', '-1 day') THEN 1
-          WHEN p.importants_count > 0 AND p.last_seen_at >= datetime('now', '-7 days') THEN 2
-          WHEN p.importants_count > 0 AND p.last_seen_at >= datetime('now', '-30 days') THEN 3
-          WHEN p.importants_count > 0 THEN 4
-          ELSE 5
-        END ASC,
-        p.importants_count DESC,
-        p.trending_score DESC
-      `;
-    } else {
-      authorOrder = 'p.last_seen_at DESC';
-    }
 
     const searchFilter = search.length >= 2 ? 'AND p.canonical_name LIKE ?' : '';
     const searchParam = search.length >= 2 ? `%${search}%` : null;
 
     const queryParams = searchParam ? [searchParam, limit, offset] : [limit, offset];
-    const authors = db.prepare(`
-      SELECT p.id, p.canonical_name, p.photo_url, p.category, p.category_context,
-        p.importants_count, p.share_count, p.view_count, p.quote_count, p.trending_score
-      FROM persons p
-      WHERE p.quote_count > 0
-      ${searchFilter}
-      ORDER BY ${authorOrder}
-      LIMIT ? OFFSET ?
-    `).all(...queryParams);
+    let authors;
+    if (sortMode === 'importance') {
+      // Sum importants_count across all visible, non-canonical-duplicate quotes
+      authors = db.prepare(`
+        SELECT p.id, p.canonical_name, p.photo_url, p.category, p.category_context,
+          p.share_count, p.view_count, p.quote_count, p.trending_score,
+          COALESCE(SUM(q.importants_count), 0) as importants_count
+        FROM persons p
+        LEFT JOIN quotes q ON q.person_id = p.id AND q.is_visible = 1 AND q.canonical_quote_id IS NULL
+        WHERE p.quote_count > 0
+        ${searchFilter}
+        GROUP BY p.id
+        ORDER BY importants_count DESC, p.trending_score DESC
+        LIMIT ? OFFSET ?
+      `).all(...queryParams);
+    } else {
+      authors = db.prepare(`
+        SELECT p.id, p.canonical_name, p.photo_url, p.category, p.category_context,
+          p.importants_count, p.share_count, p.view_count, p.quote_count, p.trending_score
+        FROM persons p
+        WHERE p.quote_count > 0
+        ${searchFilter}
+        ORDER BY p.last_seen_at DESC
+        LIMIT ? OFFSET ?
+      `).all(...queryParams);
+    }
 
     const countParams = searchParam ? [searchParam] : [];
     const total = db.prepare(
