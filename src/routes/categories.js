@@ -23,9 +23,9 @@ router.get('/:idOrSlug', (req, res) => {
 
   let category;
   if (/^\d+$/.test(idOrSlug)) {
-    category = db.prepare('SELECT id, name, slug, sort_order FROM categories WHERE id = ?').get(idOrSlug);
+    category = db.prepare('SELECT id, name, slug, sort_order, image_url, icon_name FROM categories WHERE id = ?').get(idOrSlug);
   } else {
-    category = db.prepare('SELECT id, name, slug, sort_order FROM categories WHERE slug = ?').get(decodeURIComponent(idOrSlug));
+    category = db.prepare('SELECT id, name, slug, sort_order, image_url, icon_name FROM categories WHERE slug = ?').get(decodeURIComponent(idOrSlug));
   }
 
   if (!category) {
@@ -49,7 +49,7 @@ router.get('/:idOrSlug', (req, res) => {
   `).get(category.id).count;
 
   res.json({
-    category: { id: category.id, name: category.name, slug: category.slug },
+    category: { id: category.id, name: category.name, slug: category.slug, image_url: category.image_url || null, icon_name: category.icon_name || null },
     topics,
     quoteCount,
   });

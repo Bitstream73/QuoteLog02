@@ -969,7 +969,7 @@ router.put('/categories/:id', (req, res) => {
   try {
     const db = getDb();
     const { id } = req.params;
-    const { name, sort_order } = req.body;
+    const { name, sort_order, image_url, icon_name } = req.body;
 
     const existing = db.prepare('SELECT * FROM categories WHERE id = ?').get(id);
     if (!existing) {
@@ -988,6 +988,16 @@ router.put('/categories/:id', (req, res) => {
     if (sort_order !== undefined) {
       db.prepare('UPDATE categories SET sort_order = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
         .run(sort_order, id);
+    }
+
+    if (image_url !== undefined) {
+      db.prepare('UPDATE categories SET image_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+        .run(image_url || null, id);
+    }
+
+    if (icon_name !== undefined) {
+      db.prepare('UPDATE categories SET icon_name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+        .run(icon_name || null, id);
     }
 
     const updated = db.prepare('SELECT * FROM categories WHERE id = ?').get(id);

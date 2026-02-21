@@ -1878,16 +1878,22 @@ function renderCategories(categories) {
 }
 
 function renderCategoryRow(cat) {
+  const thumbHtml = cat.image_url
+    ? `<img src="${escapeHtml(cat.image_url)}" alt="" style="width:24px;height:24px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:4px" onerror="this.style.display='none'">`
+    : cat.icon_name
+      ? `<span class="material-icons-outlined" style="font-size:18px;vertical-align:middle;margin-right:4px;color:var(--text-muted)">${escapeHtml(cat.icon_name)}</span>`
+      : '';
   return `
     <details class="keyword-card" data-category-id="${cat.id}">
       <summary class="keyword-card__summary">
         <div class="keyword-card__info">
-          <span class="keyword-card__name" id="category-name-${cat.id}">${escapeHtml(cat.name)}</span>
+          ${thumbHtml}<span class="keyword-card__name" id="category-name-${cat.id}">${escapeHtml(cat.name)}</span>
           <span class="keyword-card__stats">${cat.topic_count || 0} topics &middot; Order: ${cat.sort_order ?? 0}</span>
         </div>
         <div class="keyword-card__actions" onclick="event.stopPropagation()">
           <button class="btn btn-secondary btn-sm" onclick="categoryMoveUp(${cat.id})" title="Move up">&uarr;</button>
           <button class="btn btn-secondary btn-sm" onclick="categoryMoveDown(${cat.id})" title="Move down">&darr;</button>
+          <button class="btn btn-secondary btn-sm" onclick="adminChangeCategoryImage(${cat.id}, '${escapeHtml(cat.name.replace(/'/g, "\\'"))}')" title="Change image">Image</button>
           <button class="btn btn-secondary btn-sm" onclick="editCategory(${cat.id})" title="Rename">Edit</button>
           <button class="btn btn-danger btn-sm" onclick="deleteCategory(${cat.id})" title="Delete">Delete</button>
         </div>

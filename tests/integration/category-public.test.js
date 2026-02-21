@@ -51,7 +51,7 @@ describe('Category Public API', () => {
     it('returns category detail with topics and quoteCount', async () => {
       const res = await request(app).get('/api/categories/1');
       expect(res.status).toBe(200);
-      expect(res.body.category).toEqual({ id: 1, name: 'Politics', slug: 'politics' });
+      expect(res.body.category).toEqual({ id: 1, name: 'Politics', slug: 'politics', image_url: null, icon_name: null });
       expect(res.body.topics).toEqual([{ id: 1, name: 'Elections' }]);
       expect(res.body.quoteCount).toBe(1); // only visible quotes
     });

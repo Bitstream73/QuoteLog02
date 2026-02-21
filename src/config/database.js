@@ -1010,6 +1010,12 @@ function initializeTables(db) {
   if (!catCols2.includes('trending_score')) {
     db.exec(`ALTER TABLE categories ADD COLUMN trending_score REAL NOT NULL DEFAULT 0.0`);
   }
+  if (!catCols2.includes('image_url')) {
+    db.exec(`ALTER TABLE categories ADD COLUMN image_url TEXT`);
+  }
+  if (!catCols2.includes('icon_name')) {
+    db.exec(`ALTER TABLE categories ADD COLUMN icon_name TEXT`);
+  }
 
   db.exec(`CREATE INDEX IF NOT EXISTS idx_topics_trending ON topics(trending_score DESC) WHERE status = 'active'`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_categories_trending ON categories(trending_score DESC)`);

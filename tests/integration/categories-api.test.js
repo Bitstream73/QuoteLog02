@@ -312,6 +312,76 @@ describe('Categories API', () => {
     });
   });
 
+  describe('Image and icon support', () => {
+    let imgCatId;
+
+    it('POST creates category with null image_url and icon_name by default', async () => {
+      const res = await request(app)
+        .post('/api/admin/categories')
+        .set('Cookie', authCookie)
+        .send({ name: 'Health' });
+      expect(res.status).toBe(201);
+      imgCatId = res.body.id;
+      // Fetch it back to verify null defaults
+      const get = await request(app)
+        .get(`/api/admin/categories/${imgCatId}`)
+        .set('Cookie', authCookie);
+      expect(get.body.category.image_url).toBeNull();
+      expect(get.body.category.icon_name).toBeNull();
+    });
+
+    it('PUT with image_url updates the category', async () => {
+      const res = await request(app)
+        .put(`/api/admin/categories/${imgCatId}`)
+        .set('Cookie', authCookie)
+        .send({ image_url: 'https://example.com/health.jpg' });
+      expect(res.status).toBe(200);
+      expect(res.body.category.image_url).toBe('https://example.com/health.jpg');
+    });
+
+    it('PUT with icon_name updates the category', async () => {
+      const res = await request(app)
+        .put(`/api/admin/categories/${imgCatId}`)
+        .set('Cookie', authCookie)
+        .send({ icon_name: 'health_and_safety' });
+      expect(res.status).toBe(200);
+      expect(res.body.category.icon_name).toBe('health_and_safety');
+    });
+
+    it('GET /api/admin/categories returns image_url and icon_name', async () => {
+      const res = await request(app)
+        .get('/api/admin/categories')
+        .set('Cookie', authCookie);
+      expect(res.status).toBe(200);
+      const health = res.body.categories.find(c => c.name === 'Health');
+      expect(health).toBeDefined();
+      expect(health.image_url).toBe('https://example.com/health.jpg');
+      expect(health.icon_name).toBe('health_and_safety');
+    });
+
+    it('PUT with empty image_url clears it to null', async () => {
+      const res = await request(app)
+        .put(`/api/admin/categories/${imgCatId}`)
+        .set('Cookie', authCookie)
+        .send({ image_url: '' });
+      expect(res.status).toBe(200);
+      expect(res.body.category.image_url).toBeNull();
+    });
+
+    it('Public GET /api/categories/:id returns image_url and icon_name', async () => {
+      // Set image back for this test
+      await request(app)
+        .put(`/api/admin/categories/${imgCatId}`)
+        .set('Cookie', authCookie)
+        .send({ image_url: 'https://example.com/health2.jpg' });
+
+      const res = await request(app).get(`/api/categories/${imgCatId}`);
+      expect(res.status).toBe(200);
+      expect(res.body.category.image_url).toBe('https://example.com/health2.jpg');
+      expect(res.body.category.icon_name).toBe('health_and_safety');
+    });
+  });
+
   describe('Slug generation', () => {
     it('generates correct slugs from names with special characters', async () => {
       const res = await request(app)
