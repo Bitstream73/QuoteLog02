@@ -84,9 +84,9 @@ router.get('/trending-sources', (req, res) => {
     const sortMode = req.query.sort;
     let sourceOrder;
     if (sortMode === 'importance') {
-      sourceOrder = tieredImportanceOrder('COALESCE(a.published_at, a.created_at)', 'a.importants_count');
+      sourceOrder = tieredImportanceOrder('a.created_at', 'a.importants_count');
     } else {
-      sourceOrder = 'COALESCE(a.published_at, a.created_at) DESC';
+      sourceOrder = 'a.created_at DESC';
     }
 
     const searchFilter = search.length >= 2 ? 'AND a.title LIKE ?' : '';
@@ -319,24 +319,69 @@ router.get('/trends/author/:id', (req, res) => {
   try {
     const db = getDb();
     const authorId = parseInt(req.params.id);
-    const period = req.query.period === 'week' ? 7 : 30;
+    const periodMap = { week: 7, month: 30, year: 365 };
+    const period = periodMap[req.query.period] || 30;
 
     const author = db.prepare(
       'SELECT id, canonical_name as name FROM persons WHERE id = ?'
     ).get(authorId);
     if (!author) return res.status(404).json({ error: 'Author not found' });
 
-    // Timeline: quotes per day for the period
+    // Bucket by day for week/month, by week for year
+    const bucketExpr = period <= 30
+      ? "date(q.created_at)"
+      : "strftime('%Y-%W', q.created_at)";
+
+    // Timeline: quotes per bucket for the period
     const timeline = db.prepare(`
-      SELECT date(q.created_at) as bucket, COUNT(*) as count
+      SELECT ${bucketExpr} as bucket, COUNT(*) as count
       FROM quotes q
       WHERE q.person_id = ? AND q.is_visible = 1
+        AND q.canonical_quote_id IS NULL
         AND q.created_at >= datetime('now', ?)
       GROUP BY bucket
       ORDER BY bucket
     `).all(authorId, `-${period} days`);
 
-    res.json({ author, timeline });
+    // Verdict breakdown
+    const verdictRows = db.prepare(`
+      SELECT fact_check_verdict as verdict, COUNT(*) as count
+      FROM quotes q
+      WHERE q.person_id = ? AND q.is_visible = 1
+        AND q.canonical_quote_id IS NULL
+        AND q.fact_check_verdict IS NOT NULL
+      GROUP BY fact_check_verdict
+    `).all(authorId);
+
+    const verdictTotal = verdictRows.reduce((sum, r) => sum + r.count, 0);
+    const verdicts = verdictRows.map(r => ({
+      verdict: r.verdict,
+      count: r.count,
+      percentage: verdictTotal > 0 ? Math.round((r.count / verdictTotal) * 100) : 0,
+    }));
+
+    // Comparison author (optional)
+    let comparison = null;
+    const compareWith = parseInt(req.query.compareWith);
+    if (compareWith && !isNaN(compareWith)) {
+      const compareAuthor = db.prepare(
+        'SELECT id, canonical_name as name FROM persons WHERE id = ?'
+      ).get(compareWith);
+      if (compareAuthor) {
+        const compareTimeline = db.prepare(`
+          SELECT ${bucketExpr} as bucket, COUNT(*) as count
+          FROM quotes q
+          WHERE q.person_id = ? AND q.is_visible = 1
+            AND q.canonical_quote_id IS NULL
+            AND q.created_at >= datetime('now', ?)
+          GROUP BY bucket
+          ORDER BY bucket
+        `).all(compareWith, `-${period} days`);
+        comparison = { author: compareAuthor, timeline: compareTimeline };
+      }
+    }
+
+    res.json({ author, timeline, verdicts, comparison });
   } catch (err) {
     console.error('Author trends error:', err);
     res.status(500).json({ error: 'Internal server error' });
