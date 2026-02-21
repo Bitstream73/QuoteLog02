@@ -28,13 +28,10 @@ const VERDICT_LABELS = {
   FRAGMENT: '\u2014 Fragment',
 };
 
-function buildVerdictBadgeHtml(quoteId, verdict, options = {}) {
+function buildVerdictBadgeHtml(quoteId, verdict) {
   if (verdict && VERDICT_LABELS[verdict]) {
     const color = VERDICT_COLORS[verdict] || 'var(--text-muted)';
-    const confidenceHtml = (options.confidence != null && options.confidence > 0)
-      ? `<span class="wts-verdict-badge__confidence">${Math.round(options.confidence * 100)}%</span>`
-      : '';
-    return `<span class="wts-verdict-badge" style="background:${color}" onclick="event.stopPropagation(); navigateTo('/quote/${quoteId}')">${VERDICT_LABELS[verdict]}${confidenceHtml}</span>`;
+    return `<span class="wts-verdict-badge" style="background:${color}" onclick="event.stopPropagation(); navigateTo('/quote/${quoteId}')">${VERDICT_LABELS[verdict]}</span>`;
   }
   return `<button class="wts-verdict-badge wts-verdict-badge--pending" onclick="event.stopPropagation(); runInlineFactCheck(${quoteId}, this)">Run Fact Check</button>`;
 }
@@ -367,11 +364,10 @@ function buildQuoteBlockHtml(q, isImportant, options = {}) {
 
   const variantClass = variant !== 'default' ? ' quote-block--' + variant : '';
   const verdict = q.fact_check_verdict || q.factCheckVerdict || null;
-  const confidence = q.fact_check_confidence || q.factCheckConfidence || null;
 
   return `
     <div class="quote-block${variantClass}" data-quote-id="${q.id}" data-track-type="quote" data-track-id="${q.id}" data-created-at="${quoteDateTime || q.created_at || ''}" data-importance="${(importantsCount + shareCount + viewCount) || 0}" data-share-view="${(shareCount + viewCount) || 0}">
-      ${buildVerdictBadgeHtml(q.id, verdict, { confidence })}
+      ${buildVerdictBadgeHtml(q.id, verdict)}
       <div class="quote-block__text" onclick="navigateTo('/quote/${q.id}')">
         <span class="quote-mark quote-mark--open">\u201C</span>${escapeHtml(truncatedText)}${isLong ? `<a href="#" class="show-more-toggle" onclick="toggleQuoteText(event, ${q.id})">show more</a>` : ''}<span class="quote-mark quote-mark--close">\u201D</span>
       </div>
@@ -1008,7 +1004,8 @@ function buildMiniQuotesHtml(topQuotes) {
   if (!topQuotes || topQuotes.length === 0) return '';
   return `<div class="noteworthy-mini-quotes">${topQuotes.map(tq =>
     `<div class="noteworthy-mini-quote" onclick="event.stopPropagation(); navigateTo('/quote/${tq.id}')">
-      <span class="noteworthy-mini-quote__text">${escapeHtml((tq.text || '').substring(0, 80))}${(tq.text || '').length > 80 ? '...' : ''}</span>
+      <span class="noteworthy-mini-quote__text">${escapeHtml((tq.text || '').substring(0, 200))}${(tq.text || '').length > 200 ? '...' : ''}</span>
+      ${tq.context ? `<span class="noteworthy-mini-quote__context">${escapeHtml((tq.context || '').substring(0, 100))}</span>` : ''}
       <span class="noteworthy-mini-quote__author">${escapeHtml(tq.person_name || '')}</span>
     </div>`
   ).join('')}</div>`;
@@ -1031,6 +1028,9 @@ function buildNoteworthySectionHtml(items) {
   for (const item of items) {
     if (item.entity_type === 'quote') {
       // Quote card with verdict badge + always-visible Important button
+      const verdictHtml = (item.fact_check_verdict && typeof buildVerdictBadgeHtml === 'function')
+        ? `<div class="noteworthy-card__verdict">${buildVerdictBadgeHtml(item.entity_id, item.fact_check_verdict)}</div>`
+        : '';
       const importantHtml = (typeof renderImportantButton === 'function')
         ? `<div class="noteworthy-card__important">${renderImportantButton('quote', item.entity_id, item.importants_count || 0, false)}</div>`
         : '';
@@ -1039,26 +1039,21 @@ function buildNoteworthySectionHtml(items) {
         const quoteData = {
           id: item.entity_id,
           text: item.entity_label || '',
-          context: '',
+          context: item.context || item.entity_context || '',
           person_name: item.person_name || '',
           person_id: '',
           photo_url: item.photo_url || '',
           importants_count: item.importants_count || 0,
-          fact_check_verdict: item.fact_check_verdict || null,
-          fact_check_confidence: item.fact_check_confidence || null,
           quote_datetime: '',
           article_id: '',
           article_title: '',
           source_domain: '',
           source_name: '',
         };
-        cardsHtml += `<div class="noteworthy-card noteworthy-card--quote">${buildQuoteBlockHtml(quoteData, false, { variant: 'compact', showAvatar: true, showSummary: false })}${importantHtml}</div>`;
+        cardsHtml += `<div class="noteworthy-card noteworthy-card--quote">${verdictHtml}${buildQuoteBlockHtml(quoteData, false, { variant: 'compact', showAvatar: true, showSummary: true })}${importantHtml}</div>`;
       } else {
-        const fallbackVerdictHtml = (item.fact_check_verdict && typeof buildVerdictBadgeHtml === 'function')
-          ? `<div class="noteworthy-card__verdict">${buildVerdictBadgeHtml(item.entity_id, item.fact_check_verdict, { confidence: item.fact_check_confidence })}</div>`
-          : '';
         cardsHtml += `<div class="noteworthy-card noteworthy-card--quote" onclick="navigateTo('/quote/${item.entity_id}')">
-          ${fallbackVerdictHtml}
+          ${verdictHtml}
           <p class="noteworthy-card__text">${escapeHtml((item.entity_label || '').substring(0, 120))}${(item.entity_label || '').length > 120 ? '...' : ''}</p>
           ${item.person_name ? `<span class="noteworthy-card__author">${escapeHtml(item.person_name)}</span>` : ''}
           ${importantHtml}
@@ -1066,31 +1061,31 @@ function buildNoteworthySectionHtml(items) {
       }
     } else if (item.entity_type === 'article') {
       cardsHtml += `<div class="noteworthy-card noteworthy-card--article" onclick="navigateTo('/article/${item.entity_id}')">
-        <span class="noteworthy-card__type">Source</span>
         <p class="noteworthy-card__title">${escapeHtml(item.entity_label || 'Untitled')}</p>
         ${item.source_name ? `<span class="noteworthy-card__meta">${escapeHtml(item.source_name)}</span>` : ''}
         ${buildMiniArticlesHtml(item.top_articles)}
+        <a class="noteworthy-card__see-more" href="/article/${item.entity_id}" onclick="event.stopPropagation(); navigateTo('/article/${item.entity_id}')">See more...</a>
       </div>`;
     } else if (item.entity_type === 'person') {
       cardsHtml += `<div class="noteworthy-card noteworthy-card--person" onclick="navigateTo('/author/${item.entity_id}')">
-        <span class="noteworthy-card__type">Author</span>
         ${item.photo_url ? `<img class="noteworthy-card__avatar" src="${escapeHtml(item.photo_url)}" alt="" onerror="this.style.display='none'">` : ''}
         <p class="noteworthy-card__title">${escapeHtml(item.entity_label || 'Unknown Author')}</p>
         ${item.category_context ? `<span class="noteworthy-card__meta">${escapeHtml(item.category_context)}</span>` : ''}
         ${buildMiniQuotesHtml(item.top_quotes)}
+        <a class="noteworthy-card__see-more" href="/author/${item.entity_id}" onclick="event.stopPropagation(); navigateTo('/author/${item.entity_id}')">See more...</a>
       </div>`;
     } else if (item.entity_type === 'topic') {
       cardsHtml += `<div class="noteworthy-card noteworthy-card--topic" onclick="navigateTo('/topic/${item.slug || item.entity_id}')">
-        <span class="noteworthy-card__type">Topic</span>
         <p class="noteworthy-card__title">${escapeHtml(item.entity_label || 'Unknown Topic')}</p>
         ${item.description ? `<span class="noteworthy-card__meta">${escapeHtml((item.description || '').substring(0, 80))}</span>` : ''}
         ${buildMiniQuotesHtml(item.top_quotes)}
+        <a class="noteworthy-card__see-more" href="/topic/${item.slug || item.entity_id}" onclick="event.stopPropagation(); navigateTo('/topic/${item.slug || item.entity_id}')">See more...</a>
       </div>`;
     } else if (item.entity_type === 'category') {
       cardsHtml += `<div class="noteworthy-card noteworthy-card--category" onclick="navigateTo('/category/${item.slug || item.entity_id}')">
-        <span class="noteworthy-card__type">Category</span>
         <p class="noteworthy-card__title">${escapeHtml(item.entity_label || 'Unknown Category')}</p>
         ${buildMiniQuotesHtml(item.top_quotes)}
+        <a class="noteworthy-card__see-more" href="/category/${item.slug || item.entity_id}" onclick="event.stopPropagation(); navigateTo('/category/${item.slug || item.entity_id}')">See more...</a>
       </div>`;
     }
   }
@@ -1119,7 +1114,6 @@ function buildTopAuthorsBarHtml(authors) {
 
   return `
     <div class="top-author-bar">
-      <span class="top-author-bar__label">Top Authors</span>
       <div class="top-author-bar__list">${items}</div>
       <a class="top-author-bar__see-more" href="/analytics" onclick="navigate(event, '/analytics')">See more</a>
     </div>
