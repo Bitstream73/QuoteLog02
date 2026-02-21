@@ -409,7 +409,7 @@ async function runFactCheck(quoteId, force) {
   const sourceDate = dateEl?.textContent?.trim() || new Date().toISOString().split('T')[0];
 
   try {
-    const result = await API.post('/fact-check/check', {
+    const postBody = {
       quoteId,
       quoteText,
       authorName,
@@ -417,7 +417,10 @@ async function runFactCheck(quoteId, force) {
       context: contextText,
       sourceName,
       sourceDate,
-    });
+    };
+    if (force) postBody.force = true;
+
+    const result = await API.post('/fact-check/check', postBody);
 
     // Async 202 — result will arrive via Socket.IO
     if (result.queued) {
@@ -452,6 +455,21 @@ function renderFactCheckResult(container, result, quoteId) {
 
   // Load feedback counts and apply session state
   initFactCheckFeedback(quoteId, result);
+
+  // Admin-only rerun button
+  if (typeof isAdmin !== 'undefined' && isAdmin) {
+    const rerunBtn = document.createElement('button');
+    rerunBtn.className = 'fc-rerun-btn';
+    rerunBtn.textContent = 'Rerun Fact Check';
+    rerunBtn.onclick = () => rerunFactCheck(quoteId);
+    container.appendChild(rerunBtn);
+  }
+}
+
+function rerunFactCheck(quoteId) {
+  sessionStorage.removeItem(FC_CACHE_PREFIX + quoteId);
+  sessionStorage.removeItem('fc_feedback_' + quoteId);
+  runFactCheck(quoteId, true);
 }
 
 function handleQuotePageFactCheckComplete(data) {

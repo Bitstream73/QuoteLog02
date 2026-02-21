@@ -1,10 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import express from 'express';
+import cookieParser from 'cookie-parser';
+import jwt from 'jsonwebtoken';
 import request from 'supertest';
 
 // ---------------------------------------------------------------------------
 // Mocks
 // ---------------------------------------------------------------------------
+
+const TEST_JWT_SECRET = 'test-secret-for-fact-check-routes';
 
 vi.mock('../../src/config/index.js', () => ({
   default: {
@@ -14,6 +18,7 @@ vi.mock('../../src/config/index.js', () => ({
     geminiApiKey: 'test-key',
     pineconeApiKey: '',
     pineconeIndexHost: '',
+    jwtSecret: 'test-secret-for-fact-check-routes',
   }
 }));
 
@@ -85,7 +90,7 @@ beforeEach(async () => {
   mockQueue = createMockQueue();
 
   vi.doMock('../../src/config/index.js', () => ({
-    default: { env: 'test', port: 3000, databasePath: ':memory:', geminiApiKey: 'test-key', pineconeApiKey: '', pineconeIndexHost: '' }
+    default: { env: 'test', port: 3000, databasePath: ':memory:', geminiApiKey: 'test-key', pineconeApiKey: '', pineconeIndexHost: '', jwtSecret: TEST_JWT_SECRET }
   }));
   vi.doMock('../../src/services/logger.js', () => ({
     default: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() }
@@ -113,6 +118,7 @@ beforeEach(async () => {
 
   const routerModule = await import('../../src/routes/factCheck.js');
   app = express();
+  app.use(cookieParser());
   app.use(express.json());
   app.use('/api/fact-check', routerModule.default);
 });
@@ -613,6 +619,84 @@ describe('Fact Check Routes', () => {
         quoteId: 77,
         error: 'Gemini timeout',
       });
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // POST /check — force rerun (admin only)
+  // -----------------------------------------------------------------------
+
+  describe('POST /check — force rerun', () => {
+    function makeAdminCookie() {
+      const token = jwt.sign({ id: 1, email: 'admin@test.com' }, TEST_JWT_SECRET, { expiresIn: '1h' });
+      return `auth_token=${token}`;
+    }
+
+    it('should return 403 when force=true but not admin', async () => {
+      const res = await request(app)
+        .post('/api/fact-check/check')
+        .send({ quoteId: 200, quoteText: 'Force test claim', force: true });
+
+      expect(res.status).toBe(403);
+      expect(res.body.error).toContain('Admin access required');
+    });
+
+    it('should clear cache and enqueue when force=true with admin auth', async () => {
+      mockFactCheckQuote.mockResolvedValue({
+        category: 'A', verdict: 'TRUE', html: '<div>fresh</div>',
+        references: null, referencesHtml: '', combinedHtml: '<div>fresh</div>', processingTimeMs: 100,
+      });
+
+      const mockRun = vi.fn();
+      mockDbPrepare.mockReturnValue({ get: mockDbGet, run: mockRun });
+
+      const res = await request(app)
+        .post('/api/fact-check/check')
+        .set('Cookie', makeAdminCookie())
+        .send({ quoteId: 200, quoteText: 'Force test claim', force: true });
+
+      expect(res.status).toBe(202);
+      expect(res.body.queued).toBe(true);
+
+      // Verify DB columns were cleared
+      expect(mockDbPrepare).toHaveBeenCalledWith(expect.stringContaining('fact_check_html = NULL'));
+      expect(mockRun).toHaveBeenCalledWith(200);
+    });
+
+    it('should bypass caches when force=true with admin auth', async () => {
+      mockFactCheckQuote.mockResolvedValue({
+        category: 'A', verdict: 'TRUE', html: '<div>result</div>',
+        references: null, referencesHtml: '', combinedHtml: '<div>result</div>', processingTimeMs: 100,
+      });
+
+      // Populate DB cache
+      mockDbGet.mockReturnValue({
+        fact_check_html: '<div>stale cached</div>',
+        fact_check_references_json: null,
+        fact_check_verdict: 'FALSE',
+        fact_check_agree_count: 10,
+        fact_check_disagree_count: 2,
+      });
+
+      const mockRun = vi.fn();
+      mockDbPrepare.mockReturnValue({ get: mockDbGet, run: mockRun });
+
+      // Without force — should return DB cached result
+      const cachedRes = await request(app)
+        .post('/api/fact-check/check')
+        .send({ quoteId: 300, quoteText: 'Bypass cache test' });
+
+      expect(cachedRes.status).toBe(200);
+      expect(cachedRes.body.fromCache).toBe(true);
+
+      // With force — should bypass cache and enqueue
+      const forceRes = await request(app)
+        .post('/api/fact-check/check')
+        .set('Cookie', makeAdminCookie())
+        .send({ quoteId: 300, quoteText: 'Bypass cache test', force: true });
+
+      expect(forceRes.status).toBe(202);
+      expect(forceRes.body.queued).toBe(true);
     });
   });
 });

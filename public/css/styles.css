@@ -5218,6 +5218,25 @@ textarea.admin-details-input {
   border-color: var(--accent);
 }
 
+/* Rerun fact-check button (admin only) */
+.fc-rerun-btn {
+  display: inline-block;
+  margin-top: 1rem;
+  padding: 0.35rem 0.75rem;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 6px);
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.fc-rerun-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
 /* Loading state for context/fact-check auto-load */
 .context-loading {
   display: flex;
