@@ -155,4 +155,77 @@ describe('Analytics API', () => {
     });
   });
 
+  describe('GET /api/analytics/trends/author/:id', () => {
+    it('returns timeline for period=month (default)', async () => {
+      const res = await request(app).get('/api/analytics/trends/author/1');
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveProperty('author');
+      expect(res.body.author.name).toBe('Author One');
+      expect(Array.isArray(res.body.timeline)).toBe(true);
+      expect(res.body.timeline.length).toBeGreaterThan(0);
+    });
+
+    it('supports period=week', async () => {
+      const res = await request(app).get('/api/analytics/trends/author/1?period=week');
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body.timeline)).toBe(true);
+      // Buckets should be date format (YYYY-MM-DD) for week period
+      if (res.body.timeline.length > 0) {
+        expect(res.body.timeline[0].bucket).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      }
+    });
+
+    it('supports period=year with weekly buckets', async () => {
+      const res = await request(app).get('/api/analytics/trends/author/1?period=year');
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body.timeline)).toBe(true);
+      // Buckets should be YYYY-WW format for year period
+      if (res.body.timeline.length > 0) {
+        expect(res.body.timeline[0].bucket).toMatch(/^\d{4}-\d{2}$/);
+      }
+    });
+
+    it('returns verdicts array with count and percentage', async () => {
+      const res = await request(app).get('/api/analytics/trends/author/1');
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body.verdicts)).toBe(true);
+      expect(res.body.verdicts.length).toBeGreaterThan(0);
+      for (const v of res.body.verdicts) {
+        expect(v).toHaveProperty('verdict');
+        expect(v).toHaveProperty('count');
+        expect(v).toHaveProperty('percentage');
+        expect(typeof v.count).toBe('number');
+        expect(typeof v.percentage).toBe('number');
+      }
+    });
+
+    it('verdict percentages sum to approximately 100', async () => {
+      const res = await request(app).get('/api/analytics/trends/author/1');
+      const total = res.body.verdicts.reduce((sum, v) => sum + v.percentage, 0);
+      // Allow rounding tolerance
+      expect(total).toBeGreaterThanOrEqual(98);
+      expect(total).toBeLessThanOrEqual(102);
+    });
+
+    it('returns comparison data with compareWith param', async () => {
+      const res = await request(app).get('/api/analytics/trends/author/1?compareWith=2');
+      expect(res.status).toBe(200);
+      expect(res.body.comparison).not.toBeNull();
+      expect(res.body.comparison.author.name).toBe('Author Two');
+      expect(Array.isArray(res.body.comparison.timeline)).toBe(true);
+    });
+
+    it('returns comparison as null for invalid compareWith', async () => {
+      const res = await request(app).get('/api/analytics/trends/author/1?compareWith=99999');
+      expect(res.status).toBe(200);
+      expect(res.body.comparison).toBeNull();
+    });
+
+    it('returns 404 for unknown author', async () => {
+      const res = await request(app).get('/api/analytics/trends/author/99999');
+      expect(res.status).toBe(404);
+      expect(res.body.error).toBe('Author not found');
+    });
+  });
+
 });

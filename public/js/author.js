@@ -1,6 +1,9 @@
 // Author Detail Page
 
 let _authorQuoteSortBy = 'date';
+let _authorChartPeriod = 'month';
+let _authorChartCompareId = null;
+let _authorCompareDebounce = null;
 
 // Build quote HTML for author page — reuses homepage buildQuoteBlockHtml
 function buildAuthorQuoteHtml(q, authorName, authorCategoryContext, authorId, authorPhotoUrl, options = {}) {
@@ -150,19 +153,41 @@ async function renderAuthor(id) {
     // Chart section at bottom
     html += `
       <div class="author-charts-section" id="author-charts">
-        <div class="chart-row">
-          <div class="chart-panel">
-            <h3>Quote Activity (30 days)</h3>
-            <div class="chart-container" style="height:220px"><canvas id="chart-author-timeline"></canvas></div>
+        <div class="chart-panel--full">
+          <div class="chart-panel-header">
+            <h3>Quote Activity</h3>
+            <div class="chart-controls">
+              <div class="period-selector">
+                <button class="period-btn ${_authorChartPeriod === 'week' ? 'active' : ''}" onclick="switchAuthorChartPeriod(${a.id}, 'week')">Past Week</button>
+                <button class="period-btn ${_authorChartPeriod === 'month' ? 'active' : ''}" onclick="switchAuthorChartPeriod(${a.id}, 'month')">Past Month</button>
+                <button class="period-btn ${_authorChartPeriod === 'year' ? 'active' : ''}" onclick="switchAuthorChartPeriod(${a.id}, 'year')">Past Year</button>
+              </div>
+              <div class="compare-author-wrap" id="compare-author-wrap">
+                <input type="text" class="compare-author-input" id="compare-author-input"
+                  placeholder="Compare with..." autocomplete="off"
+                  oninput="onCompareAuthorInput(this, ${a.id})">
+                <span class="compare-clear-btn" id="compare-clear-btn" style="display:none" onclick="clearCompareAuthor(${a.id})">&times;</span>
+                <div class="compare-author-dropdown" id="compare-author-dropdown"></div>
+              </div>
+            </div>
           </div>
+          <div class="chart-container" style="height:260px"><canvas id="chart-author-timeline"></canvas></div>
+        </div>
+        <div class="chart-panel--full" id="chart-author-verdict-panel" style="display:none">
+          <div class="chart-panel-header">
+            <h3>Fact-Check Breakdown</h3>
+          </div>
+          <div class="chart-container" style="height:240px"><canvas id="chart-author-verdicts"></canvas></div>
+        </div>
+        <div class="chart-row">
           <div class="chart-panel">
             <h3>Topic Distribution</h3>
             <div class="chart-container" style="height:220px"><canvas id="chart-author-topics"></canvas></div>
           </div>
-        </div>
-        <div class="chart-panel" id="chart-author-peers-panel" style="display:none">
-          <h3>vs. Peers</h3>
-          <div class="chart-container" style="height:220px"><canvas id="chart-author-peers"></canvas></div>
+          <div class="chart-panel" id="chart-author-peers-panel" style="display:none">
+            <h3>vs. Peers</h3>
+            <div class="chart-container" style="height:220px"><canvas id="chart-author-peers"></canvas></div>
+          </div>
         </div>
       </div>
     `;
@@ -170,7 +195,7 @@ async function renderAuthor(id) {
     content.innerHTML = html;
 
     // Load charts after DOM is set
-    loadAuthorCharts(id);
+    loadAuthorCharts(id, _authorChartPeriod, _authorChartCompareId);
   } catch (err) {
     content.innerHTML = `<div class="empty-state"><h3>Error</h3><p>${escapeHtml(err.message)}</p></div>`;
   }
@@ -183,17 +208,38 @@ function switchAuthorQuoteSort(sortBy) {
   if (match) renderAuthor(match[1]);
 }
 
-async function loadAuthorCharts(authorId) {
+async function loadAuthorCharts(authorId, period, compareWith) {
   if (typeof initChartDefaults === 'function') initChartDefaults();
   try {
-    const data = await API.get(`/analytics/trends/author/${authorId}?period=month`);
+    let url = `/analytics/trends/author/${authorId}?period=${period || 'month'}`;
+    if (compareWith) url += `&compareWith=${compareWith}`;
+    const data = await API.get(url);
 
-    // Timeline chart
+    // Timeline chart (with optional comparison overlay)
     if (data.timeline && data.timeline.length > 0 && typeof createTimelineChart === 'function') {
-      const labels = data.timeline.map(b => b.bucket.slice(5));
-      const values = data.timeline.map(b => b.count);
-      createTimelineChart('chart-author-timeline', labels, [{ label: 'Quotes', data: values }]);
+      const bucketSet = new Set();
+      for (const b of data.timeline) bucketSet.add(b.bucket);
+      if (data.comparison && data.comparison.timeline) {
+        for (const b of data.comparison.timeline) bucketSet.add(b.bucket);
+      }
+      const allBuckets = Array.from(bucketSet).sort();
+      const labels = allBuckets.map(b => b.length > 7 ? b.slice(5) : b);
+
+      const authorMap = {};
+      for (const b of data.timeline) authorMap[b.bucket] = b.count;
+      const datasets = [{ label: data.author.name, data: allBuckets.map(b => authorMap[b] || 0) }];
+
+      if (data.comparison && data.comparison.timeline) {
+        const compMap = {};
+        for (const b of data.comparison.timeline) compMap[b.bucket] = b.count;
+        datasets.push({ label: data.comparison.author.name, data: allBuckets.map(b => compMap[b] || 0) });
+      }
+
+      createTimelineChart('chart-author-timeline', labels, datasets);
     }
+
+    // Verdict breakdown chart
+    renderVerdictChart(data.verdicts);
 
     // Topic doughnut
     if (data.topics && data.topics.length > 0 && typeof createDoughnutChart === 'function') {
@@ -207,7 +253,6 @@ async function loadAuthorCharts(authorId) {
       const peersPanel = document.getElementById('chart-author-peers-panel');
       if (peersPanel) peersPanel.style.display = '';
 
-      // Merge all buckets from author + peers
       const bucketSet = new Set();
       for (const b of data.timeline) bucketSet.add(b.bucket);
       for (const peer of data.peers) {
@@ -216,12 +261,10 @@ async function loadAuthorCharts(authorId) {
       const allBuckets = Array.from(bucketSet).sort();
       const peerLabels = allBuckets.map(b => b.slice(5));
 
-      // Author dataset
       const authorMap = {};
       for (const b of data.timeline) authorMap[b.bucket] = b.count;
       const datasets = [{ label: data.author.name, data: allBuckets.map(b => authorMap[b] || 0) }];
 
-      // Peer datasets
       for (const peer of data.peers) {
         const peerMap = {};
         for (const b of peer.buckets) peerMap[b.bucket] = b.count;
@@ -234,6 +277,114 @@ async function loadAuthorCharts(authorId) {
     console.error('Failed to load author charts:', err);
   }
 }
+
+function switchAuthorChartPeriod(authorId, period) {
+  _authorChartPeriod = period;
+  document.querySelectorAll('.period-btn').forEach(btn => btn.classList.remove('active'));
+  const labels = { week: 'Past Week', month: 'Past Month', year: 'Past Year' };
+  document.querySelectorAll('.period-btn').forEach(btn => {
+    if (btn.textContent.trim() === labels[period]) btn.classList.add('active');
+  });
+  loadAuthorCharts(authorId, period, _authorChartCompareId);
+}
+
+function onCompareAuthorInput(input, authorId) {
+  clearTimeout(_authorCompareDebounce);
+  const query = input.value.trim();
+  const dropdown = document.getElementById('compare-author-dropdown');
+  if (query.length < 2) {
+    dropdown.innerHTML = '';
+    dropdown.style.display = 'none';
+    return;
+  }
+  _authorCompareDebounce = setTimeout(async () => {
+    try {
+      const data = await API.get(`/authors?search=${encodeURIComponent(query)}&limit=8`);
+      const authors = (data.authors || []).filter(a => a.id !== authorId);
+      if (authors.length === 0) {
+        dropdown.innerHTML = '<div class="ac-item" style="color:var(--text-muted)">No matches</div>';
+        dropdown.style.display = 'block';
+        return;
+      }
+      dropdown.innerHTML = authors.map(a =>
+        `<div class="ac-item" onclick="selectCompareAuthor(${authorId}, ${a.id}, '${escapeHtml(a.canonical_name.replace(/'/g, "\\'"))}')">${escapeHtml(a.canonical_name)}</div>`
+      ).join('');
+      dropdown.style.display = 'block';
+    } catch (err) {
+      dropdown.innerHTML = '';
+      dropdown.style.display = 'none';
+    }
+  }, 250);
+}
+
+function selectCompareAuthor(authorId, compareId, compareName) {
+  _authorChartCompareId = compareId;
+  const input = document.getElementById('compare-author-input');
+  const dropdown = document.getElementById('compare-author-dropdown');
+  const clearBtn = document.getElementById('compare-clear-btn');
+  if (input) { input.value = compareName; input.readOnly = true; }
+  if (dropdown) { dropdown.innerHTML = ''; dropdown.style.display = 'none'; }
+  if (clearBtn) clearBtn.style.display = '';
+  loadAuthorCharts(authorId, _authorChartPeriod, compareId);
+}
+
+function clearCompareAuthor(authorId) {
+  _authorChartCompareId = null;
+  const input = document.getElementById('compare-author-input');
+  const clearBtn = document.getElementById('compare-clear-btn');
+  if (input) { input.value = ''; input.readOnly = false; }
+  if (clearBtn) clearBtn.style.display = 'none';
+  loadAuthorCharts(authorId, _authorChartPeriod, null);
+}
+
+var _verdictColorMap = {
+  TRUE: '#16a34a',
+  MOSTLY_TRUE: '#3dba6a',
+  FALSE: '#E8596E',
+  MOSTLY_FALSE: '#e87a8a',
+  MISLEADING: '#d4880f',
+  LACKS_CONTEXT: '#e8a830',
+  UNVERIFIABLE: '#2563eb',
+  OPINION: '#888',
+  FRAGMENT: '#aaa',
+};
+
+var _verdictLabelMap = {
+  TRUE: 'True',
+  MOSTLY_TRUE: 'Mostly True',
+  FALSE: 'False',
+  MOSTLY_FALSE: 'Mostly False',
+  MISLEADING: 'Misleading',
+  LACKS_CONTEXT: 'Lacks Context',
+  UNVERIFIABLE: 'Unverifiable',
+  OPINION: 'Opinion',
+  FRAGMENT: 'Fragment',
+};
+
+function renderVerdictChart(verdicts) {
+  const panel = document.getElementById('chart-author-verdict-panel');
+  if (!panel) return;
+  if (!verdicts || verdicts.length === 0) {
+    panel.style.display = 'none';
+    return;
+  }
+  panel.style.display = '';
+  if (typeof createVerticalBarChart !== 'function') return;
+  const labels = verdicts.map(v => _verdictLabelMap[v.verdict] || v.verdict);
+  const data = verdicts.map(v => v.percentage);
+  const colors = verdicts.map(v => _verdictColorMap[v.verdict] || '#888');
+  createVerticalBarChart('chart-author-verdicts', labels, data, colors);
+}
+
+// Close comparison dropdown on click outside
+document.addEventListener('click', function(e) {
+  const wrap = document.getElementById('compare-author-wrap');
+  const dropdown = document.getElementById('compare-author-dropdown');
+  if (wrap && dropdown && !wrap.contains(e.target)) {
+    dropdown.innerHTML = '';
+    dropdown.style.display = 'none';
+  }
+});
 
 async function loadAuthorQuotesPage(authorId, page) {
   const sortParam = _authorQuoteSortBy === 'importance' ? '&sort=importance' : '';
