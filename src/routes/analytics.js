@@ -84,9 +84,9 @@ router.get('/trending-sources', (req, res) => {
     const sortMode = req.query.sort;
     let sourceOrder;
     if (sortMode === 'importance') {
-      sourceOrder = tieredImportanceOrder('COALESCE(a.published_at, a.created_at)', 'a.importants_count');
+      sourceOrder = tieredImportanceOrder('a.created_at', 'a.importants_count');
     } else {
-      sourceOrder = 'COALESCE(a.published_at, a.created_at) DESC';
+      sourceOrder = 'a.created_at DESC';
     }
 
     const searchFilter = search.length >= 2 ? 'AND a.title LIKE ?' : '';
