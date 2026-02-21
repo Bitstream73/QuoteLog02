@@ -92,9 +92,17 @@ router.get('/trending-sources', (req, res) => {
     const searchFilter = search.length >= 2 ? 'AND a.title LIKE ?' : '';
     const searchParam = search.length >= 2 ? `%${search}%` : null;
 
-    const baseWhere = `
+    // Use a pre-computed join for visible quote counts (same pattern as all-sources)
+    const baseFrom = `
+      FROM articles a
+      LEFT JOIN sources s ON s.id = a.source_id
+      JOIN (
+        SELECT qa.article_id, COUNT(*) as visible_quote_count
+        FROM quote_articles qa
+        JOIN quotes q ON q.id = qa.quote_id AND q.is_visible = 1
+        GROUP BY qa.article_id
+      ) aqc ON aqc.article_id = a.id
       WHERE a.trending_score > 0
-        AND EXISTS (SELECT 1 FROM quote_articles qa3 JOIN quotes q ON q.id = qa3.quote_id AND q.is_visible = 1 WHERE qa3.article_id = a.id)
         ${searchFilter}
     `;
 
@@ -102,21 +110,20 @@ router.get('/trending-sources', (req, res) => {
     const articles = db.prepare(`
       SELECT a.id, a.url, a.title, a.published_at, a.importants_count, a.share_count,
         a.view_count, a.trending_score,
-        s.domain as source_domain, s.name as source_name
-      FROM articles a
-      LEFT JOIN sources s ON s.id = a.source_id
-      ${baseWhere}
+        s.domain as source_domain, s.name as source_name,
+        aqc.visible_quote_count as quote_count
+      ${baseFrom}
       ORDER BY ${sourceOrder}
       LIMIT ? OFFSET ?
     `).all(...queryParams);
 
     const countParams = searchParam ? [searchParam] : [];
     const total = db.prepare(`
-      SELECT COUNT(*) as count FROM articles a
-      ${baseWhere}
+      SELECT COUNT(*) as count
+      ${baseFrom}
     `).get(...countParams).count;
 
-    // For each article, get top 3 quotes and quote count
+    // For each article, get top 3 quotes
     const getTopQuotes = db.prepare(`
       SELECT q.id, q.text, q.context, q.quote_datetime, q.importants_count, q.share_count,
         q.created_at, q.fact_check_verdict,
@@ -129,15 +136,9 @@ router.get('/trending-sources', (req, res) => {
       ORDER BY ${QUOTE_DATE_EXPR} DESC
       LIMIT 3
     `);
-    const getQuoteCount = db.prepare(`
-      SELECT COUNT(*) as count FROM quote_articles qa
-      JOIN quotes q ON q.id = qa.quote_id AND q.is_visible = 1
-      WHERE qa.article_id = ?
-    `);
 
     const articlesWithQuotes = articles.map(a => ({
       ...a,
-      quote_count: getQuoteCount.get(a.id).count,
       quotes: getTopQuotes.all(a.id).map(q => ({
         ...q,
         article_id: a.id,
