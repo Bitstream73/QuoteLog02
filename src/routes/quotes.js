@@ -331,7 +331,7 @@ router.get('/category-counts', requireAdmin, (req, res) => {
     SELECT p.category, COUNT(*) as count
     FROM quotes q
     JOIN persons p ON q.person_id = p.id
-    WHERE q.reviewed_at IS NULL AND q.canonical_quote_id IS NULL AND q.is_visible = 1
+    WHERE q.reviewed_at IS NULL AND q.canonical_quote_id IS NULL
     GROUP BY p.category
     ORDER BY count DESC
   `).all();
@@ -357,7 +357,7 @@ router.post('/bulk-review', requireAdmin, (req, res) => {
   const quotes = db.prepare(`
     SELECT q.id FROM quotes q
     JOIN persons p ON q.person_id = p.id
-    WHERE q.reviewed_at IS NULL AND q.canonical_quote_id IS NULL AND q.is_visible = 1
+    WHERE q.reviewed_at IS NULL AND q.canonical_quote_id IS NULL
     ${categoryFilter}
   `).all(categoryParam);
 
@@ -403,7 +403,7 @@ router.post('/bulk-delete', requireAdmin, (req, res) => {
   const quotes = db.prepare(`
     SELECT q.id, q.person_id FROM quotes q
     JOIN persons p ON q.person_id = p.id
-    WHERE q.reviewed_at IS NULL AND q.canonical_quote_id IS NULL AND q.is_visible = 1
+    WHERE q.reviewed_at IS NULL AND q.canonical_quote_id IS NULL
     ${categoryFilter}
   `).all(categoryParam);
 
