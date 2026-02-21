@@ -183,11 +183,11 @@ describe('Noteworthy E2E Tests', () => {
     await page.screenshot({ path: 'tests/e2e/screenshots/topic-page.png' });
   }, 15000);
 
-  it('quote card displays without header section', async () => {
+  it('quote card displays with header section', async () => {
     await page.goto(BASE, { waitUntil: 'networkidle0', timeout: 15000 });
 
     const header = await page.$('.noteworthy-card--quote .noteworthy-card__header');
-    expect(header).toBeNull();
+    expect(header).not.toBeNull();
 
     const content = await page.$('.noteworthy-card--quote .noteworthy-card__content');
     expect(content).not.toBeNull();

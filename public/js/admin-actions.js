@@ -382,6 +382,57 @@ async function applySourceAuthorImage(sourceAuthorId) {
  * Build admin action toolbar HTML for a quote entry.
  * Pass quote data object with: id, personId, personName, text, context, isVisible, personCategory, personCategoryContext, disambiguation
  */
+async function adminChangeCategoryImage(catId, catName) {
+  let currentUrl = '';
+  try {
+    const data = await API.get(`/admin/categories/${catId}`);
+    currentUrl = data.category?.image_url || '';
+  } catch (e) { /* continue */ }
+
+  const safeName = escapeHtml(catName);
+  const icon = typeof getCategoryIcon === 'function' ? getCategoryIcon(catName) : 'category';
+  const currentPreview = currentUrl
+    ? `<img src="${escapeHtml(currentUrl)}" alt="" style="width:72px;height:72px;border-radius:50%;object-fit:cover" onerror="this.outerHTML='<span class=\\'material-icons-outlined category-icon-avatar\\'>${icon}</span>'">`
+    : `<span class="material-icons-outlined category-icon-avatar">${icon}</span>`;
+
+  const modalContent = document.getElementById('modal-content');
+  modalContent.innerHTML = `
+    <h3>Category Image &mdash; ${safeName}</h3>
+    <div style="display:flex;flex-direction:column;gap:1rem">
+      <div id="cat-image-preview" style="display:flex;justify-content:center">${currentPreview}</div>
+      <div>
+        <label style="font-size:0.85rem;font-weight:600">Image URL:</label>
+        <div style="display:flex;gap:0.5rem;margin-top:0.25rem">
+          <input type="text" id="cat-image-url" placeholder="https://..." value="${escapeHtml(currentUrl)}" style="flex:1;padding:0.4rem;border:1px solid var(--border);border-radius:4px">
+          <button class="btn btn-sm" onclick="(function(){
+            var url = document.getElementById('cat-image-url').value.trim();
+            var prev = document.getElementById('cat-image-preview');
+            if(url) prev.innerHTML = '<img src=&quot;'+url+'&quot; alt=&quot;&quot; style=&quot;width:72px;height:72px;border-radius:50%;object-fit:cover&quot; onerror=&quot;this.outerHTML=\\'error loading image\\'&quot;>';
+            else prev.innerHTML = '<span class=\\'material-icons-outlined category-icon-avatar\\'>${icon}</span>';
+          })()">Preview</button>
+        </div>
+      </div>
+      <div style="display:flex;gap:0.5rem;justify-content:flex-end">
+        <button class="btn btn-primary" onclick="applyCategoryImage(${catId})">Apply</button>
+        <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      </div>
+    </div>
+  `;
+  document.getElementById('modal-overlay').classList.remove('hidden');
+}
+
+async function applyCategoryImage(catId) {
+  const url = document.getElementById('cat-image-url').value.trim();
+  try {
+    await API.put(`/admin/categories/${catId}`, { image_url: url || null });
+    showToast('Category image updated', 'success');
+    closeModal();
+    if (typeof reloadCategories === 'function') reloadCategories();
+  } catch (err) {
+    showToast('Error: ' + err.message, 'error', 5000);
+  }
+}
+
 function buildAdminActionsHtml(q) {
   if (typeof isAdmin === 'undefined' || !isAdmin) return '';
 

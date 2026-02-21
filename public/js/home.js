@@ -27,6 +27,46 @@ let _isLoadingMore = false;
 let _infiniteScrollObserver = null;
 let _tabSearchDebounceTimer = null;
 
+// ======= Category Icon Mapping =======
+
+function getCategoryIcon(categoryName) {
+  if (!categoryName) return 'category';
+  const name = categoryName.toLowerCase();
+  const map = [
+    [['politics', 'political', 'government'], 'account_balance'],
+    [['business', 'economy', 'finance', 'market'], 'trending_up'],
+    [['technology', 'tech', 'cyber', 'digital'], 'devices'],
+    [['entertainment', 'celebrity', 'hollywood'], 'theater_comedy'],
+    [['sports', 'athletic'], 'sports_soccer'],
+    [['science', 'research'], 'science'],
+    [['health', 'medical', 'healthcare'], 'health_and_safety'],
+    [['world', 'international', 'global', 'foreign'], 'public'],
+    [['education', 'school', 'academic'], 'school'],
+    [['environment', 'climate', 'energy'], 'eco'],
+    [['law', 'legal', 'justice', 'court'], 'gavel'],
+    [['military', 'defense', 'war'], 'military_tech'],
+    [['crime', 'criminal', 'police'], 'local_police'],
+    [['culture', 'arts', 'art'], 'palette'],
+    [['media', 'news', 'press', 'journalism'], 'newspaper'],
+    [['religion', 'faith', 'church'], 'church'],
+    [['space', 'nasa', 'astronomy'], 'rocket'],
+  ];
+  for (const [keywords, icon] of map) {
+    if (keywords.some(k => name.includes(k))) return icon;
+  }
+  return 'category';
+}
+
+function buildCategoryAvatarHtml(imageUrl, iconName, categoryName, size) {
+  const sizeClass = size === 'sm' ? ' category-icon-avatar--sm' : '';
+  const cssClass = size === 'sm' ? 'noteworthy-card__avatar category-icon-avatar--sm' : 'noteworthy-card__avatar';
+  if (imageUrl) {
+    return `<img class="${cssClass}" src="${escapeHtml(imageUrl)}" alt="" onerror="this.outerHTML='<span class=\\'material-icons-outlined category-icon-avatar${sizeClass}\\'>${escapeHtml(iconName || getCategoryIcon(categoryName))}</span>'" style="border-radius:50%;object-fit:cover">`;
+  }
+  const icon = iconName || getCategoryIcon(categoryName);
+  return `<span class="material-icons-outlined category-icon-avatar${sizeClass}">${escapeHtml(icon)}</span>`;
+}
+
 // ======= Verdict Badge =======
 
 const VERDICT_COLORS = {
@@ -1363,8 +1403,7 @@ function buildNoteworthySectionHtml(items) {
 
     } else if (item.entity_type === 'category') {
       clickTarget = `/category/${item.slug || item.entity_id}`;
-      const initial = (item.entity_label || '?')[0];
-      const avatarHtml = `<div class="noteworthy-card__avatar-placeholder">${escapeHtml(initial)}</div>`;
+      const avatarHtml = buildCategoryAvatarHtml(item.image_url, item.icon_name, item.entity_label);
       headerHtml = buildNoteworthyCardHeader(avatarHtml, item.entity_label || 'Unknown Category', '');
       contentHtml = buildMiniQuotesHtml(item.top_quotes);
 
@@ -1498,7 +1537,9 @@ async function renderSearchResults(content, searchQuery) {
       if (categoriesCount > 0) {
         html += `<div class="search-categories-section">`;
         for (const cat of data.categories) {
-          html += `<div class="search-category-pill" onclick="navigateTo('/category/${cat.id}')">
+          const catIcon = cat.icon_name || getCategoryIcon(cat.name);
+          html += `<div class="search-category-pill" onclick="navigateTo('/category/${cat.slug || cat.id}')">
+            <span class="material-icons-outlined" style="font-size:16px;vertical-align:middle;margin-right:4px">${escapeHtml(catIcon)}</span>
             <span class="search-category-pill__name">${escapeHtml(cat.name)}</span>
             <span class="search-category-pill__count">${cat.quote_count || 0} quotes</span>
           </div>`;

@@ -54,14 +54,21 @@ async function renderCategory(id) {
       updatePageMeta(`${cat.name} - Quotes`, `${catData.quoteCount} quotes in the ${cat.name} category`, `/category/${cat.id}`);
     }
 
+    const catAvatarHtml = typeof buildCategoryAvatarHtml === 'function'
+      ? buildCategoryAvatarHtml(cat.image_url, cat.icon_name, cat.name, 'sm')
+      : '';
+
     let html = `
       <p style="margin-bottom:1.5rem;font-family:var(--font-ui);font-size:0.85rem">
         <a href="/" onclick="navigate(event, '/')" style="color:var(--accent);text-decoration:none">&larr; Back to quotes</a>
       </p>
 
-      <div class="category-header">
-        <h1 class="page-title">${escapeHtml(cat.name)}</h1>
-        <p class="page-subtitle" style="border-bottom:none;padding-bottom:0;margin-bottom:0">${catData.quoteCount} quote${catData.quoteCount !== 1 ? 's' : ''}</p>
+      <div class="category-header" style="display:flex;align-items:center;gap:0.75rem">
+        ${catAvatarHtml}
+        <div>
+          <h1 class="page-title" style="margin:0">${escapeHtml(cat.name)}</h1>
+          <p class="page-subtitle" style="border-bottom:none;padding-bottom:0;margin:0">${catData.quoteCount} quote${catData.quoteCount !== 1 ? 's' : ''}</p>
+        </div>
       </div>
     `;
 

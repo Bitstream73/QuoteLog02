@@ -66,7 +66,7 @@ router.get('/unified', (req, res) => {
 
     // Search categories
     const categories = db.prepare(`
-      SELECT c.id, c.name, c.slug,
+      SELECT c.id, c.name, c.slug, c.image_url, c.icon_name,
         (SELECT COUNT(DISTINCT qt.quote_id)
          FROM category_topics ct
          JOIN quote_topics qt ON qt.topic_id = ct.topic_id
@@ -223,10 +223,12 @@ router.get('/noteworthy', (req, res) => {
         }
       } else if (item.entity_type === 'category') {
         const extra = db.prepare(`
-          SELECT c.slug FROM categories c WHERE c.id = ?
+          SELECT c.slug, c.image_url, c.icon_name FROM categories c WHERE c.id = ?
         `).get(item.entity_id);
         if (extra) {
           item.slug = extra.slug;
+          item.image_url = extra.image_url || null;
+          item.icon_name = extra.icon_name || null;
         }
         // Top 3 quotes by importants_count (last 1 day) via category_topics -> quote_topics
         item.top_quotes = db.prepare(`
