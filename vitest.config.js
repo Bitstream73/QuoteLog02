@@ -6,7 +6,9 @@ export default defineConfig({
     environment: 'node',
     testTimeout: 10000,
     hookTimeout: 30000,
+    pool: 'forks',
     fileParallelism: false,
+    setupFiles: ['./tests/setup-timing.js'],
     exclude: ['tests/e2e/**', 'node_modules/**'],
     coverage: {
       provider: 'v8',
