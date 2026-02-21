@@ -95,12 +95,12 @@ describe('Noteworthy E2E Tests', () => {
     await page.screenshot({ path: 'tests/e2e/screenshots/noteworthy-section.png' });
   }, 20000);
 
-  it('quote card has verdict badge and important button', async () => {
-    const verdictBadge = await page.$('.noteworthy-card--quote .noteworthy-card__verdict');
+  it('quote card has verdict badge and author', async () => {
+    const verdictBadge = await page.$('.noteworthy-card--quote .wts-verdict-badge');
     expect(verdictBadge).not.toBeNull();
 
-    const importantBtn = await page.$('.noteworthy-card--quote .noteworthy-card__important');
-    expect(importantBtn).not.toBeNull();
+    const author = await page.$('.noteworthy-card--quote .noteworthy-quote__author');
+    expect(author).not.toBeNull();
   });
 
   it('quote card uses flex layout for bottom justification', async () => {
@@ -183,16 +183,14 @@ describe('Noteworthy E2E Tests', () => {
     await page.screenshot({ path: 'tests/e2e/screenshots/topic-page.png' });
   }, 15000);
 
-  it('important button toggles on click', async () => {
+  it('quote card displays without header section', async () => {
     await page.goto(BASE, { waitUntil: 'networkidle0', timeout: 15000 });
 
-    const importantBtn = await page.$('.noteworthy-card--quote .noteworthy-card__important .important-btn');
-    if (importantBtn) {
-      await importantBtn.click();
-      // Wait a moment for the toggle
-      await new Promise(r => setTimeout(r, 500));
-      await page.screenshot({ path: 'tests/e2e/screenshots/important-toggled.png' });
-    }
+    const header = await page.$('.noteworthy-card--quote .noteworthy-card__header');
+    expect(header).toBeNull();
+
+    const content = await page.$('.noteworthy-card--quote .noteworthy-card__content');
+    expect(content).not.toBeNull();
   }, 15000);
 
   it('mobile viewport shows horizontal scroll', async () => {
@@ -216,10 +214,10 @@ describe('Noteworthy E2E Tests', () => {
     const articleCard = await page.$('.noteworthy-card--article');
     if (articleCard) {
       // Check that mini items exist (they link to /article/ not /quote/)
-      const miniItems = await articleCard.$$('.noteworthy-mini-quote');
+      const miniItems = await articleCard.$$('.noteworthy-quote');
       if (miniItems.length > 0) {
         const onclick = await page.$eval(
-          '.noteworthy-card--article .noteworthy-mini-quote',
+          '.noteworthy-card--article .noteworthy-quote',
           el => el.getAttribute('onclick')
         );
         expect(onclick).toContain('/article/');
