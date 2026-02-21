@@ -26,15 +26,24 @@ router.get('/', (req, res) => {
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 50;
   const offset = (page - 1) * limit;
+  const search = (req.query.search || '').trim();
 
-  const total = db.prepare('SELECT COUNT(*) as count FROM persons').get().count;
+  let searchFilter = '';
+  const params = [];
+  if (search.length >= 2) {
+    searchFilter = 'WHERE canonical_name LIKE ?';
+    params.push(`%${search}%`);
+  }
+
+  const total = db.prepare(`SELECT COUNT(*) as count FROM persons ${searchFilter}`).get(...params).count;
 
   const authors = db.prepare(`
     SELECT id, canonical_name, disambiguation, quote_count, last_seen_at, photo_url, category, category_context
     FROM persons
+    ${searchFilter}
     ORDER BY quote_count DESC, last_seen_at DESC
     LIMIT ? OFFSET ?
-  `).all(limit, offset);
+  `).all(...params, limit, offset);
 
   res.json({
     authors,

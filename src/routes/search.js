@@ -148,23 +148,27 @@ router.get('/noteworthy', (req, res) => {
     for (const item of items) {
       if (item.entity_type === 'quote') {
         const extra = db.prepare(`
-          SELECT q.fact_check_verdict, q.importants_count
-          FROM quotes q WHERE q.id = ?
+          SELECT q.fact_check_verdict, q.importants_count, q.context,
+            p.category_context as person_category_context
+          FROM quotes q LEFT JOIN persons p ON p.id = q.person_id WHERE q.id = ?
         `).get(item.entity_id);
         if (extra) {
           item.fact_check_verdict = extra.fact_check_verdict;
           item.importants_count = extra.importants_count;
+          item.context = extra.context;
+          item.person_category_context = extra.person_category_context;
         }
       } else if (item.entity_type === 'person') {
         const extra = db.prepare(`
-          SELECT p.category_context FROM persons p WHERE p.id = ?
+          SELECT p.category, p.category_context FROM persons p WHERE p.id = ?
         `).get(item.entity_id);
         if (extra) {
+          item.category = extra.category;
           item.category_context = extra.category_context;
         }
         // Top 3 quotes by importants_count (last 24h)
         item.top_quotes = db.prepare(`
-          SELECT q.id, SUBSTR(q.text, 1, 200) as text, q.context, p.canonical_name as person_name,
+          SELECT q.id, q.text, q.context, p.canonical_name as person_name,
             q.importants_count, q.fact_check_verdict
           FROM quotes q
           JOIN persons p ON p.id = q.person_id
@@ -176,7 +180,7 @@ router.get('/noteworthy', (req, res) => {
         // If no recent quotes, get top 3 overall
         if (item.top_quotes.length === 0) {
           item.top_quotes = db.prepare(`
-            SELECT q.id, SUBSTR(q.text, 1, 80) as text, p.canonical_name as person_name,
+            SELECT q.id, q.text, q.context, p.canonical_name as person_name,
               q.importants_count, q.fact_check_verdict
             FROM quotes q
             JOIN persons p ON p.id = q.person_id
@@ -195,7 +199,7 @@ router.get('/noteworthy', (req, res) => {
         }
         // Top 3 quotes by importants_count (last 1 day) via quote_topics
         item.top_quotes = db.prepare(`
-          SELECT q.id, SUBSTR(q.text, 1, 200) as text, q.context, p.canonical_name as person_name,
+          SELECT q.id, q.text, q.context, p.canonical_name as person_name,
             q.importants_count, q.fact_check_verdict
           FROM quotes q
           JOIN persons p ON p.id = q.person_id
@@ -207,7 +211,7 @@ router.get('/noteworthy', (req, res) => {
         `).all(item.entity_id);
         if (item.top_quotes.length === 0) {
           item.top_quotes = db.prepare(`
-            SELECT q.id, SUBSTR(q.text, 1, 80) as text, p.canonical_name as person_name,
+            SELECT q.id, q.text, q.context, p.canonical_name as person_name,
               q.importants_count, q.fact_check_verdict
             FROM quotes q
             JOIN persons p ON p.id = q.person_id
@@ -226,7 +230,7 @@ router.get('/noteworthy', (req, res) => {
         }
         // Top 3 quotes by importants_count (last 1 day) via category_topics -> quote_topics
         item.top_quotes = db.prepare(`
-          SELECT q.id, SUBSTR(q.text, 1, 200) as text, q.context, p.canonical_name as person_name,
+          SELECT q.id, q.text, q.context, p.canonical_name as person_name,
             q.importants_count, q.fact_check_verdict
           FROM quotes q
           JOIN persons p ON p.id = q.person_id
@@ -240,7 +244,7 @@ router.get('/noteworthy', (req, res) => {
         `).all(item.entity_id);
         if (item.top_quotes.length === 0) {
           item.top_quotes = db.prepare(`
-            SELECT q.id, SUBSTR(q.text, 1, 80) as text, p.canonical_name as person_name,
+            SELECT q.id, q.text, q.context, p.canonical_name as person_name,
               q.importants_count, q.fact_check_verdict
             FROM quotes q
             JOIN persons p ON p.id = q.person_id
@@ -261,7 +265,7 @@ router.get('/noteworthy', (req, res) => {
         }
         // Top 3 articles from same source (last 1 day), fallback to all-time
         item.top_articles = db.prepare(`
-          SELECT a2.id, SUBSTR(a2.title, 1, 80) as title, a2.importants_count
+          SELECT a2.id, a2.title, a2.importants_count
           FROM articles a2
           WHERE a2.source_id = (SELECT a.source_id FROM articles a WHERE a.id = ?)
             AND a2.id != ?
@@ -271,7 +275,7 @@ router.get('/noteworthy', (req, res) => {
         `).all(item.entity_id, item.entity_id);
         if (item.top_articles.length === 0) {
           item.top_articles = db.prepare(`
-            SELECT a2.id, SUBSTR(a2.title, 1, 80) as title, a2.importants_count
+            SELECT a2.id, a2.title, a2.importants_count
             FROM articles a2
             WHERE a2.source_id = (SELECT a.source_id FROM articles a WHERE a.id = ?)
               AND a2.id != ?

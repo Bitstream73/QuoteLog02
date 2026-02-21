@@ -183,6 +183,57 @@ function createStackedBarChart(canvasId, labels, datasets, options) {
   return chart;
 }
 
+function createVerticalBarChart(canvasId, labels, data, colors, options) {
+  if (typeof Chart === 'undefined') return null;
+  var canvas = document.getElementById(canvasId);
+  if (!canvas) return null;
+
+  var cfg = {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        data: data,
+        backgroundColor: colors,
+        borderWidth: 0,
+        borderRadius: 3,
+      }],
+    },
+    options: Object.assign({
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: { grid: { display: false } },
+        y: { beginAtZero: true, max: 100, ticks: { callback: function(v) { return v + '%'; }, precision: 0 } },
+      },
+      plugins: { legend: { display: false } },
+    }, options || {}),
+    plugins: [{
+      id: 'barLabels',
+      afterDatasetsDraw: function(chart) {
+        var ctx = chart.ctx;
+        var meta = chart.getDatasetMeta(0);
+        ctx.save();
+        ctx.font = '11px "DM Sans", sans-serif';
+        ctx.fillStyle = '#4a4a4a';
+        ctx.textAlign = 'center';
+        for (var i = 0; i < meta.data.length; i++) {
+          var bar = meta.data[i];
+          var value = chart.data.datasets[0].data[i];
+          if (value > 0) {
+            ctx.fillText(value + '%', bar.x, bar.y - 5);
+          }
+        }
+        ctx.restore();
+      },
+    }],
+  };
+
+  var chart = new Chart(canvas, cfg);
+  registerChart(canvasId, chart);
+  return chart;
+}
+
 function fillMissingDates(buckets, startDate, endDate) {
   var dateMap = {};
   for (var i = 0; i < buckets.length; i++) {

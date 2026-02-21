@@ -1286,22 +1286,36 @@ function toggleQuoteText(event, quoteId) {
  */
 function buildMiniQuotesHtml(topQuotes) {
   if (!topQuotes || topQuotes.length === 0) return '';
-  return `<div class="noteworthy-mini-quotes">${topQuotes.map(tq =>
-    `<div class="noteworthy-mini-quote" onclick="event.stopPropagation(); navigateTo('/quote/${tq.id}')">
-      <span class="noteworthy-mini-quote__text">${escapeHtml((tq.text || '').substring(0, 200))}${(tq.text || '').length > 200 ? '...' : ''}</span>
-      ${tq.context ? `<span class="noteworthy-mini-quote__context">${escapeHtml((tq.context || '').substring(0, 100))}</span>` : ''}
-      <span class="noteworthy-mini-quote__author">${escapeHtml(tq.person_name || '')}</span>
-    </div>`
-  ).join('')}</div>`;
+  return topQuotes.map(tq => {
+    const verdictHtml = (tq.fact_check_verdict && typeof buildVerdictBadgeHtml === 'function')
+      ? buildVerdictBadgeHtml(tq.id, tq.fact_check_verdict)
+      : '';
+    return `<div class="noteworthy-quote" onclick="event.stopPropagation(); navigateTo('/quote/${tq.id}')">
+      <p class="noteworthy-quote__text">${escapeHtml(tq.text || '')}</p>
+      <div class="noteworthy-quote__meta">
+        ${verdictHtml}
+        <span class="noteworthy-quote__author">${escapeHtml(tq.person_name || '')}</span>
+      </div>
+      ${tq.context ? `<p class="noteworthy-quote__context">${escapeHtml(tq.context)}</p>` : ''}
+    </div>`;
+  }).join('');
 }
 
 function buildMiniArticlesHtml(topArticles) {
   if (!topArticles || topArticles.length === 0) return '';
-  return `<div class="noteworthy-mini-quotes">${topArticles.map(a =>
-    `<div class="noteworthy-mini-quote" onclick="event.stopPropagation(); navigateTo('/article/${a.id}')">
-      <span class="noteworthy-mini-quote__text">${escapeHtml((a.title || '').substring(0, 80))}${(a.title || '').length > 80 ? '...' : ''}</span>
+  return topArticles.map(a =>
+    `<div class="noteworthy-quote" onclick="event.stopPropagation(); navigateTo('/article/${a.id}')">
+      <p class="noteworthy-quote__text" style="font-style:normal">${escapeHtml(a.title || '')}</p>
     </div>`
-  ).join('')}</div>`;
+  ).join('');
+}
+
+function buildNoteworthyCardHeader(avatarHtml, name, desc) {
+  return `<div class="noteworthy-card__header">
+    ${avatarHtml}
+    <p class="noteworthy-card__name">${escapeHtml(name)}</p>
+    ${desc ? `<span class="noteworthy-card__desc">${escapeHtml(desc)}</span>` : ''}
+  </div>`;
 }
 
 function buildNoteworthySectionHtml(items) {
@@ -1310,68 +1324,62 @@ function buildNoteworthySectionHtml(items) {
   const oddClass = items.length > 1 && items.length % 2 !== 0 ? ' noteworthy-section__scroll--odd' : '';
 
   for (const item of items) {
-    if (item.entity_type === 'quote') {
-      // Quote card with verdict badge + always-visible Important button
-      const verdictHtml = (item.fact_check_verdict && typeof buildVerdictBadgeHtml === 'function')
-        ? `<div class="noteworthy-card__verdict">${buildVerdictBadgeHtml(item.entity_id, item.fact_check_verdict)}</div>`
-        : '';
-      const importantHtml = (typeof renderImportantButton === 'function')
-        ? `<div class="noteworthy-card__important">${renderImportantButton('quote', item.entity_id, item.importants_count || 0, false)}</div>`
-        : '';
+    let headerHtml = '';
+    let contentHtml = '';
+    let clickTarget = '';
 
-      if (typeof buildQuoteBlockHtml === 'function') {
-        const quoteData = {
-          id: item.entity_id,
-          text: item.entity_label || '',
-          context: item.context || item.entity_context || '',
-          person_name: item.person_name || '',
-          person_id: '',
-          photo_url: item.photo_url || '',
-          importants_count: item.importants_count || 0,
-          quote_datetime: '',
-          article_id: '',
-          article_title: '',
-          source_domain: '',
-          source_name: '',
-        };
-        cardsHtml += `<div class="noteworthy-card noteworthy-card--quote">${verdictHtml}${buildQuoteBlockHtml(quoteData, false, { variant: 'compact', showAvatar: true, showSummary: true })}${importantHtml}</div>`;
-      } else {
-        cardsHtml += `<div class="noteworthy-card noteworthy-card--quote" onclick="navigateTo('/quote/${item.entity_id}')">
+    if (item.entity_type === 'quote') {
+      clickTarget = `/quote/${item.entity_id}`;
+      const avatarHtml = item.photo_url
+        ? `<img class="noteworthy-card__avatar" src="${escapeHtml(item.photo_url)}" alt="" onerror="this.style.display='none'">`
+        : `<div class="noteworthy-card__avatar-placeholder">${escapeHtml((item.person_name || '?')[0])}</div>`;
+      headerHtml = buildNoteworthyCardHeader(avatarHtml, item.person_name || '', item.person_category_context || '');
+      const verdictHtml = (item.fact_check_verdict && typeof buildVerdictBadgeHtml === 'function')
+        ? buildVerdictBadgeHtml(item.entity_id, item.fact_check_verdict) : '';
+      contentHtml = `<div class="noteworthy-quote">
+        <p class="noteworthy-quote__text">${escapeHtml(item.entity_label || '')}</p>
+        <div class="noteworthy-quote__meta">
           ${verdictHtml}
-          <p class="noteworthy-card__text">${escapeHtml((item.entity_label || '').substring(0, 120))}${(item.entity_label || '').length > 120 ? '...' : ''}</p>
-          ${item.person_name ? `<span class="noteworthy-card__author">${escapeHtml(item.person_name)}</span>` : ''}
-          ${importantHtml}
-        </div>`;
-      }
-    } else if (item.entity_type === 'article') {
-      cardsHtml += `<div class="noteworthy-card noteworthy-card--article" onclick="navigateTo('/article/${item.entity_id}')">
-        <p class="noteworthy-card__title">${escapeHtml(item.entity_label || 'Untitled')}</p>
-        ${item.source_name ? `<span class="noteworthy-card__meta">${escapeHtml(item.source_name)}</span>` : ''}
-        ${buildMiniArticlesHtml(item.top_articles)}
-        <a class="noteworthy-card__see-more" href="/article/${item.entity_id}" onclick="event.stopPropagation(); navigateTo('/article/${item.entity_id}')">See more...</a>
+          <span class="noteworthy-quote__author">${escapeHtml(item.person_name || '')}</span>
+        </div>
+        ${item.context ? `<p class="noteworthy-quote__context">${escapeHtml(item.context)}</p>` : ''}
       </div>`;
+
     } else if (item.entity_type === 'person') {
-      cardsHtml += `<div class="noteworthy-card noteworthy-card--person" onclick="navigateTo('/author/${item.entity_id}')">
-        ${item.photo_url ? `<img class="noteworthy-card__avatar" src="${escapeHtml(item.photo_url)}" alt="" onerror="this.style.display='none'">` : ''}
-        <p class="noteworthy-card__title">${escapeHtml(item.entity_label || 'Unknown Author')}</p>
-        ${item.category_context ? `<span class="noteworthy-card__meta">${escapeHtml(item.category_context)}</span>` : ''}
-        ${buildMiniQuotesHtml(item.top_quotes)}
-        <a class="noteworthy-card__see-more" href="/author/${item.entity_id}" onclick="event.stopPropagation(); navigateTo('/author/${item.entity_id}')">See more...</a>
-      </div>`;
+      clickTarget = `/author/${item.entity_id}`;
+      const avatarHtml = item.photo_url
+        ? `<img class="noteworthy-card__avatar" src="${escapeHtml(item.photo_url)}" alt="" onerror="this.style.display='none'">`
+        : `<div class="noteworthy-card__avatar-placeholder">${escapeHtml((item.entity_label || '?')[0])}</div>`;
+      const desc = [item.category, item.category_context].filter(Boolean).join(' — ');
+      headerHtml = buildNoteworthyCardHeader(avatarHtml, item.entity_label || 'Unknown Author', desc);
+      contentHtml = buildMiniQuotesHtml(item.top_quotes);
+
     } else if (item.entity_type === 'topic') {
-      cardsHtml += `<div class="noteworthy-card noteworthy-card--topic" onclick="navigateTo('/topic/${item.slug || item.entity_id}')">
-        <p class="noteworthy-card__title">${escapeHtml(item.entity_label || 'Unknown Topic')}</p>
-        ${item.description ? `<span class="noteworthy-card__meta">${escapeHtml((item.description || '').substring(0, 80))}</span>` : ''}
-        ${buildMiniQuotesHtml(item.top_quotes)}
-        <a class="noteworthy-card__see-more" href="/topic/${item.slug || item.entity_id}" onclick="event.stopPropagation(); navigateTo('/topic/${item.slug || item.entity_id}')">See more...</a>
-      </div>`;
+      clickTarget = `/topic/${item.slug || item.entity_id}`;
+      const initial = (item.entity_label || '?')[0];
+      const avatarHtml = `<div class="noteworthy-card__avatar-placeholder">${escapeHtml(initial)}</div>`;
+      headerHtml = buildNoteworthyCardHeader(avatarHtml, item.entity_label || 'Unknown Topic', item.description || '');
+      contentHtml = buildMiniQuotesHtml(item.top_quotes);
+
     } else if (item.entity_type === 'category') {
-      cardsHtml += `<div class="noteworthy-card noteworthy-card--category" onclick="navigateTo('/category/${item.slug || item.entity_id}')">
-        <p class="noteworthy-card__title">${escapeHtml(item.entity_label || 'Unknown Category')}</p>
-        ${buildMiniQuotesHtml(item.top_quotes)}
-        <a class="noteworthy-card__see-more" href="/category/${item.slug || item.entity_id}" onclick="event.stopPropagation(); navigateTo('/category/${item.slug || item.entity_id}')">See more...</a>
-      </div>`;
+      clickTarget = `/category/${item.slug || item.entity_id}`;
+      const initial = (item.entity_label || '?')[0];
+      const avatarHtml = `<div class="noteworthy-card__avatar-placeholder">${escapeHtml(initial)}</div>`;
+      headerHtml = buildNoteworthyCardHeader(avatarHtml, item.entity_label || 'Unknown Category', '');
+      contentHtml = buildMiniQuotesHtml(item.top_quotes);
+
+    } else if (item.entity_type === 'article') {
+      clickTarget = `/article/${item.entity_id}`;
+      const initial = (item.entity_label || '?')[0];
+      const avatarHtml = `<div class="noteworthy-card__avatar-placeholder">${escapeHtml(initial)}</div>`;
+      headerHtml = buildNoteworthyCardHeader(avatarHtml, item.entity_label || 'Untitled', item.source_name || '');
+      contentHtml = buildMiniArticlesHtml(item.top_articles);
     }
+
+    cardsHtml += `<div class="noteworthy-card noteworthy-card--${item.entity_type}" onclick="navigateTo('${clickTarget}')">
+      ${headerHtml}
+      <div class="noteworthy-card__content">${contentHtml}</div>
+    </div>`;
   }
 
   return `
