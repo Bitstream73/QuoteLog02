@@ -92,28 +92,27 @@ router.get('/trending-sources', (req, res) => {
     const searchFilter = search.length >= 2 ? 'AND a.title LIKE ?' : '';
     const searchParam = search.length >= 2 ? `%${search}%` : null;
 
-    // Filter to articles that have visible quotes (EXISTS is fast with idx_qa_article index)
-    const hasQuotesFilter = `AND EXISTS (SELECT 1 FROM quote_articles qa JOIN quotes q ON q.id = qa.quote_id WHERE qa.article_id = a.id AND q.is_visible = 1)`;
-    const baseWhere = `WHERE a.trending_score > 0 ${hasQuotesFilter} ${searchFilter}`;
-
-    const queryParams = searchParam ? [searchParam, limit, offset] : [limit, offset];
+    // Two-step approach for performance:
+    // 1. Get article IDs that have visible quotes (fast scan of quote_articles + quotes)
+    // 2. Join with articles table for full data, apply trending filter + search + sort
+    const queryParams = searchParam ? [searchParam, limit + 1, offset] : [limit + 1, offset];
     const articles = db.prepare(`
       SELECT a.id, a.url, a.title, a.published_at, a.importants_count, a.share_count,
         a.view_count, a.trending_score,
         s.domain as source_domain, s.name as source_name,
         sa.image_url as source_author_image_url
       FROM articles a
+      INNER JOIN (SELECT DISTINCT article_id FROM quote_articles) qa_ids ON qa_ids.article_id = a.id
       LEFT JOIN sources s ON s.id = a.source_id
       LEFT JOIN source_authors sa ON sa.id = s.source_author_id
-      ${baseWhere}
+      WHERE a.trending_score > 0 ${searchFilter}
       ORDER BY ${sourceOrder}
       LIMIT ? OFFSET ?
     `).all(...queryParams);
 
-    const countParams = searchParam ? [searchParam] : [];
-    const total = db.prepare(`
-      SELECT COUNT(*) as count FROM articles a ${baseWhere}
-    `).get(...countParams).count;
+    // Use limit+1 fetch to detect if there are more pages (avoids expensive COUNT)
+    const hasMore = articles.length > limit;
+    if (hasMore) articles.pop();
 
     // For each article, get top 3 quotes
     const getTopQuotes = db.prepare(`
@@ -141,6 +140,8 @@ router.get('/trending-sources', (req, res) => {
       return { ...a, quote_count: quotes.length, quotes };
     });
 
+    // Return hasMore flag; set total high enough for frontend pagination logic
+    const total = hasMore ? (page * limit) + 1 : offset + articlesWithQuotes.length;
     res.json({ articles: articlesWithQuotes, total, page, limit });
   } catch (err) {
     console.error('Trending sources error:', err);
