@@ -375,7 +375,7 @@ router.patch('/noteworthy/:id', requireAdmin, (req, res) => {
   try {
     const db = getDb();
     const { id } = req.params;
-    const { display_order, active } = req.body;
+    const { display_order, active, full_width } = req.body;
 
     const existing = db.prepare('SELECT * FROM noteworthy_items WHERE id = ?').get(id);
     if (!existing) {
@@ -387,6 +387,9 @@ router.patch('/noteworthy/:id', requireAdmin, (req, res) => {
     }
     if (active !== undefined) {
       db.prepare('UPDATE noteworthy_items SET active = ? WHERE id = ?').run(active ? 1 : 0, id);
+    }
+    if (full_width !== undefined) {
+      db.prepare('UPDATE noteworthy_items SET full_width = ? WHERE id = ?').run(full_width ? 1 : 0, id);
     }
 
     res.json({ success: true });

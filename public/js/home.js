@@ -1415,7 +1415,7 @@ function buildNoteworthySectionHtml(items) {
       contentHtml = buildMiniArticlesHtml(item.top_articles);
     }
 
-    cardsHtml += `<div class="noteworthy-card noteworthy-card--${item.entity_type}" onclick="navigateTo('${clickTarget}')">
+    cardsHtml += `<div class="noteworthy-card noteworthy-card--${item.entity_type}${item.full_width ? ' noteworthy-card--full-width' : ''}" onclick="navigateTo('${clickTarget}')">
       ${headerHtml}
       <div class="noteworthy-card__content">${contentHtml}</div>
     </div>`;

@@ -771,6 +771,7 @@ footer {
 
 .btn-secondary { background: transparent; color: var(--text-primary); border: 1px solid var(--border-dark); }
 .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+.btn-secondary.btn-active { background: var(--accent); color: #fff; border-color: var(--accent); }
 
 .btn-sm { padding: 0.25rem 0.75rem; font-size: 0.8rem; }
 
@@ -6027,6 +6028,10 @@ span.evidence-source-cite {
   overflow: hidden;
 }
 
+.noteworthy-card--full-width {
+  flex: 1 1 100%;
+}
+
 .noteworthy-card:hover {
   border-color: var(--border-dark);
   box-shadow: var(--shadow);
@@ -6337,6 +6342,9 @@ span.evidence-source-cite {
     grid-template-columns: 1fr;
   }
   .noteworthy-section__scroll--odd .noteworthy-card:last-child {
+    grid-column: 1 / -1;
+  }
+  .noteworthy-card--full-width {
     grid-column: 1 / -1;
   }
 }

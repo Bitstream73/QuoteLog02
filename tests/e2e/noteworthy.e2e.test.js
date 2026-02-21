@@ -59,10 +59,10 @@ beforeAll(async () => {
   // Link quote to article
   db.prepare("INSERT OR IGNORE INTO quote_articles (quote_id, article_id) VALUES (?, ?)").run(quoteId, articleId);
 
-  // Seed noteworthy items (5 items = odd count)
+  // Seed noteworthy items (5 items = odd count); mark topic as full_width
   db.prepare("DELETE FROM noteworthy_items").run();
   db.prepare("INSERT INTO noteworthy_items (entity_type, entity_id, display_order) VALUES ('quote', ?, 0)").run(quoteId);
-  db.prepare("INSERT INTO noteworthy_items (entity_type, entity_id, display_order) VALUES ('topic', ?, 1)").run(topicId);
+  db.prepare("INSERT INTO noteworthy_items (entity_type, entity_id, display_order, full_width) VALUES ('topic', ?, 1, 1)").run(topicId);
   db.prepare("INSERT INTO noteworthy_items (entity_type, entity_id, display_order) VALUES ('category', ?, 2)").run(categoryId);
   db.prepare("INSERT INTO noteworthy_items (entity_type, entity_id, display_order) VALUES ('person', ?, 3)").run(personId);
   db.prepare("INSERT INTO noteworthy_items (entity_type, entity_id, display_order) VALUES ('article', ?, 4)").run(articleId);
@@ -205,6 +205,24 @@ describe('Noteworthy E2E Tests', () => {
     await page.screenshot({ path: 'tests/e2e/screenshots/noteworthy-mobile.png' });
     // Reset viewport
     await page.setViewport({ width: 1280, height: 800 });
+  }, 15000);
+
+  it('full-width card has noteworthy-card--full-width class', async () => {
+    await page.setViewport({ width: 1280, height: 800 });
+    await page.goto(BASE, { waitUntil: 'networkidle0', timeout: 15000 });
+
+    const fullWidthCard = await page.$('.noteworthy-card--full-width');
+    expect(fullWidthCard).not.toBeNull();
+
+    // Verify it's the topic card that was seeded with full_width=1
+    const classes = await page.$eval('.noteworthy-card--full-width', el => el.className);
+    expect(classes).toContain('noteworthy-card--topic');
+
+    // Verify grid-column spans full width on desktop
+    const gridColumn = await page.$eval('.noteworthy-card--full-width', el =>
+      window.getComputedStyle(el).gridColumn
+    );
+    expect(gridColumn).toBe('1 / -1');
   }, 15000);
 
   it('article card shows mini-articles not mini-quotes', async () => {

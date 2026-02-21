@@ -922,6 +922,7 @@ function renderNoteworthyRow(item) {
         <span class="tk-row__stats">Order: ${item.display_order || 0}</span>
       </div>
       <div class="tk-row__actions">
+        <button class="btn btn-secondary btn-sm${item.full_width ? ' btn-active' : ''}" onclick="noteworthyToggleFullWidth(${item.id}, ${item.full_width ? 0 : 1})" title="Toggle full width">&#x2194;</button>
         <button class="btn btn-secondary btn-sm" onclick="noteworthyMoveUp(${item.id})" title="Move up">\u2191</button>
         <button class="btn btn-secondary btn-sm" onclick="noteworthyMoveDown(${item.id})" title="Move down">\u2193</button>
         <button class="btn btn-danger btn-sm" onclick="noteworthyRemove(${item.id})">Remove</button>
@@ -1031,6 +1032,15 @@ async function noteworthyRemove(id) {
       showToast('Error: ' + err.message, 'error');
     }
   });
+}
+
+async function noteworthyToggleFullWidth(id, value) {
+  try {
+    await API.patch(`/admin/noteworthy/${id}`, { full_width: value });
+    await refreshNoteworthyList();
+  } catch (err) {
+    showToast('Error toggling full width: ' + err.message, 'error', 5000);
+  }
 }
 
 async function noteworthyMoveUp(id) {
