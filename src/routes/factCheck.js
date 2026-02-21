@@ -9,12 +9,24 @@
  */
 
 import express from 'express';
+import jwt from 'jsonwebtoken';
 import { factCheckQuote, classifyAndVerify, extractAndEnrichReferences } from '../services/factCheck.js';
 import { generateShareImage, invalidateShareImageCache } from '../services/shareImage.js';
 import factCheckQueue from '../services/factCheckQueue.js';
 import { getDb } from '../config/database.js';
 import config from '../config/index.js';
 import logger from '../services/logger.js';
+
+function isAdminRequest(req) {
+  const token = req.cookies?.auth_token;
+  if (!token) return false;
+  try {
+    jwt.verify(token, config.jwtSecret);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 const router = express.Router();
 
@@ -39,42 +51,79 @@ router.post('/check', async (req, res) => {
       tags,
       skipFactCheck,
       skipReferences,
+      force,
     } = req.body;
 
     if (!quoteText) {
       return res.status(400).json({ error: 'quoteText is required' });
     }
 
-    // Check in-memory cache
+    // Cache key used throughout this handler (including background .then)
     const cacheKey = `check:${quoteId || quoteText.substring(0, 100)}`;
-    const cached = cache.get(cacheKey);
-    if (cached && (Date.now() - cached.timestamp < CACHE_TTL_MS)) {
-      return res.json({ ...cached.data, fromCache: true });
+
+    // Force rerun: admin-only — clear all caches and DB columns
+    if (force) {
+      if (!isAdminRequest(req)) {
+        return res.status(403).json({ error: 'Admin access required for force rerun' });
+      }
+
+      // Clear in-memory cache
+      cache.delete(cacheKey);
+
+      // Clear DB cached fact-check columns
+      if (quoteId) {
+        try {
+          const db = getDb();
+          db.prepare(
+            `UPDATE quotes SET
+              fact_check_html = NULL,
+              fact_check_references_json = NULL,
+              fact_check_verdict = NULL,
+              fact_check_claim = NULL,
+              fact_check_explanation = NULL,
+              fact_check_category = NULL,
+              fact_check_agree_count = 0,
+              fact_check_disagree_count = 0
+            WHERE id = ?`
+          ).run(quoteId);
+        } catch (err) {
+          logger.warn('factcheck', 'force_clear_db_failed', { quoteId, error: err.message });
+        }
+      }
+      // Skip cache checks below — fall through to enqueue
     }
 
-    // Check DB cache (survives server restarts)
-    if (quoteId) {
-      try {
-        const db = getDb();
-        const row = db.prepare(
-          `SELECT fact_check_html, fact_check_references_json, fact_check_verdict, fact_check_agree_count, fact_check_disagree_count FROM quotes WHERE id = ?`
-        ).get(quoteId);
+    if (!force) {
+      // Check in-memory cache
+      const cached = cache.get(cacheKey);
+      if (cached && (Date.now() - cached.timestamp < CACHE_TTL_MS)) {
+        return res.json({ ...cached.data, fromCache: true });
+      }
 
-        if (row && row.fact_check_html) {
-          const dbCached = {
-            combinedHtml: row.fact_check_html,
-            html: row.fact_check_html,
-            references: row.fact_check_references_json ? JSON.parse(row.fact_check_references_json) : null,
-            verdict: row.fact_check_verdict || null,
-            agree_count: row.fact_check_agree_count || 0,
-            disagree_count: row.fact_check_disagree_count || 0,
-            fromCache: true,
-          };
-          cache.set(cacheKey, { data: dbCached, timestamp: Date.now() });
-          return res.json(dbCached);
+      // Check DB cache (survives server restarts)
+      if (quoteId) {
+        try {
+          const db = getDb();
+          const row = db.prepare(
+            `SELECT fact_check_html, fact_check_references_json, fact_check_verdict, fact_check_agree_count, fact_check_disagree_count FROM quotes WHERE id = ?`
+          ).get(quoteId);
+
+          if (row && row.fact_check_html) {
+            const dbCached = {
+              combinedHtml: row.fact_check_html,
+              html: row.fact_check_html,
+              references: row.fact_check_references_json ? JSON.parse(row.fact_check_references_json) : null,
+              verdict: row.fact_check_verdict || null,
+              agree_count: row.fact_check_agree_count || 0,
+              disagree_count: row.fact_check_disagree_count || 0,
+              fromCache: true,
+            };
+            cache.set(cacheKey, { data: dbCached, timestamp: Date.now() });
+            return res.json(dbCached);
+          }
+        } catch (err) {
+          logger.warn('factcheck', 'db_cache_lookup_failed', { quoteId, error: err.message });
         }
-      } catch (err) {
-        logger.warn('factcheck', 'db_cache_lookup_failed', { quoteId, error: err.message });
       }
     }
 
