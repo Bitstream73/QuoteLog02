@@ -100,9 +100,11 @@ router.get('/trending-sources', (req, res) => {
     const articles = db.prepare(`
       SELECT a.id, a.url, a.title, a.published_at, a.importants_count, a.share_count,
         a.view_count, a.trending_score,
-        s.domain as source_domain, s.name as source_name
+        s.domain as source_domain, s.name as source_name,
+        sa.image_url as source_author_image_url
       FROM articles a
       LEFT JOIN sources s ON s.id = a.source_id
+      LEFT JOIN source_authors sa ON sa.id = s.source_author_id
       ${baseWhere}
       ORDER BY ${sourceOrder}
       LIMIT ? OFFSET ?
