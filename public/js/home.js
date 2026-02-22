@@ -1151,6 +1151,24 @@ async function renderHome() {
   await loadQuotesPage(1);
   setupInfiniteScroll();
 
+  // Wire up swipe gestures
+  const slideContainer = document.getElementById('home-quotes-scroll');
+  if (slideContainer && typeof initSwipeHandlers === 'function') {
+    initSwipeHandlers(slideContainer, {
+      onSwipeLeft: (e) => {
+        const quoteBlock = e.target.closest('.quote-block');
+        const card = e.target.closest('.noteworthy-card');
+        if (quoteBlock) {
+          const quoteId = quoteBlock.dataset.quoteId;
+          if (quoteId) slideToDetail(`/quote/${quoteId}`);
+        } else if (card && card.dataset.href) {
+          slideToDetail(card.dataset.href);
+        }
+      },
+      onSwipeRight: () => slideBack()
+    });
+  }
+
   // Restore scroll position if returning
   if (_pendingScrollRestore) {
     _pendingScrollRestore = false;
@@ -1158,6 +1176,34 @@ async function renderHome() {
       window.scrollTo(0, _homeScrollY);
     });
   }
+}
+
+/**
+ * Slide to a detail page (quote, author, etc.)
+ */
+function slideToDetail(path) {
+  _homeScrollY = window.scrollY;
+  const container = document.getElementById('home-quotes-scroll');
+  if (container) {
+    container.classList.add('slide-active');
+  }
+  // Navigate to the detail page using existing router
+  if (typeof navigate === 'function') {
+    navigate(null, path);
+  } else {
+    window.location.href = path;
+  }
+}
+
+/**
+ * Slide back to the quotes scroll
+ */
+function slideBack() {
+  const container = document.getElementById('home-quotes-scroll');
+  if (container) {
+    container.classList.remove('slide-active');
+  }
+  requestAnimationFrame(() => window.scrollTo(0, _homeScrollY));
 }
 
 /**

@@ -1,9 +1,9 @@
 # Build Progress
 
 ## Current Status
-- **Current Phase:** 5
+- **Current Phase:** 6
 - **Last Updated:** 2026-02-22
-- **Last Commit:** d596812 phase-4: add noteworthy card configs settings UI with pepper controls
+- **Last Commit:** 85dd6a5 phase-5: remove homepage tab bar, simplify to quotes-only scroll with slide container
 
 ## Phase 0: Prerequisites ✅
 - [x] Existing project with passing test suite (`npx vitest run`)
@@ -31,10 +31,10 @@
 - [x] Build pepper settings UI: frequency input, chance slider, sequential/random toggle, reuse toggle (see `docs/CARD_CONFIGS.md`)
 - [x] Write tests: card config list renders, toggles work, pepper settings save/load correctly
 
-## Phase 5: Homepage Restructure
-- [ ] Remove tab bar (`buildTabBarHtml`, `switchHomepageTab`, `renderTabContent`) and move quotes infinite scroll to top of homepage content area; remove standalone noteworthy section (`buildNoteworthySectionHtml` call in `renderHome`)
-- [ ] Clean up tab state variables (`_activeTab`, `_authorsPage`, `_sourcesPage`, etc.) and simplify `loadMoreItems()` to only handle quotes
-- [ ] Write tests: homepage renders quotes scroll without tabs, noteworthy section removed, infinite scroll still works
+## Phase 5: Homepage Restructure ✅
+- [x] Remove tab bar (`buildTabBarHtml`, `switchHomepageTab`, `renderTabContent`) and move quotes infinite scroll to top of homepage content area; remove standalone noteworthy section (`buildNoteworthySectionHtml` call in `renderHome`)
+- [x] Clean up tab state variables (`_activeTab`, `_authorsPage`, `_sourcesPage`, etc.) and simplify `loadMoreItems()` to only handle quotes
+- [x] Write tests: homepage renders quotes scroll without tabs, noteworthy section removed, infinite scroll still works
 
 ## Phase 6: Swipe Gesture System
 - [ ] Create `public/js/swipe.js` module: touch event handlers (touchstart/touchmove/touchend) for swipe-left (navigate to detail) and swipe-right (back to scroll position), with configurable threshold and velocity
