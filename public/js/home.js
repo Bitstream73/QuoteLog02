@@ -642,10 +642,8 @@ async function loadMoreQuotes() {
     const entityKeys = recentQuotes.map(q => `quote:${q.id}`);
     await fetchImportantStatuses(entityKeys);
 
-    let html = '';
-    for (const q of recentQuotes) {
-      html += buildQuoteBlockHtml(q, _importantStatuses[`quote:${q.id}`] || false);
-    }
+    const html = buildQuotesWithCardsHtml(recentQuotes, _quotesPage);
+
     const list = document.getElementById('quotes-list');
     if (list) list.insertAdjacentHTML('beforeend', html);
     initViewTracking();
@@ -1070,7 +1068,7 @@ function buildTimedQuoteCardHtml(card) {
   const verdictHtml = (typeof buildVerdictBadgeHtml === 'function')
     ? buildVerdictBadgeHtml(q.id, q.fact_check_verdict) : '';
   return `
-    <div class="noteworthy-card noteworthy-card--timed-quote" data-href="/quote/${q.id}" onclick="slideToDetail('/quote/${q.id}')">
+    <div class="noteworthy-card noteworthy-card--timed-quote" data-href="/quote/${q.id}" onclick="navigateTo('/quote/${q.id}')">
       <div class="noteworthy-card__header">
         <div class="noteworthy-card__badge">${escapeHtml(card.custom_title || '')}</div>
       </div>
@@ -1094,7 +1092,7 @@ function buildTimedAuthorCardHtml(card) {
     : `<div class="noteworthy-card__avatar-placeholder">${escapeHtml((entity.canonical_name || '?')[0])}</div>`;
   const desc = [entity.category, entity.category_context].filter(Boolean).join(' \u2014 ');
   return `
-    <div class="noteworthy-card noteworthy-card--timed-author" data-href="/author/${entity.id}" onclick="slideToDetail('/author/${entity.id}')">
+    <div class="noteworthy-card noteworthy-card--timed-author" data-href="/author/${entity.id}" onclick="navigateTo('/author/${entity.id}')">
       <div class="noteworthy-card__header">
         <div class="noteworthy-card__badge">${escapeHtml(card.custom_title || '')}</div>
       </div>
@@ -1127,7 +1125,7 @@ function buildTimedTopicCardHtml(card) {
   const initial = (entity.name || '?')[0];
   const avatarHtml = `<div class="noteworthy-card__avatar-placeholder">${escapeHtml(initial)}</div>`;
   return `
-    <div class="noteworthy-card noteworthy-card--timed-topic" data-href="/topic/${entity.slug || entity.id}" onclick="slideToDetail('/topic/${entity.slug || entity.id}')">
+    <div class="noteworthy-card noteworthy-card--timed-topic" data-href="/topic/${entity.slug || entity.id}" onclick="navigateTo('/topic/${entity.slug || entity.id}')">
       <div class="noteworthy-card__header">
         <div class="noteworthy-card__badge">${escapeHtml(card.custom_title || '')}</div>
       </div>
@@ -1142,7 +1140,7 @@ function buildTimedCategoryCardHtml(card) {
   if (!entity) return '';
   const avatarHtml = buildCategoryAvatarHtml(entity.image_url, entity.icon_name, entity.name);
   return `
-    <div class="noteworthy-card noteworthy-card--timed-category" data-href="/category/${entity.slug || entity.id}" onclick="slideToDetail('/category/${entity.slug || entity.id}')">
+    <div class="noteworthy-card noteworthy-card--timed-category" data-href="/category/${entity.slug || entity.id}" onclick="navigateTo('/category/${entity.slug || entity.id}')">
       <div class="noteworthy-card__header">
         <div class="noteworthy-card__badge">${escapeHtml(card.custom_title || '')}</div>
       </div>
@@ -1274,6 +1272,61 @@ function determinePepperPositions(quoteCount, frequency, chance) {
   return positions;
 }
 
+function separateHardcodedCards(evaluatedCards, page) {
+  const pageSize = 20;
+  const rangeStart = (page - 1) * pageSize + 1;
+  const rangeEnd = page * pageSize;
+  const hardcoded = [];
+  const pepperPool = [];
+  const hardcodedByLocalPos = {};
+
+  for (const card of evaluatedCards) {
+    if (card.hardcoded_position && card.hardcoded_position >= rangeStart && card.hardcoded_position <= rangeEnd) {
+      hardcoded.push(card);
+      const localPos = card.hardcoded_position - rangeStart;
+      if (!hardcodedByLocalPos[localPos]) hardcodedByLocalPos[localPos] = [];
+      hardcodedByLocalPos[localPos].push(card);
+    } else if (!card.hardcoded_position) {
+      pepperPool.push(card);
+    }
+  }
+  return { hardcoded, pepperPool, hardcodedByLocalPos };
+}
+
+function buildQuotesWithCardsHtml(recentQuotes, page) {
+  const { hardcoded, pepperPool, hardcodedByLocalPos } = separateHardcodedCards(_evaluatedCards, page);
+  const hardcodedIds = new Set(hardcoded.map(c => c.id));
+
+  const frequency = parseInt(_pepperSettings.noteworthy_pepper_frequency || '5', 10);
+  const chance = parseInt(_pepperSettings.noteworthy_pepper_chance || '50', 10);
+  const positions = determinePepperPositions(recentQuotes.length, frequency, chance);
+
+  let html = '';
+  recentQuotes.forEach((q, i) => {
+    html += buildQuoteBlockHtml(q, _importantStatuses[`quote:${q.id}`] || false);
+
+    // Insert hardcoded cards at this position
+    if (hardcodedByLocalPos[i]) {
+      for (const card of hardcodedByLocalPos[i]) {
+        html += buildPepperedCardHtml(card, _evaluatedCards);
+      }
+    }
+
+    // Regular peppering — only from pepper pool (excludes hardcoded cards)
+    if (positions.includes(i) && pepperPool.length > 0) {
+      const card = pickNextCard(
+        pepperPool,
+        _pepperSettings.noteworthy_pick_mode || 'sequential',
+        _pepperSettings.noteworthy_reuse_cards === '1'
+      );
+      if (card && !hardcodedIds.has(card.id)) {
+        html += buildPepperedCardHtml(card, _evaluatedCards);
+      }
+    }
+  });
+  return html;
+}
+
 function pickNextCard(evaluatedCards, mode, reuseEnabled) {
   const available = reuseEnabled
     ? evaluatedCards
@@ -1372,25 +1425,7 @@ async function loadQuotesPage(page) {
     const entityKeys = recentQuotes.map(q => `quote:${q.id}`);
     await fetchImportantStatuses(entityKeys);
 
-    const frequency = parseInt(_pepperSettings.noteworthy_pepper_frequency || '5', 10);
-    const chance = parseInt(_pepperSettings.noteworthy_pepper_chance || '50', 10);
-    const positions = determinePepperPositions(recentQuotes.length, frequency, chance);
-
-    let html = '';
-    recentQuotes.forEach((q, i) => {
-      html += buildQuoteBlockHtml(q, _importantStatuses[`quote:${q.id}`] || false);
-
-      if (positions.includes(i) && _evaluatedCards.length > 0) {
-        const card = pickNextCard(
-          _evaluatedCards,
-          _pepperSettings.noteworthy_pick_mode || 'sequential',
-          _pepperSettings.noteworthy_reuse_cards === '1'
-        );
-        if (card) {
-          html += buildPepperedCardHtml(card, _evaluatedCards);
-        }
-      }
-    });
+    const html = buildQuotesWithCardsHtml(recentQuotes, page);
 
     const list = document.getElementById('quotes-list');
     if (list) {
@@ -1432,12 +1467,9 @@ async function renderHome() {
   // Simplified: just quotes scroll, no tabs, no standalone noteworthy
   content.innerHTML = `
     <h1 class="sr-only">TrueOrFalse.News - What they said - Fact Checked</h1>
-    <div id="home-quotes-scroll" class="slide-container">
-      <div class="slide-panel slide-panel--main" id="slide-main">
-        <div id="quotes-list"></div>
-        <div id="infinite-scroll-sentinel" class="infinite-scroll-sentinel"></div>
-      </div>
-      <div class="slide-panel slide-panel--detail" id="slide-detail"></div>
+    <div id="home-quotes-scroll">
+      <div id="quotes-list"></div>
+      <div id="infinite-scroll-sentinel" class="infinite-scroll-sentinel"></div>
     </div>
   `;
 
@@ -1445,21 +1477,21 @@ async function renderHome() {
   await loadQuotesPage(1);
   setupInfiniteScroll();
 
-  // Wire up swipe gestures
-  const slideContainer = document.getElementById('home-quotes-scroll');
-  if (slideContainer && typeof initSwipeHandlers === 'function') {
-    initSwipeHandlers(slideContainer, {
+  // Wire up swipe gestures — left-swipe on quote blocks navigates to detail
+  const scrollContainer = document.getElementById('home-quotes-scroll');
+  if (scrollContainer && typeof initSwipeHandlers === 'function') {
+    initSwipeHandlers(scrollContainer, {
       onSwipeLeft: (e) => {
         const quoteBlock = e.target.closest('.quote-block');
         const card = e.target.closest('.noteworthy-card');
         if (quoteBlock) {
           const quoteId = quoteBlock.dataset.quoteId;
-          if (quoteId) slideToDetail(`/quote/${quoteId}`);
+          if (quoteId) navigateTo('/quote/' + quoteId);
         } else if (card && card.dataset.href) {
-          slideToDetail(card.dataset.href);
+          navigateTo(card.dataset.href);
         }
       },
-      onSwipeRight: () => slideBack()
+      onSwipeRight: () => {} // No swipe-right on home (root page)
     });
   }
 
@@ -1472,33 +1504,7 @@ async function renderHome() {
   }
 }
 
-/**
- * Slide to a detail page (quote, author, etc.)
- */
-function slideToDetail(path) {
-  _homeScrollY = window.scrollY;
-  const container = document.getElementById('home-quotes-scroll');
-  if (container) {
-    container.classList.add('slide-active');
-  }
-  // Navigate to the detail page using existing router
-  if (typeof navigate === 'function') {
-    navigate(null, path);
-  } else {
-    window.location.href = path;
-  }
-}
-
-/**
- * Slide back to the quotes scroll
- */
-function slideBack() {
-  const container = document.getElementById('home-quotes-scroll');
-  if (container) {
-    container.classList.remove('slide-active');
-  }
-  requestAnimationFrame(() => window.scrollTo(0, _homeScrollY));
-}
+// slideToDetail and slideBack removed — replaced by page-transition.js animations
 
 /**
  * Render search results (preserves existing search functionality)
@@ -1598,6 +1604,9 @@ async function renderSearchResults(content, searchQuery) {
     }
 
     content.innerHTML = html;
+
+    // Enable swipe-right-to-go-back on search results
+    if (typeof initPageSwipe === 'function') initPageSwipe(content);
   } catch (err) {
     content.innerHTML = `<div class="empty-state"><h3>Error searching</h3><p>${escapeHtml(err.message)}</p></div>`;
   }

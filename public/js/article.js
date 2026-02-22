@@ -27,9 +27,7 @@ async function renderArticle(id) {
 
     let html = `
       <div class="article-sticky-header">
-        <p style="margin-bottom:0.5rem;font-family:var(--font-ui);font-size:var(--text-sm)">
-          <a href="/" onclick="navigateBackToQuotes(event)" style="color:var(--accent);text-decoration:none">&larr; Back to quotes</a>
-        </p>
+        ${typeof buildBackArrowHtml === 'function' ? buildBackArrowHtml() : ''}
         <h1 class="page-title" style="font-size:1.8rem;margin-bottom:0.5rem">${escapeHtml(a.title || 'Untitled Source')}</h1>
         <div style="font-family:var(--font-ui);font-size:var(--text-sm);color:var(--text-muted);margin-bottom:0.5rem">
           ${sourceLabel ? `<span>${escapeHtml(sourceLabel)}</span>` : ''}
@@ -124,6 +122,9 @@ async function renderArticle(id) {
     }
 
     content.innerHTML = html;
+
+    // Init swipe-to-go-back
+    if (typeof initPageSwipe === 'function') initPageSwipe(content);
 
     // Load charts after DOM is set (only if 2+ quotes)
     if (data.quotes.length >= 2) {

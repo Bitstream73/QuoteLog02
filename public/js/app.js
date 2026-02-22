@@ -47,6 +47,10 @@ function updatePageMeta(title, description, canonicalPath) {
 // Auth state
 let isAdmin = false;
 
+// Navigation stack for back transitions (caches DOM + scroll position)
+const _navStack = [];
+let _navIndex = 0;
+
 // Homepage scroll position (saved when navigating to article/quote)
 let _homeScrollY = 0;
 let _pendingScrollRestore = false;
@@ -150,27 +154,73 @@ async function logout(event) {
 
 function navigate(event, path) {
   if (event) event.preventDefault();
+  // Save current page state to nav stack before navigating
+  const content = document.getElementById('content');
+  const currentPath = window.location.pathname + window.location.search;
+  if (content && currentPath !== path) {
+    _navStack.push({
+      path: currentPath,
+      html: content.innerHTML,
+      scrollY: window.scrollY,
+      timestamp: Date.now()
+    });
+    // Cap stack at 10 entries
+    if (_navStack.length > 10) _navStack.shift();
+  }
   // Save scroll position when leaving homepage
   if (window.location.pathname === '/' || window.location.pathname === '') {
     _homeScrollY = window.scrollY;
   }
-  window.history.pushState({}, '', path);
-  route();
+  _navIndex++;
+  window.history.pushState({ navIndex: _navIndex }, '', path);
+  // Use transition if available, otherwise direct route
+  if (typeof transitionForward === 'function') {
+    transitionForward(content, () => route('forward'));
+  } else {
+    route();
+  }
 }
 
-function navigateBackToQuotes(event) {
+function navigateBack(event) {
   if (event) event.preventDefault();
-  _pendingScrollRestore = true;
-  window.history.pushState({}, '', '/');
-  route();
+  const entry = _navStack.pop();
+  const content = document.getElementById('content');
+  if (entry && content) {
+    _navIndex++;
+    window.history.pushState({ navIndex: _navIndex }, '', entry.path);
+    if (typeof transitionBack === 'function') {
+      transitionBack(entry, content, () => {
+        content.innerHTML = entry.html;
+        requestAnimationFrame(() => window.scrollTo(0, entry.scrollY));
+      });
+    } else {
+      content.innerHTML = entry.html;
+      requestAnimationFrame(() => window.scrollTo(0, entry.scrollY));
+    }
+    // Restore homepage scroll if going back to home
+    if (entry.path === '/' || entry.path === '') {
+      _homeScrollY = entry.scrollY;
+    }
+  } else {
+    // Fallback: navigate to home
+    _pendingScrollRestore = true;
+    _navIndex++;
+    window.history.pushState({ navIndex: _navIndex }, '', '/');
+    route();
+  }
 }
 
-function route() {
+// Legacy alias
+function navigateBackToQuotes(event) {
+  navigateBack(event);
+}
+
+function route(direction) {
   if (typeof destroyAllCharts === 'function') destroyAllCharts();
 
-  // Re-trigger page fade-in animation
+  // Re-trigger page fade-in animation (skip when page-transition handles it)
   const content = document.getElementById('content');
-  if (content) {
+  if (content && !direction) {
     content.style.animation = 'none';
     content.offsetHeight; // force reflow
     content.style.animation = '';
@@ -265,8 +315,30 @@ function updateAdVisibility(path) {
   }
 }
 
+// Back arrow button for detail pages
+function buildBackArrowHtml() {
+  return `<button class="back-arrow-btn" onclick="navigateBack(event)" aria-label="Go back" title="Go back">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="15 18 9 12 15 6"/>
+    </svg>
+  </button>`;
+}
+
 // Handle browser back/forward
-window.addEventListener('popstate', route);
+window.addEventListener('popstate', (event) => {
+  const stateIndex = event.state?.navIndex || 0;
+  const direction = stateIndex < _navIndex ? 'back' : 'forward';
+  _navIndex = stateIndex;
+  const content = document.getElementById('content');
+  if (direction === 'back' && typeof transitionBack === 'function') {
+    // For browser back, we don't have cached HTML — do a regular route with back animation
+    transitionBack(null, content, () => route(direction));
+  } else if (direction === 'forward' && typeof transitionForward === 'function') {
+    transitionForward(content, () => route(direction));
+  } else {
+    route();
+  }
+});
 
 // Register service worker with update detection
 if ('serviceWorker' in navigator) {

@@ -52,9 +52,7 @@ async function renderQuote(id) {
     const quoteDateStr = formatDateTime(q.quote_datetime || q.quoteDateTime || '');
 
     let html = `
-      <p style="margin-bottom:1.5rem;font-family:var(--font-ui);font-size:var(--text-sm)">
-        <a href="/" onclick="navigateBackToQuotes(event)" style="color:var(--accent);text-decoration:none">&larr; Back to quotes</a>
-      </p>
+      ${typeof buildBackArrowHtml === 'function' ? buildBackArrowHtml() : ''}
 
       <!-- 1. Quote text — left-justified -->
       <div class="quote-page__text">
@@ -163,6 +161,9 @@ async function renderQuote(id) {
 
     // Reset annotation flag for this page render
     quoteTextAnnotated = false;
+
+    // Init swipe-to-go-back
+    if (typeof initPageSwipe === 'function') initPageSwipe(content);
 
     // Auto-load all sections in parallel
     loadSmartRelated(q.id);

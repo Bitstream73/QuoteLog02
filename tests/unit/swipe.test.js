@@ -67,54 +67,31 @@ describe('Swipe Integration in home.js', () => {
     expect(homeJs).toContain('initSwipeHandlers(');
   });
 
-  it('defines slideToDetail function', () => {
-    expect(homeJs).toContain('function slideToDetail(');
+  it('uses navigateTo for left-swipe on quote blocks', () => {
+    expect(homeJs).toContain("navigateTo('/quote/' + quoteId)");
   });
 
-  it('defines slideBack function', () => {
-    expect(homeJs).toContain('function slideBack(');
+  it('does not use slideToDetail (removed)', () => {
+    // slideToDetail was replaced by navigateTo
+    expect(homeJs).not.toMatch(/function slideToDetail\(/);
   });
 
-  it('slideToDetail saves scroll position', () => {
-    const slideMatch = homeJs.match(/function slideToDetail[\s\S]*?^}/m);
-    expect(slideMatch).toBeTruthy();
-    expect(slideMatch[0]).toContain('_homeScrollY');
+  it('does not use slideBack (removed)', () => {
+    expect(homeJs).not.toMatch(/function slideBack\(/);
   });
 
-  it('slideToDetail adds slide-active class', () => {
-    expect(homeJs).toContain("classList.add('slide-active')");
-  });
-
-  it('slideBack removes slide-active class', () => {
-    expect(homeJs).toContain("classList.remove('slide-active')");
-  });
-
-  it('slideBack restores scroll position', () => {
-    const slideBackMatch = homeJs.match(/function slideBack[\s\S]*?^}/m);
-    expect(slideBackMatch).toBeTruthy();
-    expect(slideBackMatch[0]).toContain('_homeScrollY');
+  it('enables swipe-right-to-go-back on search results', () => {
+    expect(homeJs).toContain('initPageSwipe');
   });
 });
 
-describe('Slide CSS Classes', () => {
+describe('Slide CSS Classes (legacy, kept for compatibility)', () => {
   it('has slide-container styles', () => {
     expect(stylesCss).toContain('.slide-container');
   });
 
   it('has slide-panel styles', () => {
     expect(stylesCss).toContain('.slide-panel');
-  });
-
-  it('has slide-panel--main styles', () => {
-    expect(stylesCss).toContain('.slide-panel--main');
-  });
-
-  it('has slide-panel--detail styles', () => {
-    expect(stylesCss).toContain('.slide-panel--detail');
-  });
-
-  it('has slide-active transition styles', () => {
-    expect(stylesCss).toContain('.slide-container.slide-active');
   });
 
   it('uses translateX for slide transitions', () => {

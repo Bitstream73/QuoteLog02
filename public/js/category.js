@@ -59,9 +59,7 @@ async function renderCategory(id) {
       : '';
 
     let html = `
-      <p style="margin-bottom:1.5rem;font-family:var(--font-ui);font-size:0.85rem">
-        <a href="/" onclick="navigate(event, '/')" style="color:var(--accent);text-decoration:none">&larr; Back to quotes</a>
-      </p>
+      ${typeof buildBackArrowHtml === 'function' ? buildBackArrowHtml() : ''}
 
       <div class="category-header" style="display:flex;align-items:center;gap:0.75rem">
         ${catAvatarHtml}
@@ -113,6 +111,9 @@ async function renderCategory(id) {
     }
 
     content.innerHTML = html;
+
+    // Init swipe-to-go-back
+    if (typeof initPageSwipe === 'function') initPageSwipe(content);
   } catch (err) {
     content.innerHTML = `<div class="empty-state"><h3>Error</h3><p>${escapeHtml(err.message)}</p></div>`;
   }
