@@ -502,10 +502,10 @@ router.get('/highlights', (req, res) => {
         AND q.created_at >= datetime('now', ?)
         AND q.importants_count > 0
       ORDER BY q.importants_count DESC
-      LIMIT 3
+      LIMIT 10
     `).all(dateFilter);
 
-    // Top 3 authors by SUM(importants_count)
+    // Top 10 authors by SUM(importants_count)
     const topAuthors = db.prepare(`
       SELECT p.id, p.canonical_name, p.photo_url, p.category, p.category_context,
         SUM(q.importants_count) as total_importants
@@ -515,10 +515,10 @@ router.get('/highlights', (req, res) => {
       GROUP BY p.id
       HAVING total_importants > 0
       ORDER BY total_importants DESC
-      LIMIT 3
+      LIMIT 10
     `).all(dateFilter);
 
-    // Top 3 topics by SUM(importants_count)
+    // Top 10 topics by SUM(importants_count)
     const topTopics = db.prepare(`
       SELECT t.id, t.name, t.slug, SUM(q.importants_count) as total_importants
       FROM topics t
@@ -529,7 +529,7 @@ router.get('/highlights', (req, res) => {
       GROUP BY t.id
       HAVING total_importants > 0
       ORDER BY total_importants DESC
-      LIMIT 3
+      LIMIT 10
     `).all(dateFilter);
 
     // Truthful authors (TRUE/MOSTLY_TRUE)
