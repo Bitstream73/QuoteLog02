@@ -7589,3 +7589,67 @@ span.evidence-source-cite {
   font-size: 0.78rem;
   margin: 0.75rem 0 0 0;
 }
+
+/* ===================================
+   Page Transition Animations
+   =================================== */
+
+@keyframes page-slide-out-left {
+  from { transform: translateX(0); opacity: 1; }
+  to   { transform: translateX(-30%); opacity: 0; }
+}
+
+@keyframes page-slide-in-right {
+  from { transform: translateX(30%); opacity: 0; }
+  to   { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes page-slide-out-right {
+  from { transform: translateX(0); opacity: 1; }
+  to   { transform: translateX(30%); opacity: 0; }
+}
+
+@keyframes page-slide-in-left {
+  from { transform: translateX(-30%); opacity: 0; }
+  to   { transform: translateX(0); opacity: 1; }
+}
+
+.page-transition-layer {
+  will-change: transform, opacity;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  @keyframes page-slide-out-left { from, to { transform: none; opacity: 1; } }
+  @keyframes page-slide-in-right { from, to { transform: none; opacity: 1; } }
+  @keyframes page-slide-out-right { from, to { transform: none; opacity: 1; } }
+  @keyframes page-slide-in-left { from, to { transform: none; opacity: 1; } }
+}
+
+/* Back Arrow Button */
+.back-arrow-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  padding: 0;
+  margin: 0 0 1rem 0;
+  transition: background 0.15s ease;
+}
+
+.back-arrow-btn:hover {
+  background: var(--accent-light);
+}
+
+.back-arrow-btn:active {
+  background: var(--accent-muted);
+}
+
+.back-arrow-btn svg {
+  display: block;
+}

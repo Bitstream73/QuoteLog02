@@ -71,9 +71,7 @@ async function renderAuthor(id) {
         : avatarPlaceholder);
 
     let html = `
-      <p style="margin-bottom:1.5rem;font-family:var(--font-ui);font-size:0.85rem">
-        <a href="/" onclick="navigate(event, '/')" style="color:var(--accent);text-decoration:none">&larr; Back to quotes</a>
-      </p>
+      ${typeof buildBackArrowHtml === 'function' ? buildBackArrowHtml() : ''}
 
       <div class="author-header">
         <div class="author-avatar-wrap">${avatarInner}</div>
@@ -193,6 +191,9 @@ async function renderAuthor(id) {
     `;
 
     content.innerHTML = html;
+
+    // Init swipe-to-go-back
+    if (typeof initPageSwipe === 'function') initPageSwipe(content);
 
     // Load charts after DOM is set
     loadAuthorCharts(id, _authorChartPeriod, _authorChartCompareId);
