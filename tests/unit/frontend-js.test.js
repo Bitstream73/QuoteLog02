@@ -3,15 +3,36 @@ import fs from 'fs';
 import path from 'path';
 
 describe('Frontend JS files', () => {
-  describe('home.js 4-tab system core functions', () => {
+  describe('home.js quotes scroll (no tab system)', () => {
     const homeJs = fs.readFileSync(path.join(process.cwd(), 'public/js/home.js'), 'utf-8');
 
-    it('should declare buildTabBarHtml function', () => {
-      expect(homeJs).toContain('function buildTabBarHtml');
+    it('should NOT have tab bar functions (removed in Phase 5)', () => {
+      expect(homeJs).not.toContain('function buildTabBarHtml');
+      expect(homeJs).not.toContain('function switchHomepageTab');
+      expect(homeJs).not.toContain('function renderTabContent');
     });
 
-    it('should declare switchHomepageTab function', () => {
-      expect(homeJs).toContain('function switchHomepageTab');
+    it('should have loadMoreQuotes function', () => {
+      expect(homeJs).toContain('async function loadMoreQuotes');
+    });
+
+    it('should NOT have loadMoreAuthors or loadMoreSources', () => {
+      expect(homeJs).not.toContain('function loadMoreAuthors');
+      expect(homeJs).not.toContain('function loadMoreSources');
+    });
+
+    it('should have quotes-list container in renderHome', () => {
+      expect(homeJs).toContain('id="quotes-list"');
+    });
+
+    it('should have slide-container in renderHome', () => {
+      expect(homeJs).toContain('slide-container');
+      expect(homeJs).toContain('slide-panel--main');
+      expect(homeJs).toContain('slide-panel--detail');
+    });
+
+    it('should have infinite-scroll-sentinel', () => {
+      expect(homeJs).toContain('infinite-scroll-sentinel');
     });
   });
 
@@ -165,21 +186,20 @@ describe('Frontend JS files', () => {
     });
   });
 
-  describe('home.js tab system tabs', () => {
+  describe('home.js simplified homepage (no tabs)', () => {
     const homeJs = fs.readFileSync(path.join(process.cwd(), 'public/js/home.js'), 'utf-8');
 
-    it('should default active tab to trending-authors', () => {
-      expect(homeJs).toContain("let _activeTab = 'trending-authors'");
+    it('should NOT have _activeTab variable', () => {
+      expect(homeJs).not.toContain('_activeTab');
     });
 
-    it('should include tab keys', () => {
-      expect(homeJs).toContain("'trending-sources'");
-      expect(homeJs).toContain("'trending-quotes'");
-      expect(homeJs).toContain("key: 'trending-authors'");
+    it('should NOT have tab-specific render functions', () => {
+      expect(homeJs).not.toContain('function renderTrendingAuthorsTab');
+      expect(homeJs).not.toContain('function renderTrendingSourcesTab');
     });
 
-    it('should have renderTrendingAuthorsTab function', () => {
-      expect(homeJs).toContain('async function renderTrendingAuthorsTab');
+    it('should have loadQuotesPage function', () => {
+      expect(homeJs).toContain('function loadQuotesPage');
     });
   });
 
@@ -457,25 +477,9 @@ describe('Frontend JS files', () => {
     });
   });
 
-  // Phase 6: Homepage 4-tab system
-  describe('home.js 4-tab homepage system', () => {
+  // Homepage quotes scroll system
+  describe('home.js quotes scroll system', () => {
     const homeJs = fs.readFileSync(path.join(process.cwd(), 'public/js/home.js'), 'utf-8');
-
-    it('should define homepage-tabs container', () => {
-      expect(homeJs).toContain('homepage-tabs');
-    });
-
-    it('should have trending-sources tab', () => {
-      expect(homeJs).toContain('trending-sources');
-    });
-
-    it('should have trending-quotes tab', () => {
-      expect(homeJs).toContain('trending-quotes');
-    });
-
-    it('should have trending-authors tab key defined', () => {
-      expect(homeJs).toContain("key: 'trending-authors'");
-    });
 
     it('should define buildQuoteBlockHtml function', () => {
       expect(homeJs).toContain('function buildQuoteBlockHtml');
@@ -503,10 +507,6 @@ describe('Frontend JS files', () => {
 
     it('should include Important? button in quote blocks', () => {
       expect(homeJs).toContain('renderImportantButton');
-    });
-
-    it('should have sort toggle for tabs', () => {
-      expect(homeJs).toContain('sort-btn');
     });
   });
 
@@ -544,14 +544,6 @@ describe('Frontend JS files', () => {
 
     it('should have important-btn--active styles', () => {
       expect(css).toContain('.important-btn--active');
-    });
-
-    it('should have homepage-tabs styles', () => {
-      expect(css).toContain('.homepage-tabs');
-    });
-
-    it('should have homepage-tab styles', () => {
-      expect(css).toContain('.homepage-tab');
     });
 
     it('should have quote-block styles', () => {

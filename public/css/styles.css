@@ -4546,6 +4546,38 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   font-size: 0.85rem;
 }
 
+/* Slide Container (homepage swipe navigation) */
+.slide-container {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+}
+
+.slide-panel {
+  width: 100%;
+  min-height: 100vh;
+  transition: transform 0.3s ease;
+}
+
+.slide-panel--main {
+  transform: translateX(0);
+}
+
+.slide-panel--detail {
+  position: absolute;
+  top: 0;
+  left: 100%;
+  transform: translateX(0);
+}
+
+.slide-container.slide-active .slide-panel--main {
+  transform: translateX(-100%);
+}
+
+.slide-container.slide-active .slide-panel--detail {
+  transform: translateX(-100%);
+}
+
 @media (max-width: 480px) {
   .tab-sort-buttons {
     font-size: 0.75rem;

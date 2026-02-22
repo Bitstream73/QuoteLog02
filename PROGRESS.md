@@ -1,9 +1,9 @@
 # Build Progress
 
 ## Current Status
-- **Current Phase:** 4
+- **Current Phase:** 5
 - **Last Updated:** 2026-02-22
-- **Last Commit:** 46a21d0 phase-3: add CRUD routes for noteworthy card configs, collections, and evaluated endpoint
+- **Last Commit:** d596812 phase-4: add noteworthy card configs settings UI with pepper controls
 
 ## Phase 0: Prerequisites ✅
 - [x] Existing project with passing test suite (`npx vitest run`)
@@ -26,10 +26,10 @@
 - [x] Add pepper settings to GET `/api/settings` response (frequency, chance, pick_mode, reuse)
 - [x] Write tests: all CRUD operations, evaluated endpoint returns correct time-based data, pepper settings included
 
-## Phase 4: Noteworthy Cards Settings UI
-- [ ] Build card config list UI in the Noteworthy Cards settings tab: list of all card configs with enable/disable toggle, custom title edit, collection assignment, drag-to-reorder
-- [ ] Build pepper settings UI: frequency input, chance slider, sequential/random toggle, reuse toggle (see `docs/CARD_CONFIGS.md`)
-- [ ] Write tests: card config list renders, toggles work, pepper settings save/load correctly
+## Phase 4: Noteworthy Cards Settings UI ✅
+- [x] Build card config list UI in the Noteworthy Cards settings tab: list of all card configs with enable/disable toggle, custom title edit, collection assignment, drag-to-reorder
+- [x] Build pepper settings UI: frequency input, chance slider, sequential/random toggle, reuse toggle (see `docs/CARD_CONFIGS.md`)
+- [x] Write tests: card config list renders, toggles work, pepper settings save/load correctly
 
 ## Phase 5: Homepage Restructure
 - [ ] Remove tab bar (`buildTabBarHtml`, `switchHomepageTab`, `renderTabContent`) and move quotes infinite scroll to top of homepage content area; remove standalone noteworthy section (`buildNoteworthySectionHtml` call in `renderHome`)
