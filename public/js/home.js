@@ -1354,7 +1354,7 @@ async function loadQuotesPage(page) {
 
   const [data, cardsData] = await Promise.all([
     API.get(`/analytics/trending-quotes?page=${page}&limit=20${sortParam}`),
-    page === 1 ? API.get('/noteworthy/evaluated') : Promise.resolve(null)
+    page === 1 ? API.get('/search/noteworthy/evaluated') : Promise.resolve(null)
   ]);
 
   if (cardsData) {

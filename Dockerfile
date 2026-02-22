@@ -10,6 +10,7 @@ WORKDIR /app
 
 # Copy built node_modules and source
 COPY --from=builder /app/node_modules ./node_modules
+ARG CACHEBUST=1
 COPY . .
 
 # Copy seed files to project root as fallback (volume mount shadows data/)
