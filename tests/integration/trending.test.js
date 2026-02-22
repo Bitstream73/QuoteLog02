@@ -178,21 +178,21 @@ describe('Trending System', () => {
       expect(res.body.page).toBe(1);
     });
 
-    it('GET /api/analytics/trending-authors?sort=importance orders by SUM of quote importants_count', async () => {
+    it('GET /api/analytics/trending-authors?sort=importance orders by author importants + SUM of quote importants', async () => {
       const { getDb } = await import('../../src/config/database.js');
       const db = getDb();
 
-      // Create 3 authors with different total quote importance
-      const pA = db.prepare("INSERT INTO persons (canonical_name, quote_count) VALUES ('Author A', 2)").run();
-      const pB = db.prepare("INSERT INTO persons (canonical_name, quote_count) VALUES ('Author B', 1)").run();
-      const pC = db.prepare("INSERT INTO persons (canonical_name, quote_count) VALUES ('Author C', 1)").run();
+      // Create 3 authors with different combined importance (author + quote importants)
+      // Author A: person importants=3, quote importants=10+5=15, combined=18
+      const pA = db.prepare("INSERT INTO persons (canonical_name, quote_count, importants_count) VALUES ('Author A', 2, 3)").run();
+      // Author B: person importants=0, quote importants=20, combined=20
+      const pB = db.prepare("INSERT INTO persons (canonical_name, quote_count, importants_count) VALUES ('Author B', 1, 0)").run();
+      // Author C: person importants=0, quote importants=0, combined=0
+      const pC = db.prepare("INSERT INTO persons (canonical_name, quote_count, importants_count) VALUES ('Author C', 1, 0)").run();
 
-      // Author A: 10 + 5 = 15 total importance
       db.prepare("INSERT INTO quotes (person_id, text, is_visible, importants_count) VALUES (?, 'A quote 1', 1, 10)").run(Number(pA.lastInsertRowid));
       db.prepare("INSERT INTO quotes (person_id, text, is_visible, importants_count) VALUES (?, 'A quote 2', 1, 5)").run(Number(pA.lastInsertRowid));
-      // Author B: 20 total importance
       db.prepare("INSERT INTO quotes (person_id, text, is_visible, importants_count) VALUES (?, 'B quote 1', 1, 20)").run(Number(pB.lastInsertRowid));
-      // Author C: 0 total importance
       db.prepare("INSERT INTO quotes (person_id, text, is_visible, importants_count) VALUES (?, 'C quote 1', 1, 0)").run(Number(pC.lastInsertRowid));
 
       const res = await request(app).get('/api/analytics/trending-authors?sort=importance');
@@ -201,7 +201,7 @@ describe('Trending System', () => {
       const authors = res.body.authors;
       const names = authors.map(a => a.canonical_name);
 
-      // B (20) should come before A (15) should come before C (0)
+      // B (combined=20) should come before A (combined=18) should come before C (combined=0)
       const idxB = names.indexOf('Author B');
       const idxA = names.indexOf('Author A');
       const idxC = names.indexOf('Author C');
@@ -209,13 +209,13 @@ describe('Trending System', () => {
       expect(idxB).toBeLessThan(idxA);
       expect(idxA).toBeLessThan(idxC);
 
-      // Verify actual importants_count values
+      // Verify combined_importance values (author importants + quote importants sum)
       const authorB = authors.find(a => a.canonical_name === 'Author B');
       const authorA = authors.find(a => a.canonical_name === 'Author A');
       const authorC = authors.find(a => a.canonical_name === 'Author C');
-      expect(authorB.importants_count).toBe(20);
-      expect(authorA.importants_count).toBe(15);
-      expect(authorC.importants_count).toBe(0);
+      expect(authorB.combined_importance).toBe(20);
+      expect(authorA.combined_importance).toBe(18);
+      expect(authorC.combined_importance).toBe(0);
 
       // Cleanup
       db.prepare('DELETE FROM quotes WHERE person_id IN (?, ?, ?)').run(Number(pA.lastInsertRowid), Number(pB.lastInsertRowid), Number(pC.lastInsertRowid));
