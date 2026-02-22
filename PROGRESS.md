@@ -1,9 +1,9 @@
 # Build Progress
 
 ## Current Status
-- **Current Phase:** 6
+- **Current Phase:** 8
 - **Last Updated:** 2026-02-22
-- **Last Commit:** 85dd6a5 phase-5: remove homepage tab bar, simplify to quotes-only scroll with slide container
+- **Last Commit:** phase-7: add time-based card evaluation engine with evaluator wiring
 
 ## Phase 0: Prerequisites ✅
 - [x] Existing project with passing test suite (`npx vitest run`)
@@ -36,15 +36,15 @@
 - [x] Clean up tab state variables (`_activeTab`, `_authorsPage`, `_sourcesPage`, etc.) and simplify `loadMoreItems()` to only handle quotes
 - [x] Write tests: homepage renders quotes scroll without tabs, noteworthy section removed, infinite scroll still works
 
-## Phase 6: Swipe Gesture System
-- [ ] Create `public/js/swipe.js` module: touch event handlers (touchstart/touchmove/touchend) for swipe-left (navigate to detail) and swipe-right (back to scroll position), with configurable threshold and velocity
-- [ ] Add slide transition CSS classes (`.slide-container`, `.slide-left`, `.slide-right`, `.slide-active`) and wire swipe handlers to `.quote-block` and noteworthy card elements via event delegation in `home.js`
-- [ ] Write tests: swipe detection logic (threshold, direction, velocity), slide class toggling, scroll position preservation
+## Phase 6: Swipe Gesture System ✅
+- [x] Create `public/js/swipe.js` module: touch event handlers (touchstart/touchmove/touchend) for swipe-left (navigate to detail) and swipe-right (back to scroll position), with configurable threshold and velocity
+- [x] Add slide transition CSS classes (`.slide-container`, `.slide-left`, `.slide-right`, `.slide-active`) and wire swipe handlers to `.quote-block` and noteworthy card elements via event delegation in `home.js`
+- [x] Write tests: swipe detection logic (threshold, direction, velocity), slide class toggling, scroll position preservation
 
-## Phase 7: Time-Based Card Evaluation Engine
-- [ ] Create `src/services/noteworthyEvaluator.js`: time window helpers (`getTimeWindowStart(period)` for hour/day/week/month) and evaluators for Quote-of-X (highest importants_count quote in window, with optional filter), Author-of-X (person with highest aggregate importants across their quotes)
-- [ ] Add evaluators for Source-of-X (source_author with highest aggregate importants), Topic-of-X, Category-of-X — each returns entity + top 3 quotes by importants_count
-- [ ] Write tests: each evaluator returns correct data for given time window, handles empty results, respects filter config
+## Phase 7: Time-Based Card Evaluation Engine ✅
+- [x] Create `src/services/noteworthyEvaluator.js`: time window helpers (`getTimeWindowStart(period)` for hour/day/week/month) and evaluators for Quote-of-X (highest importants_count quote in window, with optional filter), Author-of-X (person with highest aggregate importants across their quotes)
+- [x] Add evaluators for Source-of-X (source_author with highest aggregate importants), Topic-of-X, Category-of-X — each returns entity + top 3 quotes by importants_count
+- [x] Write tests: each evaluator returns correct data for given time window, handles empty results, respects filter config
 
 ## Phase 8: New Card Type Renderers
 - [ ] Build frontend renderers for time-based cards: `buildTimedQuoteCardHtml()`, `buildTimedAuthorCardHtml()`, `buildTimedSourceCardHtml()`, `buildTimedTopicCardHtml()`, `buildTimedCategoryCardHtml()` — each with custom title, entity data, top quotes, and tap/swipe-to-reveal behavior

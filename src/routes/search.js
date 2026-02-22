@@ -2,6 +2,7 @@ import { Router } from 'express';
 import jwt from 'jsonwebtoken';
 import { getDb } from '../config/database.js';
 import config from '../config/index.js';
+import { evaluateCard } from '../services/noteworthyEvaluator.js';
 
 const router = Router();
 
@@ -326,28 +327,17 @@ router.get('/noteworthy/evaluated', (req, res) => {
       pepper_settings[key] = row ? row.value : null;
     }
 
-    // Evaluate each config (stub — evaluator added in Phase 7)
-    const cards = configs.map(config => {
-      const cardType = config.card_type;
-      let data = {};
-
-      if (cardType.startsWith('search_')) {
-        data = { search_type: cardType.replace('search_', '') };
-      } else if (cardType.startsWith('info_')) {
-        data = { info_type: cardType.replace('info_', '') };
-      } else {
-        // Time-based cards — stub until evaluator is built
-        const parts = cardType.split('_of_');
-        data = { entity_type: parts[0], time_period: parts[1], entity: null, top_quotes: [] };
-      }
-
+    // Evaluate each config using time-based evaluation engine
+    const cards = configs.map(cfg => {
+      const result = evaluateCard(db, cfg);
       return {
-        id: config.id,
-        card_type: cardType,
-        custom_title: config.custom_title,
-        collection_id: config.collection_id,
-        config: config.config,
-        data,
+        id: cfg.id,
+        card_type: cfg.card_type,
+        custom_title: cfg.custom_title,
+        collection_id: cfg.collection_id,
+        config: cfg.config,
+        data: result ? result.data : null,
+        type: result ? result.type : null,
       };
     });
 
