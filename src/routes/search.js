@@ -294,4 +294,67 @@ router.get('/noteworthy', (req, res) => {
   }
 });
 
+// GET /api/noteworthy/evaluated — public endpoint for evaluated card configs
+router.get('/noteworthy/evaluated', (req, res) => {
+  try {
+    const db = getDb();
+
+    // Fetch enabled card configs
+    const configs = db.prepare(`
+      SELECT ncc.*, nc.name as collection_name
+      FROM noteworthy_card_configs ncc
+      LEFT JOIN noteworthy_collections nc ON nc.id = ncc.collection_id
+      WHERE ncc.enabled = 1
+      ORDER BY ncc.display_order ASC
+    `).all();
+
+    // Fetch enabled collections
+    const collections = db.prepare(
+      'SELECT * FROM noteworthy_collections WHERE enabled = 1 ORDER BY display_order ASC'
+    ).all();
+
+    // Fetch pepper settings
+    const pepperKeys = [
+      'noteworthy_pepper_frequency',
+      'noteworthy_pepper_chance',
+      'noteworthy_pick_mode',
+      'noteworthy_reuse_cards',
+    ];
+    const pepper_settings = {};
+    for (const key of pepperKeys) {
+      const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key);
+      pepper_settings[key] = row ? row.value : null;
+    }
+
+    // Evaluate each config (stub — evaluator added in Phase 7)
+    const cards = configs.map(config => {
+      const cardType = config.card_type;
+      let data = {};
+
+      if (cardType.startsWith('search_')) {
+        data = { search_type: cardType.replace('search_', '') };
+      } else if (cardType.startsWith('info_')) {
+        data = { info_type: cardType.replace('info_', '') };
+      } else {
+        // Time-based cards — stub until evaluator is built
+        const parts = cardType.split('_of_');
+        data = { entity_type: parts[0], time_period: parts[1], entity: null, top_quotes: [] };
+      }
+
+      return {
+        id: config.id,
+        card_type: cardType,
+        custom_title: config.custom_title,
+        collection_id: config.collection_id,
+        config: config.config,
+        data,
+      };
+    });
+
+    res.json({ cards, collections, pepper_settings });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to evaluate noteworthy cards' });
+  }
+});
+
 export default router;

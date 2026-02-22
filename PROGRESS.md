@@ -1,9 +1,9 @@
 # Build Progress
 
 ## Current Status
-- **Current Phase:** 2
+- **Current Phase:** 3
 - **Last Updated:** 2026-02-22
-- **Last Commit:** dac9f72 phase-1: add noteworthy_card_configs, noteworthy_collections tables, seeds, and pepper settings
+- **Last Commit:** 215a832 phase-2: restructure settings page with 7-tab navigation
 
 ## Phase 0: Prerequisites ✅
 - [x] Existing project with passing test suite (`npx vitest run`)
@@ -15,10 +15,10 @@
 - [x] Seed default card configs (28 card types, all disabled) and pepper settings keys via `INSERT OR IGNORE`
 - [x] Write tests: verify tables exist, columns correct, seeds present, CRUD operations work
 
-## Phase 2: Settings Page Tab Restructure
-- [ ] Add settings tab bar CSS to `public/css/styles.css` (follow existing `.review-tab-bar` pattern)
-- [ ] Refactor `renderSettings()` in `public/js/settings.js`: wrap sections in tab containers, add tab bar HTML, implement `switchSettingsTab()` (see `docs/SETTINGS_TABS.md` for section→tab mapping)
-- [ ] Write tests: settings page renders, tab switching shows/hides correct content
+## Phase 2: Settings Page Tab Restructure ✅
+- [x] Add settings tab bar CSS to `public/css/styles.css` (follow existing `.review-tab-bar` pattern)
+- [x] Refactor `renderSettings()` in `public/js/settings.js`: wrap sections in tab containers, add tab bar HTML, implement `switchSettingsTab()` (see `docs/SETTINGS_TABS.md` for section→tab mapping)
+- [x] Write tests: settings page renders, tab switching shows/hides correct content
 
 ## Phase 3: Noteworthy Card Config Backend
 - [ ] Add CRUD routes in `src/routes/admin.js`: GET/POST/PATCH/DELETE `/api/admin/noteworthy-configs` and `/api/admin/noteworthy-collections`
