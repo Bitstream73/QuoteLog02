@@ -1,9 +1,9 @@
 # Build Progress
 
 ## Current Status
-- **Current Phase:** 9
+- **Current Phase:** 10
 - **Last Updated:** 2026-02-22
-- **Last Commit:** phase-8: add card type renderers for timed, search, and info cards
+- **Last Commit:** phase-9: add card peppering system with collection grouping and re-evaluation
 
 ## Phase 0: Prerequisites ✅
 - [x] Existing project with passing test suite (`npx vitest run`)
@@ -52,10 +52,10 @@
 - [x] Build info card renderers: `buildInfoCardHtml(infoType)` for Importance, Fact Check, Bug Report, Donate — each with descriptive text and relevant icon/image
 - [x] Write tests: each renderer produces valid HTML, search cards trigger autocomplete, info cards display correct content
 
-## Phase 9: Card Peppering System
-- [ ] Implement peppering algorithm in `public/js/home.js`: after loading each page of quotes, determine insertion points based on `noteworthy_pepper_frequency` and `noteworthy_pepper_chance`; pick next card from enabled configs using sequential or random mode; handle reuse toggle
-- [ ] Implement collection grouping: cards in the same collection render as a horizontal scroll row (`.noteworthy-section__scroll` pattern); wire Socket.IO `fetch_cycle_complete` event to re-evaluate time-based cards
-- [ ] Write tests: peppering inserts cards at correct intervals, respects chance percentage, sequential/random modes work, collections group correctly, re-evaluation updates cards
+## Phase 9: Card Peppering System ✅
+- [x] Implement peppering algorithm in `public/js/home.js`: after loading each page of quotes, determine insertion points based on `noteworthy_pepper_frequency` and `noteworthy_pepper_chance`; pick next card from enabled configs using sequential or random mode; handle reuse toggle
+- [x] Implement collection grouping: cards in the same collection render as a horizontal scroll row (`.noteworthy-section__scroll` pattern); wire Socket.IO `fetch_cycle_complete` event to re-evaluate time-based cards
+- [x] Write tests: peppering inserts cards at correct intervals, respects chance percentage, sequential/random modes work, collections group correctly, re-evaluation updates cards
 
 ## Phase 10: Integration & Verification
 - [ ] Write end-to-end integration tests: peppered scroll renders mixed quotes and cards, swipe gestures navigate correctly, settings round-trip (save → reload → verify), card evaluation produces fresh data after mock fetch

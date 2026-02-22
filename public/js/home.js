@@ -13,6 +13,12 @@ let _quotesHasMore = true;
 let _isLoadingMore = false;
 let _infiniteScrollObserver = null;
 
+// Peppering state
+let _evaluatedCards = [];
+let _pepperSettings = {};
+let _cardPickIndex = 0;
+let _usedCardIds = new Set();
+
 // ======= Category Icon Mapping =======
 
 function getCategoryIcon(categoryName) {
@@ -1258,7 +1264,40 @@ function buildInfoCardHtml(card) {
   `;
 }
 
-function buildPepperedCardHtml(card) {
+function determinePepperPositions(quoteCount, frequency, chance) {
+  const positions = [];
+  for (let i = frequency; i < quoteCount; i += frequency) {
+    if (Math.random() * 100 < chance) {
+      positions.push(i);
+    }
+  }
+  return positions;
+}
+
+function pickNextCard(evaluatedCards, mode, reuseEnabled) {
+  const available = reuseEnabled
+    ? evaluatedCards
+    : evaluatedCards.filter(c => !_usedCardIds.has(c.id));
+
+  if (available.length === 0) {
+    if (reuseEnabled) return null;
+    _usedCardIds.clear();
+    return pickNextCard(evaluatedCards, mode, true);
+  }
+
+  let card;
+  if (mode === 'random') {
+    card = available[Math.floor(Math.random() * available.length)];
+  } else {
+    card = available[_cardPickIndex % available.length];
+    _cardPickIndex++;
+  }
+
+  _usedCardIds.add(card.id);
+  return card;
+}
+
+function renderCardByType(card) {
   if (!card || !card.type) return '';
   switch (card.type) {
     case 'quote': return buildTimedQuoteCardHtml(card);
@@ -1270,6 +1309,18 @@ function buildPepperedCardHtml(card) {
     case 'info': return buildInfoCardHtml(card);
     default: return '';
   }
+}
+
+function buildPepperedCardHtml(card, allCards) {
+  if (!card || !card.type) return '';
+  if (card.collection_id && allCards) {
+    const siblings = allCards.filter(c => c.collection_id === card.collection_id);
+    if (siblings.length > 1 && siblings[0].id !== card.id) return '';
+    if (siblings.length > 1) {
+      return `<div class="noteworthy-section__scroll">${siblings.map(c => renderCardByType(c)).join('')}</div>`;
+    }
+  }
+  return renderCardByType(card);
 }
 
 function buildTopAuthorsBarHtml(authors) {
@@ -1300,7 +1351,18 @@ function buildTopAuthorsBarHtml(authors) {
 async function loadQuotesPage(page) {
   _quotesPage = page;
   const sortParam = _quotesSortBy === 'importance' ? '&sort=importance' : '';
-  const data = await API.get(`/analytics/trending-quotes?page=${page}&limit=20${sortParam}`);
+
+  const [data, cardsData] = await Promise.all([
+    API.get(`/analytics/trending-quotes?page=${page}&limit=20${sortParam}`),
+    page === 1 ? API.get('/noteworthy/evaluated') : Promise.resolve(null)
+  ]);
+
+  if (cardsData) {
+    _evaluatedCards = cardsData.cards || [];
+    _pepperSettings = cardsData.pepper_settings || {};
+    _cardPickIndex = 0;
+    _usedCardIds.clear();
+  }
 
   const recentQuotes = data.recent_quotes || [];
   const total = data.total || 0;
@@ -1310,10 +1372,26 @@ async function loadQuotesPage(page) {
     const entityKeys = recentQuotes.map(q => `quote:${q.id}`);
     await fetchImportantStatuses(entityKeys);
 
+    const frequency = parseInt(_pepperSettings.noteworthy_pepper_frequency || '5', 10);
+    const chance = parseInt(_pepperSettings.noteworthy_pepper_chance || '50', 10);
+    const positions = determinePepperPositions(recentQuotes.length, frequency, chance);
+
     let html = '';
-    for (const q of recentQuotes) {
+    recentQuotes.forEach((q, i) => {
       html += buildQuoteBlockHtml(q, _importantStatuses[`quote:${q.id}`] || false);
-    }
+
+      if (positions.includes(i) && _evaluatedCards.length > 0) {
+        const card = pickNextCard(
+          _evaluatedCards,
+          _pepperSettings.noteworthy_pick_mode || 'sequential',
+          _pepperSettings.noteworthy_reuse_cards === '1'
+        );
+        if (card) {
+          html += buildPepperedCardHtml(card, _evaluatedCards);
+        }
+      }
+    });
+
     const list = document.getElementById('quotes-list');
     if (list) {
       if (page === 1) {

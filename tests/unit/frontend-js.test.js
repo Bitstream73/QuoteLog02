@@ -819,11 +819,11 @@ describe('Frontend JS files', () => {
     const homeJs = fs.readFileSync(path.join(process.cwd(), 'public/js/home.js'), 'utf-8');
 
     it('should define buildPepperedCardHtml function', () => {
-      expect(homeJs).toContain('function buildPepperedCardHtml(card)');
+      expect(homeJs).toContain('function buildPepperedCardHtml(card');
     });
 
-    it('should dispatch to correct renderer by card type', () => {
-      const fnIdx = homeJs.indexOf('function buildPepperedCardHtml');
+    it('should delegate to renderCardByType which dispatches to correct renderers', () => {
+      const fnIdx = homeJs.indexOf('function renderCardByType(');
       const nextFnIdx = homeJs.indexOf('\nfunction ', fnIdx + 1);
       const fnBody = homeJs.substring(fnIdx, nextFnIdx > 0 ? nextFnIdx : fnIdx + 2000);
       expect(fnBody).toContain('buildTimedQuoteCardHtml');
@@ -865,6 +865,141 @@ describe('Frontend JS files', () => {
 
     it('should have info-card__body CSS', () => {
       expect(css).toContain('.info-card__body');
+    });
+  });
+
+  // Phase 9: Card Peppering System
+  describe('home.js peppering state variables', () => {
+    const homeJs = fs.readFileSync(path.join(process.cwd(), 'public/js/home.js'), 'utf-8');
+
+    it('should declare _evaluatedCards', () => {
+      expect(homeJs).toContain('let _evaluatedCards = []');
+    });
+
+    it('should declare _pepperSettings', () => {
+      expect(homeJs).toContain('let _pepperSettings = {}');
+    });
+
+    it('should declare _cardPickIndex', () => {
+      expect(homeJs).toContain('let _cardPickIndex = 0');
+    });
+
+    it('should declare _usedCardIds', () => {
+      expect(homeJs).toContain('_usedCardIds');
+    });
+  });
+
+  describe('home.js determinePepperPositions function', () => {
+    const homeJs = fs.readFileSync(path.join(process.cwd(), 'public/js/home.js'), 'utf-8');
+
+    it('should define determinePepperPositions function', () => {
+      expect(homeJs).toContain('function determinePepperPositions(');
+    });
+
+    it('should accept quoteCount, frequency, and chance parameters', () => {
+      const fnIdx = homeJs.indexOf('function determinePepperPositions(');
+      const parenEnd = homeJs.indexOf(')', fnIdx);
+      const signature = homeJs.substring(fnIdx, parenEnd + 1);
+      expect(signature).toContain('quoteCount');
+      expect(signature).toContain('frequency');
+      expect(signature).toContain('chance');
+    });
+
+    it('should return positions array', () => {
+      const fnIdx = homeJs.indexOf('function determinePepperPositions(');
+      const nextFnIdx = homeJs.indexOf('\nfunction ', fnIdx + 1);
+      const fnBody = homeJs.substring(fnIdx, nextFnIdx > 0 ? nextFnIdx : fnIdx + 1000);
+      expect(fnBody).toContain('return positions');
+    });
+  });
+
+  describe('home.js pickNextCard function', () => {
+    const homeJs = fs.readFileSync(path.join(process.cwd(), 'public/js/home.js'), 'utf-8');
+
+    it('should define pickNextCard function', () => {
+      expect(homeJs).toContain('function pickNextCard(');
+    });
+
+    it('should support sequential and random modes', () => {
+      const fnIdx = homeJs.indexOf('function pickNextCard(');
+      const nextFnIdx = homeJs.indexOf('\nfunction ', fnIdx + 1);
+      const fnBody = homeJs.substring(fnIdx, nextFnIdx > 0 ? nextFnIdx : fnIdx + 1000);
+      expect(fnBody).toContain('random');
+      expect(fnBody).toContain('_cardPickIndex');
+    });
+
+    it('should track used cards', () => {
+      const fnIdx = homeJs.indexOf('function pickNextCard(');
+      const nextFnIdx = homeJs.indexOf('\nfunction ', fnIdx + 1);
+      const fnBody = homeJs.substring(fnIdx, nextFnIdx > 0 ? nextFnIdx : fnIdx + 1000);
+      expect(fnBody).toContain('_usedCardIds');
+    });
+  });
+
+  describe('home.js loadQuotesPage peppering integration', () => {
+    const homeJs = fs.readFileSync(path.join(process.cwd(), 'public/js/home.js'), 'utf-8');
+
+    it('should fetch evaluated cards on page 1', () => {
+      const fnIdx = homeJs.indexOf('async function loadQuotesPage(');
+      const nextFnIdx = homeJs.indexOf('\nasync function ', fnIdx + 1) || homeJs.indexOf('\nfunction ', fnIdx + 1);
+      const fnBody = homeJs.substring(fnIdx, nextFnIdx > 0 ? nextFnIdx : fnIdx + 3000);
+      expect(fnBody).toContain('/noteworthy/evaluated');
+    });
+
+    it('should call determinePepperPositions', () => {
+      const fnIdx = homeJs.indexOf('async function loadQuotesPage(');
+      const nextFnIdx = homeJs.indexOf('\nasync function ', fnIdx + 1) || homeJs.indexOf('\nfunction ', fnIdx + 1);
+      const fnBody = homeJs.substring(fnIdx, nextFnIdx > 0 ? nextFnIdx : fnIdx + 3000);
+      expect(fnBody).toContain('determinePepperPositions');
+    });
+
+    it('should call pickNextCard for card insertion', () => {
+      const fnIdx = homeJs.indexOf('async function loadQuotesPage(');
+      const nextFnIdx = homeJs.indexOf('\nasync function ', fnIdx + 1) || homeJs.indexOf('\nfunction ', fnIdx + 1);
+      const fnBody = homeJs.substring(fnIdx, nextFnIdx > 0 ? nextFnIdx : fnIdx + 3000);
+      expect(fnBody).toContain('pickNextCard');
+    });
+
+    it('should call buildPepperedCardHtml for card rendering', () => {
+      const fnIdx = homeJs.indexOf('async function loadQuotesPage(');
+      const nextFnIdx = homeJs.indexOf('\nasync function ', fnIdx + 1) || homeJs.indexOf('\nfunction ', fnIdx + 1);
+      const fnBody = homeJs.substring(fnIdx, nextFnIdx > 0 ? nextFnIdx : fnIdx + 3000);
+      expect(fnBody).toContain('buildPepperedCardHtml');
+    });
+  });
+
+  describe('home.js collection grouping in buildPepperedCardHtml', () => {
+    const homeJs = fs.readFileSync(path.join(process.cwd(), 'public/js/home.js'), 'utf-8');
+
+    it('buildPepperedCardHtml should handle collection_id grouping', () => {
+      const fnIdx = homeJs.indexOf('function buildPepperedCardHtml(');
+      const nextFnIdx = homeJs.indexOf('\nfunction ', fnIdx + 1);
+      const fnBody = homeJs.substring(fnIdx, nextFnIdx > 0 ? nextFnIdx : fnIdx + 2000);
+      expect(fnBody).toContain('collection_id');
+    });
+
+    it('buildPepperedCardHtml should use noteworthy-section__scroll for collections', () => {
+      const fnIdx = homeJs.indexOf('function buildPepperedCardHtml(');
+      const nextFnIdx = homeJs.indexOf('\nfunction ', fnIdx + 1);
+      const fnBody = homeJs.substring(fnIdx, nextFnIdx > 0 ? nextFnIdx : fnIdx + 2000);
+      expect(fnBody).toContain('noteworthy-section__scroll');
+    });
+  });
+
+  describe('app.js fetch_cycle_complete re-evaluation', () => {
+    const appJs = fs.readFileSync(path.join(process.cwd(), 'public/js/app.js'), 'utf-8');
+
+    it('should re-evaluate cards on fetch_cycle_complete', () => {
+      const fnIdx = appJs.indexOf('fetch_cycle_complete');
+      expect(fnIdx).toBeGreaterThan(-1);
+      const block = appJs.substring(fnIdx, fnIdx + 500);
+      expect(block).toContain('/noteworthy/evaluated');
+    });
+
+    it('should update _evaluatedCards', () => {
+      const fnIdx = appJs.indexOf('fetch_cycle_complete');
+      const block = appJs.substring(fnIdx, fnIdx + 500);
+      expect(block).toContain('_evaluatedCards');
     });
   });
 });
