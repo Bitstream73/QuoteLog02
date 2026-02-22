@@ -1,19 +1,19 @@
 # Build Progress
 
 ## Current Status
-- **Current Phase:** 1
-- **Last Updated:** —
-- **Last Commit:** none
+- **Current Phase:** 2
+- **Last Updated:** 2026-02-22
+- **Last Commit:** dac9f72 phase-1: add noteworthy_card_configs, noteworthy_collections tables, seeds, and pepper settings
 
 ## Phase 0: Prerequisites ✅
 - [x] Existing project with passing test suite (`npx vitest run`)
 - [x] SQLite database initialized with all current tables
 - [x] Node.js/Express server running with ESM modules
 
-## Phase 1: Database Schema & Settings 🔄
-- [ ] Add `noteworthy_card_configs` and `noteworthy_collections` tables in `src/config/database.js` (see `docs/SCHEMA.md`)
-- [ ] Seed default card configs (28 card types, all disabled) and pepper settings keys via `INSERT OR IGNORE`
-- [ ] Write tests: verify tables exist, columns correct, seeds present, CRUD operations work
+## Phase 1: Database Schema & Settings ✅
+- [x] Add `noteworthy_card_configs` and `noteworthy_collections` tables in `src/config/database.js` (see `docs/SCHEMA.md`)
+- [x] Seed default card configs (28 card types, all disabled) and pepper settings keys via `INSERT OR IGNORE`
+- [x] Write tests: verify tables exist, columns correct, seeds present, CRUD operations work
 
 ## Phase 2: Settings Page Tab Restructure
 - [ ] Add settings tab bar CSS to `public/css/styles.css` (follow existing `.review-tab-bar` pattern)

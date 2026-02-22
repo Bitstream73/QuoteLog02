@@ -31,99 +31,18 @@ async function renderSettings() {
       <h1 class="page-title">Settings</h1>
       <p class="page-subtitle">Manage news sources and application configuration</p>
 
-      <!-- Fetch Settings Section -->
-      <div class="settings-section">
-        <h2>Fetch Settings</h2>
-
-        <div class="setting-row" style="align-items:center">
-          <label>
-            <span class="setting-label">Next Fetch</span>
-            <span class="setting-description" id="scheduler-status">Loading...</span>
-          </label>
-          <button class="btn btn-primary" id="fetch-now-btn" onclick="fetchNow()">Fetch Now</button>
-        </div>
-
-        <div class="setting-row">
-          <label>
-            <span class="setting-label">Fetch Interval (minutes)</span>
-            <span class="setting-description">How often to check for new articles</span>
-          </label>
-          <input type="number" id="fetch-interval" value="${settings.fetch_interval_minutes || 5}"
-                 min="5" max="1440" class="input-number" onchange="updateSetting('fetch_interval_minutes', this.value)">
-        </div>
-
-        <div class="setting-row">
-          <label>
-            <span class="setting-label">Article Lookback (hours)</span>
-            <span class="setting-description">Only fetch articles published within this time window</span>
-          </label>
-          <input type="number" id="article-lookback" value="${settings.article_lookback_hours || 24}"
-                 min="1" max="168" class="input-number" onchange="updateSetting('article_lookback_hours', this.value)">
-        </div>
-
-        <div class="setting-row">
-          <label>
-            <span class="setting-label">Max Articles per News Source per Cycle</span>
-            <span class="setting-description">Maximum articles to process per news source in each fetch cycle</span>
-          </label>
-          <input type="number" id="max-articles" value="${settings.max_articles_per_source_per_cycle || 10}"
-                 min="1" max="1000" class="input-number" onchange="updateSetting('max_articles_per_source_per_cycle', this.value)">
-        </div>
+      <div class="settings-tab-bar">
+        <button class="settings-tab active" onclick="switchSettingsTab('general')" data-tab="general">General</button>
+        <button class="settings-tab" onclick="switchSettingsTab('data-sources')" data-tab="data-sources">Data Sources</button>
+        <button class="settings-tab" onclick="switchSettingsTab('ingest')" data-tab="ingest">Ingest</button>
+        <button class="settings-tab" onclick="switchSettingsTab('backfilling')" data-tab="backfilling">Backfilling</button>
+        <button class="settings-tab" onclick="switchSettingsTab('noteworthy')" data-tab="noteworthy">Noteworthy Cards</button>
+        <button class="settings-tab" onclick="switchSettingsTab('metadata')" data-tab="metadata">Metadata</button>
+        <button class="settings-tab" onclick="switchSettingsTab('logs')" data-tab="logs">Logs</button>
       </div>
 
-      <!-- Disambiguation Settings Section -->
-      <div class="settings-section">
-        <h2>Disambiguation Settings</h2>
-
-        <div class="setting-row">
-          <label>
-            <span class="setting-label">Auto-Merge Confidence Threshold</span>
-            <span class="setting-description">Automatically merge names above this confidence (0-1)</span>
-          </label>
-          <input type="number" id="auto-merge-threshold" value="${settings.auto_merge_confidence_threshold || 0.9}"
-                 min="0" max="1" step="0.05" class="input-number" onchange="updateSetting('auto_merge_confidence_threshold', this.value)">
-        </div>
-
-        <div class="setting-row">
-          <label>
-            <span class="setting-label">Review Confidence Threshold</span>
-            <span class="setting-description">Add to review queue above this confidence (0-1)</span>
-          </label>
-          <input type="number" id="review-threshold" value="${settings.review_confidence_threshold || 0.7}"
-                 min="0" max="1" step="0.05" class="input-number" onchange="updateSetting('review_confidence_threshold', this.value)">
-        </div>
-
-        <div class="setting-row">
-          <label>
-            <span class="setting-label">Minimum Quote Words</span>
-            <span class="setting-description">Discard quotes shorter than this</span>
-          </label>
-          <input type="number" id="min-quote-words" value="${settings.min_quote_words || 5}"
-                 min="1" max="50" class="input-number" onchange="updateSetting('min_quote_words', this.value)">
-        </div>
-      </div>
-
-      <!-- Ingest Filters Section -->
-      <div class="settings-section">
-        <h2>Ingest Filters</h2>
-        <p class="section-description">Toggle author categories on/off. Quotes from authors in disabled categories will be silently discarded during ingestion.</p>
-        ${(() => {
-          const allCategories = ['Politician','Government Official','Business Leader','Entertainer','Athlete','Pundit','Journalist','Scientist/Academic','Legal/Judicial','Military/Defense','Activist/Advocate','Religious Leader','Other'];
-          const excluded = (() => { try { return JSON.parse(settings.ingest_filter_excluded_categories || '[]'); } catch { return []; } })();
-          return allCategories.map(cat => `
-            <div class="setting-row" style="align-items:center">
-              <label>
-                <span class="setting-label">${cat}</span>
-              </label>
-              <label class="toggle">
-                <input type="checkbox" ${!excluded.includes(cat) ? 'checked' : ''}
-                       onchange="toggleIngestCategory('${cat}', this.checked)">
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-          `).join('');
-        })()}
-      </div>
+      <!-- GENERAL TAB -->
+      <div class="settings-tab-content active" id="settings-tab-general">
 
       <!-- Appearance Section -->
       <div class="settings-section">
@@ -139,49 +58,10 @@ async function renderSettings() {
         </div>
       </div>
 
-      <!-- Prompts Section -->
-      <div class="settings-section" id="settings-section-prompts">
-        <h2>AI Prompts</h2>
-        <p class="section-description">Manage Gemini prompt templates used for quote extraction and fact-checking. Edit the template text to customize AI behavior.</p>
-        <div id="settings-prompts-list">
-          ${prompts.length === 0 ? '<p class="empty-message">No prompts configured.</p>' : prompts.map(p => renderSettingsPromptCard(p)).join('')}
-        </div>
-      </div>
+      </div><!-- /general tab -->
 
-      <!-- Historical Sources Section -->
-      <div class="settings-section" id="settings-section-historical">
-        <h2>Historical Sources</h2>
-        <p class="section-description">
-          Configure historical quote sources for backfilling quotes from the past.
-          Each provider fetches articles from a different archive.
-        </p>
-
-        <div class="setting-row" style="align-items:center">
-          <label>
-            <span class="setting-label">Historical Backfill</span>
-            <span class="setting-description">Enable/disable historical fetching during each cycle</span>
-          </label>
-          <label class="toggle">
-            <input type="checkbox" ${settings.historical_fetch_enabled === '1' ? 'checked' : ''}
-                   onchange="updateSetting('historical_fetch_enabled', this.checked ? '1' : '0')">
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
-
-        <div class="setting-row">
-          <label>
-            <span class="setting-label">Articles per Source per Cycle</span>
-            <span class="setting-description">Max historical articles to fetch from each provider per cycle</span>
-          </label>
-          <input type="number" value="${settings.historical_articles_per_source_per_cycle || 5}"
-                 min="1" max="100" class="input-number"
-                 onchange="updateSetting('historical_articles_per_source_per_cycle', this.value)">
-        </div>
-
-        <div id="historical-sources-list" class="sources-list">
-          <p class="empty-message">Loading historical sources...</p>
-        </div>
-      </div>
+      <!-- DATA SOURCES TAB -->
+      <div class="settings-tab-content" id="settings-tab-data-sources">
 
       <!-- Data Management Section -->
       <div class="settings-section">
@@ -202,9 +82,7 @@ async function renderSettings() {
           <details class="sources-details">
             <summary>Sources (${sources.length})</summary>
             <div id="sources-list" class="sources-list">
-              ${sources.length === 0 ? `
-                <p class="empty-message">No sources configured. Add a news source to start extracting quotes.</p>
-              ` : sources.map(s => renderSourceRow(s)).join('')}
+              ${sources.length === 0 ? '<p class="empty-message">No sources configured. Add a news source to start extracting quotes.</p>' : sources.map(s => renderSourceRow(s)).join('')}
             </div>
           </details>
         </div>
@@ -306,6 +184,159 @@ async function renderSettings() {
         </div>
       </div>
 
+      </div><!-- /data-sources tab -->
+
+      <!-- INGEST TAB -->
+      <div class="settings-tab-content" id="settings-tab-ingest">
+
+      <!-- Fetch Settings Section -->
+      <div class="settings-section">
+        <h2>Fetch Settings</h2>
+
+        <div class="setting-row" style="align-items:center">
+          <label>
+            <span class="setting-label">Next Fetch</span>
+            <span class="setting-description" id="scheduler-status">Loading...</span>
+          </label>
+          <button class="btn btn-primary" id="fetch-now-btn" onclick="fetchNow()">Fetch Now</button>
+        </div>
+
+        <div class="setting-row">
+          <label>
+            <span class="setting-label">Fetch Interval (minutes)</span>
+            <span class="setting-description">How often to check for new articles</span>
+          </label>
+          <input type="number" id="fetch-interval" value="${settings.fetch_interval_minutes || 5}"
+                 min="5" max="1440" class="input-number" onchange="updateSetting('fetch_interval_minutes', this.value)">
+        </div>
+
+        <div class="setting-row">
+          <label>
+            <span class="setting-label">Article Lookback (hours)</span>
+            <span class="setting-description">Only fetch articles published within this time window</span>
+          </label>
+          <input type="number" id="article-lookback" value="${settings.article_lookback_hours || 24}"
+                 min="1" max="168" class="input-number" onchange="updateSetting('article_lookback_hours', this.value)">
+        </div>
+
+        <div class="setting-row">
+          <label>
+            <span class="setting-label">Max Articles per News Source per Cycle</span>
+            <span class="setting-description">Maximum articles to process per news source in each fetch cycle</span>
+          </label>
+          <input type="number" id="max-articles" value="${settings.max_articles_per_source_per_cycle || 10}"
+                 min="1" max="1000" class="input-number" onchange="updateSetting('max_articles_per_source_per_cycle', this.value)">
+        </div>
+      </div>
+
+      <!-- Disambiguation Settings Section -->
+      <div class="settings-section">
+        <h2>Disambiguation Settings</h2>
+
+        <div class="setting-row">
+          <label>
+            <span class="setting-label">Auto-Merge Confidence Threshold</span>
+            <span class="setting-description">Automatically merge names above this confidence (0-1)</span>
+          </label>
+          <input type="number" id="auto-merge-threshold" value="${settings.auto_merge_confidence_threshold || 0.9}"
+                 min="0" max="1" step="0.05" class="input-number" onchange="updateSetting('auto_merge_confidence_threshold', this.value)">
+        </div>
+
+        <div class="setting-row">
+          <label>
+            <span class="setting-label">Review Confidence Threshold</span>
+            <span class="setting-description">Add to review queue above this confidence (0-1)</span>
+          </label>
+          <input type="number" id="review-threshold" value="${settings.review_confidence_threshold || 0.7}"
+                 min="0" max="1" step="0.05" class="input-number" onchange="updateSetting('review_confidence_threshold', this.value)">
+        </div>
+
+        <div class="setting-row">
+          <label>
+            <span class="setting-label">Minimum Quote Words</span>
+            <span class="setting-description">Discard quotes shorter than this</span>
+          </label>
+          <input type="number" id="min-quote-words" value="${settings.min_quote_words || 5}"
+                 min="1" max="50" class="input-number" onchange="updateSetting('min_quote_words', this.value)">
+        </div>
+      </div>
+
+      <!-- Ingest Filters Section -->
+      <div class="settings-section">
+        <h2>Ingest Filters</h2>
+        <p class="section-description">Toggle author categories on/off. Quotes from authors in disabled categories will be silently discarded during ingestion.</p>
+        ${(() => {
+          const allCategories = ['Politician','Government Official','Business Leader','Entertainer','Athlete','Pundit','Journalist','Scientist/Academic','Legal/Judicial','Military/Defense','Activist/Advocate','Religious Leader','Other'];
+          const excluded = (() => { try { return JSON.parse(settings.ingest_filter_excluded_categories || '[]'); } catch { return []; } })();
+          return allCategories.map(cat => `
+            <div class="setting-row" style="align-items:center">
+              <label>
+                <span class="setting-label">${cat}</span>
+              </label>
+              <label class="toggle">
+                <input type="checkbox" ${!excluded.includes(cat) ? 'checked' : ''}
+                       onchange="toggleIngestCategory('${cat}', this.checked)">
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          `).join('');
+        })()}
+      </div>
+
+      <!-- AI Prompts Section -->
+      <div class="settings-section" id="settings-section-prompts">
+        <h2>AI Prompts</h2>
+        <p class="section-description">Manage Gemini prompt templates used for quote extraction and fact-checking. Edit the template text to customize AI behavior.</p>
+        <div id="settings-prompts-list">
+          ${prompts.length === 0 ? '<p class="empty-message">No prompts configured.</p>' : prompts.map(p => renderSettingsPromptCard(p)).join('')}
+        </div>
+      </div>
+
+      </div><!-- /ingest tab -->
+
+      <!-- BACKFILLING TAB -->
+      <div class="settings-tab-content" id="settings-tab-backfilling">
+
+      <!-- Historical Sources Section -->
+      <div class="settings-section" id="settings-section-historical">
+        <h2>Historical Sources</h2>
+        <p class="section-description">
+          Configure historical quote sources for backfilling quotes from the past.
+          Each provider fetches articles from a different archive.
+        </p>
+
+        <div class="setting-row" style="align-items:center">
+          <label>
+            <span class="setting-label">Historical Backfill</span>
+            <span class="setting-description">Enable/disable historical fetching during each cycle</span>
+          </label>
+          <label class="toggle">
+            <input type="checkbox" ${settings.historical_fetch_enabled === '1' ? 'checked' : ''}
+                   onchange="updateSetting('historical_fetch_enabled', this.checked ? '1' : '0')">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+
+        <div class="setting-row">
+          <label>
+            <span class="setting-label">Articles per Source per Cycle</span>
+            <span class="setting-description">Max historical articles to fetch from each provider per cycle</span>
+          </label>
+          <input type="number" value="${settings.historical_articles_per_source_per_cycle || 5}"
+                 min="1" max="100" class="input-number"
+                 onchange="updateSetting('historical_articles_per_source_per_cycle', this.value)">
+        </div>
+
+        <div id="historical-sources-list" class="sources-list">
+          <p class="empty-message">Loading historical sources...</p>
+        </div>
+      </div>
+
+      </div><!-- /backfilling tab -->
+
+      <!-- NOTEWORTHY CARDS TAB -->
+      <div class="settings-tab-content" id="settings-tab-noteworthy">
+
       <!-- Noteworthy Section -->
       <div class="settings-section" id="settings-section-noteworthy">
         <h2>Noteworthy</h2>
@@ -338,6 +369,11 @@ async function renderSettings() {
           </div>
         </div>
       </div>
+
+      </div><!-- /noteworthy tab -->
+
+      <!-- METADATA TAB -->
+      <div class="settings-tab-content" id="settings-tab-metadata">
 
       <!-- Keywords Section -->
       <div class="settings-section" id="settings-section-keywords">
@@ -443,6 +479,11 @@ async function renderSettings() {
         </div>
       </div>
 
+      </div><!-- /metadata tab -->
+
+      <!-- LOGS TAB -->
+      <div class="settings-tab-content" id="settings-tab-logs">
+
       <!-- Logs Section -->
       <div id="logs-section" class="settings-section">
         <div class="section-header">
@@ -454,6 +495,8 @@ async function renderSettings() {
         <div id="logs-table"></div>
         <div id="logs-pagination"></div>
       </div>
+
+      </div><!-- /logs tab -->
     `;
 
     content.innerHTML = html;
@@ -471,6 +514,13 @@ async function renderSettings() {
   } catch (err) {
     content.innerHTML = `<div class="empty-state"><h3>Error</h3><p>${escapeHtml(err.message)}</p></div>`;
   }
+}
+
+function switchSettingsTab(tabId) {
+  document.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.settings-tab-content').forEach(c => c.classList.remove('active'));
+  document.querySelector(`.settings-tab[data-tab="${tabId}"]`)?.classList.add('active');
+  document.getElementById(`settings-tab-${tabId}`)?.classList.add('active');
 }
 
 function renderSourceRow(source) {
