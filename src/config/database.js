@@ -869,6 +869,10 @@ function initializeTables(db) {
     backprop_max_articles_per_cycle: '5',
     fact_check_filter_mode: 'off',
     fact_check_min_score: '0.5',
+    noteworthy_pepper_frequency: '5',
+    noteworthy_pepper_chance: '50',
+    noteworthy_pick_mode: 'sequential',
+    noteworthy_reuse_cards: '1',
   };
 
   let seedSettings = defaultSettings;
@@ -965,6 +969,74 @@ function initializeTables(db) {
   const nwCols = db.prepare("PRAGMA table_info(noteworthy_items)").all();
   if (!nwCols.find(c => c.name === 'full_width')) {
     db.exec("ALTER TABLE noteworthy_items ADD COLUMN full_width INTEGER NOT NULL DEFAULT 0");
+  }
+
+  // --- Noteworthy card configs — template-based cards for peppered scroll ---
+
+  // Collections must be created first (FK reference from card_configs)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS noteworthy_collections (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      display_order INTEGER NOT NULL DEFAULT 0,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_nc_enabled ON noteworthy_collections(enabled, display_order)`);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS noteworthy_card_configs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      card_type TEXT NOT NULL UNIQUE,
+      enabled INTEGER NOT NULL DEFAULT 0,
+      display_order INTEGER NOT NULL DEFAULT 0,
+      custom_title TEXT,
+      config TEXT DEFAULT '{}',
+      collection_id INTEGER REFERENCES noteworthy_collections(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_ncc_enabled ON noteworthy_card_configs(enabled, display_order)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_ncc_collection ON noteworthy_card_configs(collection_id)`);
+
+  // Seed default card configs (28 total, all disabled)
+  const defaultCardConfigs = [
+    { card_type: 'quote_of_hour', display_order: 1, custom_title: 'Quote of the Hour' },
+    { card_type: 'quote_of_day', display_order: 2, custom_title: 'Quote of the Day' },
+    { card_type: 'quote_of_week', display_order: 3, custom_title: 'Quote of the Week' },
+    { card_type: 'quote_of_month', display_order: 4, custom_title: 'Quote of the Month' },
+    { card_type: 'author_of_hour', display_order: 5, custom_title: 'Author of the Hour' },
+    { card_type: 'author_of_day', display_order: 6, custom_title: 'Author of the Day' },
+    { card_type: 'author_of_week', display_order: 7, custom_title: 'Author of the Week' },
+    { card_type: 'author_of_month', display_order: 8, custom_title: 'Author of the Month' },
+    { card_type: 'source_of_hour', display_order: 9, custom_title: 'Source of the Hour' },
+    { card_type: 'source_of_day', display_order: 10, custom_title: 'Source of the Day' },
+    { card_type: 'source_of_week', display_order: 11, custom_title: 'Source of the Week' },
+    { card_type: 'source_of_month', display_order: 12, custom_title: 'Source of the Month' },
+    { card_type: 'topic_of_hour', display_order: 13, custom_title: 'Topic of the Hour' },
+    { card_type: 'topic_of_day', display_order: 14, custom_title: 'Topic of the Day' },
+    { card_type: 'topic_of_week', display_order: 15, custom_title: 'Topic of the Week' },
+    { card_type: 'topic_of_month', display_order: 16, custom_title: 'Topic of the Month' },
+    { card_type: 'category_of_hour', display_order: 17, custom_title: 'Category of the Hour' },
+    { card_type: 'category_of_day', display_order: 18, custom_title: 'Category of the Day' },
+    { card_type: 'category_of_week', display_order: 19, custom_title: 'Category of the Week' },
+    { card_type: 'category_of_month', display_order: 20, custom_title: 'Category of the Month' },
+    { card_type: 'search_topic', display_order: 21, custom_title: 'Search by Topic' },
+    { card_type: 'search_quote_text', display_order: 22, custom_title: 'Search Quotes' },
+    { card_type: 'search_source_author', display_order: 23, custom_title: 'Search by Source' },
+    { card_type: 'search_source', display_order: 24, custom_title: 'Search by Feed' },
+    { card_type: 'info_importance', display_order: 25, custom_title: 'What is Important?' },
+    { card_type: 'info_fact_check', display_order: 26, custom_title: 'Fact Check' },
+    { card_type: 'info_bug', display_order: 27, custom_title: 'Report a Bug' },
+    { card_type: 'info_donate', display_order: 28, custom_title: 'Support QuoteLog' },
+  ];
+  const insertCardConfig = db.prepare(
+    'INSERT OR IGNORE INTO noteworthy_card_configs (card_type, display_order, custom_title) VALUES (?, ?, ?)'
+  );
+  for (const c of defaultCardConfigs) {
+    insertCardConfig.run(c.card_type, c.display_order, c.custom_title);
   }
 
   // Migration: add 'category' to importants entity_type CHECK constraint
