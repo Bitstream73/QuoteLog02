@@ -1,5 +1,5 @@
-const CACHE_NAME = 'quotelog-v29';
-const STATIC_ASSETS = ['/', '/css/styles.css', '/js/app.js', '/js/api.js', '/js/home.js', '/js/quote.js', '/js/article.js', '/js/author.js', '/js/settings.js', '/js/review.js', '/js/logs.js', '/js/login.js', '/js/resetPassword.js', '/js/analytics.js', '/js/important.js', '/js/charts.js', '/js/admin-actions.js', '/manifest.json'];
+const CACHE_NAME = 'quotelog-v32';
+const STATIC_ASSETS = ['/', '/css/styles.css', '/js/app.js', '/js/api.js', '/js/home.js', '/js/quote.js', '/js/article.js', '/js/author.js', '/js/topic.js', '/js/category.js', '/js/settings.js', '/js/review.js', '/js/logs.js', '/js/login.js', '/js/resetPassword.js', '/js/analytics.js', '/js/important.js', '/js/charts.js', '/js/admin-actions.js', '/js/swipe.js', '/js/page-transition.js', '/js/bug-report.js', '/js/donate.js', '/manifest.json'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS)));

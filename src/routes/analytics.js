@@ -37,6 +37,83 @@ function tieredImportanceOrder(dateCol, importantsCol) {
   `;
 }
 
+/**
+ * Build promoted quote IDs for the 5-tier home page sort.
+ * Tier 1: Last hour, has importants (by importants DESC)
+ * Tier 2: Last 24h (excl tier 1), has importants (by importants DESC)
+ * Tier 3: Last 7d (excl tiers 1-2), has importants (by importants DESC)
+ * Tier 4: Top 10 authors by score, 5 most recent quotes each (excl tiers 1-3)
+ * Returns ordered array of quote IDs forming the promoted prefix.
+ */
+function buildPromotedQuoteIds(db) {
+  const seenIds = new Set();
+
+  // Tier 1: Hour — quotes from last hour with importants
+  const tier1Ids = db.prepare(`
+    SELECT q.id FROM quotes q
+    WHERE q.is_visible = 1 AND q.canonical_quote_id IS NULL
+      AND q.importants_count > 0
+      AND ${QUOTE_DATE_EXPR} >= datetime('now', '-1 hour')
+    ORDER BY q.importants_count DESC
+  `).all().map(r => r.id);
+  tier1Ids.forEach(id => seenIds.add(id));
+
+  // Tier 2: Day — excluding tier 1
+  const tier2Ids = db.prepare(`
+    SELECT q.id FROM quotes q
+    WHERE q.is_visible = 1 AND q.canonical_quote_id IS NULL
+      AND q.importants_count > 0
+      AND ${QUOTE_DATE_EXPR} >= datetime('now', '-1 day')
+    ORDER BY q.importants_count DESC
+  `).all().filter(r => !seenIds.has(r.id)).map(r => r.id);
+  tier2Ids.forEach(id => seenIds.add(id));
+
+  // Tier 3: Week — excluding tiers 1-2
+  const tier3Ids = db.prepare(`
+    SELECT q.id FROM quotes q
+    WHERE q.is_visible = 1 AND q.canonical_quote_id IS NULL
+      AND q.importants_count > 0
+      AND ${QUOTE_DATE_EXPR} >= datetime('now', '-7 days')
+    ORDER BY q.importants_count DESC
+  `).all().filter(r => !seenIds.has(r.id)).map(r => r.id);
+  tier3Ids.forEach(id => seenIds.add(id));
+
+  // Tier 4: Top 10 authors, 5 recent quotes each
+  const topAuthors = db.prepare(`
+    SELECT p.id,
+      (p.importants_count + COALESCE(SUM(
+        CASE WHEN q.is_visible = 1 AND q.canonical_quote_id IS NULL
+             AND q.created_at >= datetime('now', '-7 days')
+        THEN q.importants_count ELSE 0 END
+      ), 0)) as author_score
+    FROM persons p
+    LEFT JOIN quotes q ON q.person_id = p.id
+    WHERE p.quote_count > 0
+    GROUP BY p.id
+    HAVING author_score > 0
+    ORDER BY author_score DESC
+    LIMIT 10
+  `).all();
+
+  const getAuthorQuotes = db.prepare(`
+    SELECT q.id FROM quotes q
+    WHERE q.person_id = ? AND q.is_visible = 1 AND q.canonical_quote_id IS NULL
+    ORDER BY ${QUOTE_DATE_EXPR} DESC
+    LIMIT 5
+  `);
+
+  const tier4Ids = [];
+  for (const author of topAuthors) {
+    const quotes = getAuthorQuotes.all(author.id).filter(r => !seenIds.has(r.id));
+    for (const r of quotes) {
+      tier4Ids.push(r.id);
+      seenIds.add(r.id);
+    }
+  }
+
+  return { promotedIds: [...tier1Ids, ...tier2Ids, ...tier3Ids, ...tier4Ids] };
+}
+
 // GET /api/analytics/overview - Combined analytics overview
 router.get('/overview', (req, res) => {
   const db = getDb();
@@ -197,13 +274,57 @@ router.get('/trending-quotes', (req, res) => {
     const searchFilter = isSearching ? 'AND (q.text LIKE ? OR q.context LIKE ?)' : '';
     const searchParams = isSearching ? [`%${search}%`, `%${search}%`] : [];
 
-    const recentSort = req.query.sort === 'importance'
-      ? tieredImportanceOrder(QUOTE_DATE_EXPR, 'q.importants_count')
-      : `${QUOTE_DATE_EXPR} DESC`;
-    const recentQuotes = db.prepare(`${baseSelect}
-      ${searchFilter}
-      GROUP BY q.id ORDER BY ${recentSort} LIMIT ? OFFSET ?
-    `).all(...searchParams, limit, offset);
+    const sortMode = req.query.sort;
+    let recentQuotes;
+
+    if (!isSearching && !sortMode) {
+      // DEFAULT: 5-tier promoted sort
+      const { promotedIds } = buildPromotedQuoteIds(db);
+      const promotedCount = promotedIds.length;
+      let resultIds = [];
+
+      // Slice promoted quotes for this page
+      if (offset < promotedCount) {
+        resultIds = promotedIds.slice(offset, Math.min(offset + limit, promotedCount));
+      }
+
+      // Fill remainder from tier 5 (chronological, excluding promoted)
+      const tier5Needed = limit - resultIds.length;
+      if (tier5Needed > 0) {
+        const tier5Offset = Math.max(0, offset - promotedCount);
+        const excludeClause = promotedIds.length > 0
+          ? `AND q.id NOT IN (${promotedIds.join(',')})` : '';
+        const tier5 = db.prepare(`
+          SELECT q.id FROM quotes q
+          WHERE q.is_visible = 1 AND q.canonical_quote_id IS NULL ${excludeClause}
+          ORDER BY ${QUOTE_DATE_EXPR} DESC
+          LIMIT ? OFFSET ?
+        `).all(tier5Needed, tier5Offset);
+        resultIds.push(...tier5.map(r => r.id));
+      }
+
+      // Fetch full data for ordered IDs, then restore tier order
+      if (resultIds.length > 0) {
+        const rows = db.prepare(`${baseSelect}
+          AND q.id IN (${resultIds.join(',')})
+          GROUP BY q.id
+        `).all();
+        const rowMap = new Map(rows.map(r => [r.id, r]));
+        recentQuotes = resultIds.map(id => rowMap.get(id)).filter(Boolean);
+      } else {
+        recentQuotes = [];
+      }
+    } else if (sortMode === 'importance') {
+      // Old tiered importance (backward compat)
+      recentQuotes = db.prepare(`${baseSelect} ${searchFilter}
+        GROUP BY q.id ORDER BY ${tieredImportanceOrder(QUOTE_DATE_EXPR, 'q.importants_count')} LIMIT ? OFFSET ?
+      `).all(...searchParams, limit, offset);
+    } else {
+      // sort=date or searching: chronological
+      recentQuotes = db.prepare(`${baseSelect} ${searchFilter}
+        GROUP BY q.id ORDER BY ${QUOTE_DATE_EXPR} DESC LIMIT ? OFFSET ?
+      `).all(...searchParams, limit, offset);
+    }
 
     const total = db.prepare(
       `SELECT COUNT(*) as count FROM quotes q WHERE q.is_visible = 1 AND q.canonical_quote_id IS NULL ${searchFilter}`
