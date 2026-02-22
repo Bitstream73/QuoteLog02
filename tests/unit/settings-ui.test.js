@@ -179,3 +179,94 @@ describe('Settings Page Keywords Section', () => {
     expect(stylesCss).toContain('.keyword-add-form');
   });
 });
+
+describe('Noteworthy Cards Settings UI — Peppered Card Configs', () => {
+  it('fetches card configs from admin API', () => {
+    expect(settingsJs).toContain("API.get('/admin/noteworthy-configs')");
+  });
+
+  it('renders card configs list container', () => {
+    expect(settingsJs).toContain('id="card-configs-list"');
+  });
+
+  it('has Peppered Card Configs subsection title', () => {
+    expect(settingsJs).toContain('Peppered Card Configs');
+  });
+
+  it('renders pepper settings controls in noteworthy tab', () => {
+    const noteworthyTab = settingsJs.match(/id="settings-tab-noteworthy"[\s\S]*?<!-- \/noteworthy tab -->/);
+    expect(noteworthyTab).toBeTruthy();
+    // Pepper frequency input
+    expect(noteworthyTab[0]).toContain('noteworthy_pepper_frequency');
+    // Pepper chance slider
+    expect(noteworthyTab[0]).toContain('noteworthy_pepper_chance');
+    // Pick mode select
+    expect(noteworthyTab[0]).toContain('noteworthy_pick_mode');
+    // Reuse toggle
+    expect(noteworthyTab[0]).toContain('noteworthy_reuse_cards');
+  });
+
+  it('pepper frequency uses number input', () => {
+    expect(settingsJs).toMatch(/type="number"[^>]*noteworthy_pepper_frequency/);
+  });
+
+  it('pepper chance uses range slider', () => {
+    expect(settingsJs).toMatch(/type="range"[^>]*noteworthy_pepper_chance/);
+  });
+
+  it('pick mode uses select with sequential and random options', () => {
+    expect(settingsJs).toContain('value="sequential"');
+    expect(settingsJs).toContain('value="random"');
+  });
+
+  it('reuse cards uses checkbox toggle', () => {
+    expect(settingsJs).toMatch(/type="checkbox"[^>]*noteworthy_reuse_cards/);
+  });
+
+  it('defines formatCardType function', () => {
+    expect(settingsJs).toContain('function formatCardType(');
+  });
+
+  it('defines renderCardConfigRow function', () => {
+    expect(settingsJs).toContain('function renderCardConfigRow(');
+  });
+
+  it('defines toggleCardConfig function', () => {
+    expect(settingsJs).toContain('async function toggleCardConfig(');
+  });
+
+  it('defines updateCardConfigTitle function', () => {
+    expect(settingsJs).toContain('async function updateCardConfigTitle(');
+  });
+
+  it('defines updateCardConfigCollection function', () => {
+    expect(settingsJs).toContain('async function updateCardConfigCollection(');
+  });
+
+  it('defines refreshCardConfigs function', () => {
+    expect(settingsJs).toContain('async function refreshCardConfigs(');
+  });
+
+  it('renderCardConfigRow includes toggle, type badge, title input, collection select', () => {
+    expect(settingsJs).toContain('noteworthy-config-row');
+    expect(settingsJs).toContain('config-type-badge');
+    expect(settingsJs).toContain('toggleCardConfig(');
+    expect(settingsJs).toContain('updateCardConfigTitle(');
+    expect(settingsJs).toContain('updateCardConfigCollection(');
+  });
+
+  it('has CSS for noteworthy config row and type badge', () => {
+    expect(stylesCss).toContain('.noteworthy-config-row');
+    expect(stylesCss).toContain('.config-type-badge');
+  });
+
+  it('pepper settings use updateSetting for persistence', () => {
+    // All pepper settings should call updateSetting
+    const pepperSection = settingsJs.match(/Peppered Card Configs[\s\S]*?card-configs-list/);
+    expect(pepperSection).toBeTruthy();
+    expect(pepperSection[0]).toContain("updateSetting('noteworthy_pepper_frequency'");
+    expect(pepperSection[0]).toContain("updateSetting('noteworthy_pepper_chance'");
+    expect(pepperSection[0]).toContain("updateSetting('noteworthy_pick_mode'");
+    expect(pepperSection[0]).toContain("updateSetting('noteworthy_reuse_cards'");
+  });
+});

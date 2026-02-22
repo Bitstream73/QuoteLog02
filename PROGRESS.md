@@ -1,9 +1,9 @@
 # Build Progress
 
 ## Current Status
-- **Current Phase:** 3
+- **Current Phase:** 4
 - **Last Updated:** 2026-02-22
-- **Last Commit:** 215a832 phase-2: restructure settings page with 7-tab navigation
+- **Last Commit:** 46a21d0 phase-3: add CRUD routes for noteworthy card configs, collections, and evaluated endpoint
 
 ## Phase 0: Prerequisites ✅
 - [x] Existing project with passing test suite (`npx vitest run`)
@@ -20,11 +20,11 @@
 - [x] Refactor `renderSettings()` in `public/js/settings.js`: wrap sections in tab containers, add tab bar HTML, implement `switchSettingsTab()` (see `docs/SETTINGS_TABS.md` for section→tab mapping)
 - [x] Write tests: settings page renders, tab switching shows/hides correct content
 
-## Phase 3: Noteworthy Card Config Backend
-- [ ] Add CRUD routes in `src/routes/admin.js`: GET/POST/PATCH/DELETE `/api/admin/noteworthy-configs` and `/api/admin/noteworthy-collections`
-- [ ] Add GET `/api/noteworthy/evaluated` public endpoint in `src/routes/search.js` — returns computed data for all enabled card configs (time-based evaluation, search metadata, info content)
-- [ ] Add pepper settings to GET `/api/settings` response (frequency, chance, pick_mode, reuse)
-- [ ] Write tests: all CRUD operations, evaluated endpoint returns correct time-based data, pepper settings included
+## Phase 3: Noteworthy Card Config Backend ✅
+- [x] Add CRUD routes in `src/routes/admin.js`: GET/POST/PATCH/DELETE `/api/admin/noteworthy-configs` and `/api/admin/noteworthy-collections`
+- [x] Add GET `/api/noteworthy/evaluated` public endpoint in `src/routes/search.js` — returns computed data for all enabled card configs (time-based evaluation, search metadata, info content)
+- [x] Add pepper settings to GET `/api/settings` response (frequency, chance, pick_mode, reuse)
+- [x] Write tests: all CRUD operations, evaluated endpoint returns correct time-based data, pepper settings included
 
 ## Phase 4: Noteworthy Cards Settings UI
 - [ ] Build card config list UI in the Noteworthy Cards settings tab: list of all card configs with enable/disable toggle, custom title edit, collection assignment, drag-to-reorder

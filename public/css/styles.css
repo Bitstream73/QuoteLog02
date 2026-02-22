@@ -6165,6 +6165,37 @@ span.evidence-source-cite {
   margin-right: 0.5rem;
 }
 
+/* Card Config Rows (Settings) */
+.noteworthy-config-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.noteworthy-config-row:last-child {
+  border-bottom: none;
+}
+
+.config-type-badge {
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  padding: 0.15rem 0.5rem;
+  border-radius: var(--radius);
+  white-space: nowrap;
+  min-width: 100px;
+  text-align: center;
+}
+
+.input-sm {
+  font-size: var(--text-sm) !important;
+  padding: 0.25rem 0.5rem !important;
+  height: auto !important;
+}
+
 /* Single-item full-width noteworthy */
 .noteworthy-section__scroll--single .noteworthy-card {
   flex: 1 1 100%;

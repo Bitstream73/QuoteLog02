@@ -5,11 +5,12 @@ async function renderSettings() {
   content.innerHTML = '<div class="loading">Loading settings...</div>';
 
   try {
-    const [settings, sourcesData, promptsData, noteworthyData, keywordsData, topicsData, categoriesData, sourceAuthorsData] = await Promise.all([
+    const [settings, sourcesData, promptsData, noteworthyData, cardConfigsData, keywordsData, topicsData, categoriesData, sourceAuthorsData] = await Promise.all([
       API.get('/settings'),
       API.get('/sources'),
       API.get('/settings/prompts').catch(() => ({ prompts: [] })),
       API.get('/admin/noteworthy').catch(() => ({ items: [] })),
+      API.get('/admin/noteworthy-configs').catch(() => ({ configs: [], collections: [] })),
       API.get('/admin/keywords').catch(() => ({ keywords: [] })),
       API.get('/admin/topics').catch(() => ({ topics: [] })),
       API.get('/admin/categories').catch(() => ({ categories: [] })),
@@ -19,6 +20,8 @@ async function renderSettings() {
     const sources = sourcesData.sources || [];
     const prompts = promptsData.prompts || [];
     const noteworthyItems = noteworthyData.items || [];
+    const cardConfigs = cardConfigsData.configs || [];
+    const cardCollections = cardConfigsData.collections || [];
     const sourceAuthors = sourceAuthorsData.sourceAuthors || [];
     const keywords = keywordsData.keywords || [];
     const topics = topicsData.topics || [];
@@ -366,6 +369,57 @@ async function renderSettings() {
           </div>
           <div id="noteworthy-items-list" class="topics-keywords-list">
             ${noteworthyItems.length === 0 ? '<p class="empty-message">No noteworthy items. Add quotes, topics, articles, or categories above.</p>' : noteworthyItems.map(item => renderNoteworthyRow(item)).join('')}
+          </div>
+        </div>
+      </div>
+
+      <!-- Peppered Card Configs Section -->
+      <div class="settings-section" id="settings-section-card-configs">
+        <h2>Peppered Card Configs</h2>
+        <p class="section-description">Configure cards that appear inline with quotes in the homepage scroll.</p>
+
+        <div class="settings-subsection">
+          <div class="subsection-header">
+            <h3 class="subsection-title">Pepper Settings</h3>
+          </div>
+          <div class="setting-row">
+            <label><span class="setting-label">Quote Frequency</span>
+              <span class="setting-description">Quotes between card insertion chances</span></label>
+            <input type="number" value="${settings.noteworthy_pepper_frequency || 5}"
+                   min="1" max="50" class="input-number"
+                   onchange="updateSetting('noteworthy_pepper_frequency', this.value)">
+          </div>
+          <div class="setting-row">
+            <label><span class="setting-label">Insertion Chance (%)</span>
+              <span class="setting-description">Probability of inserting a card at each chance</span></label>
+            <input type="range" min="0" max="100" value="${settings.noteworthy_pepper_chance || 50}"
+                   oninput="this.nextElementSibling.textContent=this.value+'%'; updateSetting('noteworthy_pepper_chance', this.value)">
+            <span>${settings.noteworthy_pepper_chance || 50}%</span>
+          </div>
+          <div class="setting-row">
+            <label><span class="setting-label">Pick Mode</span></label>
+            <select onchange="updateSetting('noteworthy_pick_mode', this.value)" class="input-select">
+              <option value="sequential" ${settings.noteworthy_pick_mode === 'sequential' ? 'selected' : ''}>Sequential</option>
+              <option value="random" ${settings.noteworthy_pick_mode === 'random' ? 'selected' : ''}>Random</option>
+            </select>
+          </div>
+          <div class="setting-row">
+            <label><span class="setting-label">Re-use Cards</span>
+              <span class="setting-description">Cycle through cards again after all have been shown</span></label>
+            <label class="toggle">
+              <input type="checkbox" ${settings.noteworthy_reuse_cards === '1' ? 'checked' : ''}
+                     onchange="updateSetting('noteworthy_reuse_cards', this.checked ? '1' : '0')">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="settings-subsection">
+          <div class="subsection-header">
+            <h3 class="subsection-title">Card Configs (${cardConfigs.length})</h3>
+          </div>
+          <div id="card-configs-list" class="topics-keywords-list">
+            ${cardConfigs.length === 0 ? '<p class="empty-message">No card configs found.</p>' : cardConfigs.map(c => renderCardConfigRow(c, cardCollections)).join('')}
           </div>
         </div>
       </div>
@@ -1248,6 +1302,81 @@ function updateNoteworthyCount() {
   if (header && list) {
     const count = list.querySelectorAll('.tk-row').length;
     header.textContent = `Current Items (${count})`;
+  }
+}
+
+// ======= Card Configs Section =======
+
+function formatCardType(cardType) {
+  return cardType
+    .replace(/_/g, ' ')
+    .replace(/\bof\b/g, 'of')
+    .replace(/\b\w/g, c => c.toUpperCase())
+    .replace(/\bOf\b/g, 'of');
+}
+
+function renderCardConfigRow(config, collections) {
+  return `
+    <div class="noteworthy-config-row" data-config-id="${config.id}">
+      <label class="toggle">
+        <input type="checkbox" ${config.enabled ? 'checked' : ''}
+               onchange="toggleCardConfig(${config.id}, this.checked)">
+        <span class="toggle-slider"></span>
+      </label>
+      <span class="config-type-badge">${formatCardType(config.card_type)}</span>
+      <input type="text" value="${escapeHtml(config.custom_title || '')}"
+             placeholder="Custom title..."
+             class="input-text input-sm"
+             onchange="updateCardConfigTitle(${config.id}, this.value)">
+      <select onchange="updateCardConfigCollection(${config.id}, this.value)" class="input-select input-sm">
+        <option value="">Standalone</option>
+        ${collections.map(c => `<option value="${c.id}" ${config.collection_id === c.id ? 'selected' : ''}>${escapeHtml(c.name)}</option>`).join('')}
+      </select>
+    </div>
+  `;
+}
+
+async function toggleCardConfig(id, enabled) {
+  try {
+    await API.patch(`/admin/noteworthy-configs/${id}`, { enabled });
+  } catch (err) {
+    showToast('Error toggling config: ' + err.message, 'error');
+  }
+}
+
+async function updateCardConfigTitle(id, title) {
+  try {
+    await API.patch(`/admin/noteworthy-configs/${id}`, { custom_title: title });
+  } catch (err) {
+    showToast('Error updating title: ' + err.message, 'error');
+  }
+}
+
+async function updateCardConfigCollection(id, collectionId) {
+  try {
+    await API.patch(`/admin/noteworthy-configs/${id}`, { collection_id: collectionId || null });
+  } catch (err) {
+    showToast('Error updating collection: ' + err.message, 'error');
+  }
+}
+
+async function refreshCardConfigs() {
+  try {
+    const data = await API.get('/admin/noteworthy-configs');
+    const configs = data.configs || [];
+    const collections = data.collections || [];
+    const list = document.getElementById('card-configs-list');
+    if (list) {
+      list.innerHTML = configs.length === 0
+        ? '<p class="empty-message">No card configs found.</p>'
+        : configs.map(c => renderCardConfigRow(c, collections)).join('');
+    }
+    const header = list ? list.closest('.settings-subsection')?.querySelector('.subsection-title') : null;
+    if (header) {
+      header.textContent = `Card Configs (${configs.length})`;
+    }
+  } catch (err) {
+    console.error('Failed to refresh card configs:', err);
   }
 }
 
