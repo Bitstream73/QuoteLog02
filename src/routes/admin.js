@@ -162,6 +162,11 @@ Every quote MUST have exactly one classification. The "index" matches the number
   })).filter(c => c.quoteId && ['A', 'B', 'C'].includes(c.category));
 }
 
+function truncateText(text, maxLen = 80) {
+  if (!text || text.length <= maxLen) return text || '';
+  return text.slice(0, maxLen - 1) + '…';
+}
+
 function deleteQuotesBatch(db, quoteIds) {
   if (quoteIds.length === 0) return;
   const CHUNK = 500;
@@ -202,11 +207,16 @@ function deleteQuotesBatch(db, quoteIds) {
 router.post('/purge-quality', async (req, res) => {
   const dryRun = req.body?.dry_run !== false;
   const batchSize = Math.min(Math.max(parseInt(req.body?.batch_size) || 10, 1), 20);
+  const io = req.app.get('io');
 
   try {
     const db = getDb();
     const result = { dry_run: dryRun, phase1: {}, phase2: {}, pinecone_deleted: 0 };
     const allDeletedIds = [];
+    let totalDeleted = 0;
+    let totalKept = 0;
+    const startTime = Date.now();
+    let quotesProcessed = 0;
 
     // Phase 1: Delete invisible quotes
     const invisibleQuotes = db.prepare(`
@@ -214,13 +224,20 @@ router.post('/purge-quality', async (req, res) => {
     `).all();
     result.phase1.invisible_found = invisibleQuotes.length;
 
+    io?.emit('purge_progress', { phase: 'phase1', type: 'info', message: `Found ${invisibleQuotes.length} hidden quotes` });
+
     if (!dryRun && invisibleQuotes.length > 0) {
       const ids = invisibleQuotes.map(q => q.id);
       deleteQuotesBatch(db, ids);
       allDeletedIds.push(...ids);
       result.phase1.deleted = ids.length;
+      totalDeleted += ids.length;
+      io?.emit('purge_progress', { phase: 'phase1', type: 'info', message: `Deleted ${ids.length} hidden quotes` });
     } else {
       result.phase1.deleted = 0;
+      if (invisibleQuotes.length > 0) {
+        io?.emit('purge_progress', { phase: 'phase1', type: 'info', message: `Would delete ${invisibleQuotes.length} hidden quotes` });
+      }
     }
 
     // Phase 2: Classify unclassified visible quotes
@@ -234,6 +251,7 @@ router.post('/purge-quality', async (req, res) => {
     const breakdown = { category_A: 0, category_B: 0, category_C: 0 };
 
     if (config.geminiApiKey && unclassifiedTotal > 0) {
+      io?.emit('purge_progress', { phase: 'phase2', type: 'info', message: `Classifying ${unclassifiedTotal} unclassified quotes...` });
       let remaining = true;
       while (remaining) {
         const batch = db.prepare(`
@@ -257,14 +275,39 @@ router.post('/purge-quality', async (req, res) => {
           });
           applyClassifications(classifications);
           classified += classifications.length;
+
+          // Emit per-quote progress events
+          for (const c of classifications) {
+            quotesProcessed++;
+            const quote = batch.find(q => q.id === c.quoteId);
+            if (c.category === 'A') totalKept++;
+            else totalDeleted++;
+            const remainingCount = unclassifiedTotal - quotesProcessed;
+            const avgMs = (Date.now() - startTime) / quotesProcessed;
+            io?.emit('purge_progress', {
+              phase: 'phase2',
+              type: c.category === 'A' ? 'kept' : 'deleted',
+              quoteText: truncateText(quote?.text),
+              author: quote?.canonical_name,
+              category: c.category,
+              dryRun,
+              totalDeleted,
+              totalKept,
+              remaining: Math.max(0, remainingCount),
+              estimatedSecondsLeft: remainingCount > 0 ? Math.ceil((avgMs * remainingCount) / 1000) : 0,
+            });
+          }
+
           if (classifications.length === 0) break; // No progress — avoid infinite loop
         } catch (err) {
           if (err.message?.includes('429') || err.message?.includes('rate')) {
             logger.warn('admin', 'purge_quality_rate_limit', { error: err.message });
+            io?.emit('purge_progress', { phase: 'phase2', type: 'warning', message: 'Rate limited — pausing classification' });
             break;
           }
           classifyErrors++;
           logger.error('admin', 'purge_quality_classify_error', { error: err.message });
+          io?.emit('purge_progress', { phase: 'phase2', type: 'warning', message: `Classification error: ${err.message}` });
         }
 
         await new Promise(r => setTimeout(r, 200));
@@ -295,6 +338,7 @@ router.post('/purge-quality', async (req, res) => {
       deleteQuotesBatch(db, ids);
       allDeletedIds.push(...ids);
       result.phase2.deleted = ids.length;
+      io?.emit('purge_progress', { phase: 'phase3', type: 'info', message: `Deleted ${ids.length} B/C quotes` });
     }
 
     // Pinecone cleanup
@@ -303,11 +347,21 @@ router.post('/purge-quality', async (req, res) => {
         const pineconeIds = allDeletedIds.map(id => `quote-${id}`);
         await vectorDb.deleteManyByIds(pineconeIds);
         result.pinecone_deleted = pineconeIds.length;
+        io?.emit('purge_progress', { phase: 'pinecone', type: 'info', message: `Cleaned ${pineconeIds.length} vectors from Pinecone` });
       } catch (err) {
         logger.error('admin', 'purge_quality_pinecone_error', { error: err.message });
         result.pinecone_error = err.message;
       }
     }
+
+    io?.emit('purge_complete', {
+      dryRun,
+      totalDeleted,
+      totalKept,
+      phase1: result.phase1,
+      phase2: result.phase2,
+      pineconeDeleted: result.pinecone_deleted,
+    });
 
     res.json(result);
   } catch (err) {
