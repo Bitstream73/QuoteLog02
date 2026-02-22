@@ -422,17 +422,18 @@ router.get('/trending-authors', (req, res) => {
     const queryParams = searchParam ? [searchParam, limit, offset] : [limit, offset];
     let authors;
     if (sortMode === 'importance') {
-      // Sum importants_count across all visible, non-canonical-duplicate quotes
+      // Author's importants_count + sum of all their quotes' importants_count
       authors = db.prepare(`
         SELECT p.id, p.canonical_name, p.photo_url, p.category, p.category_context,
-          p.share_count, p.view_count, p.quote_count, p.trending_score,
-          COALESCE(SUM(q.importants_count), 0) as importants_count
+          p.importants_count, p.share_count, p.view_count, p.quote_count, p.trending_score,
+          COALESCE(SUM(q.importants_count), 0) as total_quote_importants,
+          (p.importants_count + COALESCE(SUM(q.importants_count), 0)) as combined_importance
         FROM persons p
         LEFT JOIN quotes q ON q.person_id = p.id AND q.is_visible = 1 AND q.canonical_quote_id IS NULL
         WHERE p.quote_count > 0
         ${searchFilter}
         GROUP BY p.id
-        ORDER BY importants_count DESC, p.trending_score DESC
+        ORDER BY combined_importance DESC, p.trending_score DESC
         LIMIT ? OFFSET ?
       `).all(...queryParams);
     } else {
