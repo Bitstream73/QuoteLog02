@@ -1,9 +1,9 @@
 # Build Progress
 
 ## Current Status
-- **Current Phase:** 10
+- **Current Phase:** COMPLETE
 - **Last Updated:** 2026-02-22
-- **Last Commit:** phase-9: add card peppering system with collection grouping and re-evaluation
+- **Last Commit:** phase-10: add integration tests and verify all phases complete
 
 ## Phase 0: Prerequisites ✅
 - [x] Existing project with passing test suite (`npx vitest run`)
@@ -57,6 +57,6 @@
 - [x] Implement collection grouping: cards in the same collection render as a horizontal scroll row (`.noteworthy-section__scroll` pattern); wire Socket.IO `fetch_cycle_complete` event to re-evaluate time-based cards
 - [x] Write tests: peppering inserts cards at correct intervals, respects chance percentage, sequential/random modes work, collections group correctly, re-evaluation updates cards
 
-## Phase 10: Integration & Verification
-- [ ] Write end-to-end integration tests: peppered scroll renders mixed quotes and cards, swipe gestures navigate correctly, settings round-trip (save → reload → verify), card evaluation produces fresh data after mock fetch
-- [ ] Run full test suite (`npx vitest run`), fix any regressions, verify all phases complete
+## Phase 10: Integration & Verification ✅
+- [x] Write end-to-end integration tests: peppered scroll renders mixed quotes and cards, swipe gestures navigate correctly, settings round-trip (save → reload → verify), card evaluation produces fresh data after mock fetch
+- [x] Run full test suite (`npx vitest run`), fix any regressions, verify all phases complete
