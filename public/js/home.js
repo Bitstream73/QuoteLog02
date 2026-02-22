@@ -1056,6 +1056,222 @@ function buildNoteworthySectionHtml(items) {
   `;
 }
 
+// ======= Peppered Card Renderers =======
+
+function buildTimedQuoteCardHtml(card) {
+  const q = card.data;
+  if (!q) return '';
+  const verdictHtml = (typeof buildVerdictBadgeHtml === 'function')
+    ? buildVerdictBadgeHtml(q.id, q.fact_check_verdict) : '';
+  return `
+    <div class="noteworthy-card noteworthy-card--timed-quote" data-href="/quote/${q.id}" onclick="slideToDetail('/quote/${q.id}')">
+      <div class="noteworthy-card__header">
+        <div class="noteworthy-card__badge">${escapeHtml(card.custom_title || '')}</div>
+      </div>
+      <div class="noteworthy-card__content">
+        <div class="noteworthy-quote__text">\u201C${escapeHtml((q.text || '').substring(0, 200))}\u201D</div>
+        <div class="noteworthy-quote__byline">
+          ${q.photo_url ? `<img class="noteworthy-quote__avatar" src="${escapeHtml(q.photo_url)}" alt="" onerror="this.style.display='none'">` : ''}
+          ${verdictHtml}
+          \u2014 ${escapeHtml(q.person_name || '')}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function buildTimedAuthorCardHtml(card) {
+  const entity = card.data?.entity;
+  if (!entity) return '';
+  const avatarHtml = entity.photo_url
+    ? `<img class="noteworthy-card__avatar" src="${escapeHtml(entity.photo_url)}" alt="" onerror="this.style.display='none'">`
+    : `<div class="noteworthy-card__avatar-placeholder">${escapeHtml((entity.canonical_name || '?')[0])}</div>`;
+  const desc = [entity.category, entity.category_context].filter(Boolean).join(' \u2014 ');
+  return `
+    <div class="noteworthy-card noteworthy-card--timed-author" data-href="/author/${entity.id}" onclick="slideToDetail('/author/${entity.id}')">
+      <div class="noteworthy-card__header">
+        <div class="noteworthy-card__badge">${escapeHtml(card.custom_title || '')}</div>
+      </div>
+      ${buildNoteworthyCardHeader(avatarHtml, entity.canonical_name || '', desc)}
+      <div class="noteworthy-card__content">${buildMiniQuotesHtml(card.data.top_quotes)}</div>
+    </div>
+  `;
+}
+
+function buildTimedSourceCardHtml(card) {
+  const entity = card.data?.entity;
+  if (!entity) return '';
+  const avatarHtml = entity.image_url
+    ? `<img class="noteworthy-card__avatar" src="${escapeHtml(entity.image_url)}" alt="" onerror="this.style.display='none'">`
+    : `<div class="noteworthy-card__avatar-placeholder">${escapeHtml((entity.name || '?')[0])}</div>`;
+  return `
+    <div class="noteworthy-card noteworthy-card--timed-source" onclick="event.stopPropagation()">
+      <div class="noteworthy-card__header">
+        <div class="noteworthy-card__badge">${escapeHtml(card.custom_title || '')}</div>
+      </div>
+      ${buildNoteworthyCardHeader(avatarHtml, entity.name || '', entity.domain || '')}
+      <div class="noteworthy-card__content">${buildMiniQuotesHtml(card.data.top_quotes)}</div>
+    </div>
+  `;
+}
+
+function buildTimedTopicCardHtml(card) {
+  const entity = card.data?.entity;
+  if (!entity) return '';
+  const initial = (entity.name || '?')[0];
+  const avatarHtml = `<div class="noteworthy-card__avatar-placeholder">${escapeHtml(initial)}</div>`;
+  return `
+    <div class="noteworthy-card noteworthy-card--timed-topic" data-href="/topic/${entity.slug || entity.id}" onclick="slideToDetail('/topic/${entity.slug || entity.id}')">
+      <div class="noteworthy-card__header">
+        <div class="noteworthy-card__badge">${escapeHtml(card.custom_title || '')}</div>
+      </div>
+      ${buildNoteworthyCardHeader(avatarHtml, entity.name || '', entity.description || '')}
+      <div class="noteworthy-card__content">${buildMiniQuotesHtml(card.data.top_quotes)}</div>
+    </div>
+  `;
+}
+
+function buildTimedCategoryCardHtml(card) {
+  const entity = card.data?.entity;
+  if (!entity) return '';
+  const avatarHtml = buildCategoryAvatarHtml(entity.image_url, entity.icon_name, entity.name);
+  return `
+    <div class="noteworthy-card noteworthy-card--timed-category" data-href="/category/${entity.slug || entity.id}" onclick="slideToDetail('/category/${entity.slug || entity.id}')">
+      <div class="noteworthy-card__header">
+        <div class="noteworthy-card__badge">${escapeHtml(card.custom_title || '')}</div>
+      </div>
+      ${buildNoteworthyCardHeader(avatarHtml, entity.name || '', '')}
+      <div class="noteworthy-card__content">${buildMiniQuotesHtml(card.data.top_quotes)}</div>
+    </div>
+  `;
+}
+
+function buildSearchCardHtml(card) {
+  const st = card.data?.search_type || '';
+  const labels = {
+    topic: 'Search by news topic',
+    quote_text: 'Search by quote text',
+    source_author: 'Search by quote author',
+    source: 'Search by news source'
+  };
+  return `
+    <div class="noteworthy-card noteworthy-card--search noteworthy-card--full-width">
+      <div class="noteworthy-card__header">
+        <div class="noteworthy-card__badge">${escapeHtml(card.custom_title || '')}</div>
+      </div>
+      <p class="search-card__subhead">${escapeHtml(labels[st] || 'Search')}</p>
+      <div class="search-card__input-wrap">
+        <input type="search" class="search-card__input" placeholder="Type to search..."
+               oninput="searchCardAutocomplete(this, '${escapeHtml(st)}')"
+               onkeydown="searchCardKeydown(event, this, '${escapeHtml(st)}')">
+        <div class="search-card__results"></div>
+      </div>
+    </div>
+  `;
+}
+
+let _searchCardDebounce = null;
+
+async function searchCardAutocomplete(inputEl, searchType) {
+  clearTimeout(_searchCardDebounce);
+  const query = inputEl.value.trim();
+  const resultsEl = inputEl.parentElement.querySelector('.search-card__results');
+  if (query.length < 2) {
+    resultsEl.innerHTML = '';
+    resultsEl.style.display = 'none';
+    return;
+  }
+  _searchCardDebounce = setTimeout(async () => {
+    try {
+      const typeParam = searchType === 'quote_text' ? '' : `&type=${searchType}`;
+      const data = await API.get('/search/autocomplete?q=' + encodeURIComponent(query) + typeParam + '&limit=6');
+      const suggestions = data.suggestions || [];
+      if (suggestions.length === 0) {
+        resultsEl.innerHTML = '';
+        resultsEl.style.display = 'none';
+        return;
+      }
+      resultsEl.innerHTML = suggestions.map(s => {
+        let onclick = '';
+        if (s.type === 'person') onclick = `navigateTo('/author/${s.id}')`;
+        else if (s.type === 'topic') onclick = `navigateTo('/topic/${s.id}')`;
+        else onclick = `navigateTo('/?search=${encodeURIComponent(s.label)}')`;
+        return `<div class="search-card__result-item" onclick="${onclick}">${escapeHtml(s.label)}</div>`;
+      }).join('');
+      resultsEl.style.display = 'block';
+    } catch (err) {
+      // Silent fail
+    }
+  }, 200);
+}
+
+function searchCardKeydown(event, inputEl, searchType) {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    const query = inputEl.value.trim();
+    if (query.length >= 2) {
+      navigateTo('/?search=' + encodeURIComponent(query));
+    }
+  } else if (event.key === 'Escape') {
+    inputEl.value = '';
+    const resultsEl = inputEl.parentElement.querySelector('.search-card__results');
+    resultsEl.innerHTML = '';
+    resultsEl.style.display = 'none';
+  }
+}
+
+function buildInfoCardHtml(card) {
+  const infoType = card.data?.info_type || '';
+  const content = {
+    importance: {
+      title: 'What does IMPORTANT? do?',
+      body: 'Tap the IMPORTANT? button on any quote to mark it as noteworthy. This helps surface the most significant quotes and influences trending rankings.',
+      icon: 'star'
+    },
+    fact_check: {
+      title: 'What does RUN FACT CHECK do?',
+      body: 'Tap RUN FACT CHECK to have AI verify factual claims in a quote using real-time web search. Results include a verdict (TRUE, FALSE, MISLEADING, etc.) with cited sources.',
+      icon: 'search'
+    },
+    bug: {
+      title: 'Found a bug?',
+      body: 'Tap the bug icon on any page to report an issue. Include what you expected vs what happened. Bug reports help us improve the app.',
+      icon: 'bug_report'
+    },
+    donate: {
+      title: 'Support QuoteLog',
+      body: 'QuoteLog is free and open source. If you find it valuable, consider supporting development.',
+      icon: 'favorite'
+    }
+  };
+  const c = content[infoType] || { title: '', body: '', icon: 'info' };
+  return `
+    <div class="noteworthy-card noteworthy-card--info">
+      <div class="noteworthy-card__header">
+        <span class="info-card__icon material-icons-outlined">${escapeHtml(c.icon)}</span>
+        <div class="noteworthy-card__badge">${escapeHtml(c.title)}</div>
+      </div>
+      <div class="noteworthy-card__content">
+        <p class="info-card__body">${escapeHtml(c.body)}</p>
+      </div>
+    </div>
+  `;
+}
+
+function buildPepperedCardHtml(card) {
+  if (!card || !card.type) return '';
+  switch (card.type) {
+    case 'quote': return buildTimedQuoteCardHtml(card);
+    case 'author': return buildTimedAuthorCardHtml(card);
+    case 'source': return buildTimedSourceCardHtml(card);
+    case 'topic': return buildTimedTopicCardHtml(card);
+    case 'category': return buildTimedCategoryCardHtml(card);
+    case 'search': return buildSearchCardHtml(card);
+    case 'info': return buildInfoCardHtml(card);
+    default: return '';
+  }
+}
+
 function buildTopAuthorsBarHtml(authors) {
   if (!authors || authors.length === 0) return '';
   const items = authors.map(a => {

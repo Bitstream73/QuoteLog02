@@ -6499,6 +6499,103 @@ span.evidence-source-cite {
   margin-top: auto;
 }
 
+/* Peppered card type modifiers */
+.noteworthy-card--timed-quote {
+  display: flex;
+  flex-direction: column;
+}
+.noteworthy-card--timed-quote .noteworthy-quote__byline {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+.noteworthy-card--timed-author,
+.noteworthy-card--timed-source,
+.noteworthy-card--timed-topic,
+.noteworthy-card--timed-category {
+  display: flex;
+  flex-direction: column;
+}
+.noteworthy-card__badge {
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--accent);
+  margin-bottom: 0.25rem;
+}
+
+/* Search cards */
+.noteworthy-card--search {
+  display: flex;
+  flex-direction: column;
+}
+.search-card__subhead {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  margin: 0.25rem 0 0.5rem;
+}
+.search-card__input-wrap {
+  position: relative;
+}
+.search-card__input {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  font-size: var(--text-base);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-input);
+  color: var(--text);
+  box-sizing: border-box;
+}
+.search-card__input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.search-card__results {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 var(--radius) var(--radius);
+  z-index: 10;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.search-card__result-item {
+  padding: 0.4rem 0.75rem;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.search-card__result-item:hover {
+  background: var(--bg-hover);
+}
+
+/* Info cards */
+.noteworthy-card--info {
+  display: flex;
+  flex-direction: column;
+}
+.info-card__icon {
+  font-size: 1.25rem;
+  color: var(--accent);
+  margin-right: 0.35rem;
+}
+.info-card__body {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin: 0;
+}
+
 /* ===================================
    Phase 4C: Topics & Keywords Review
    =================================== */

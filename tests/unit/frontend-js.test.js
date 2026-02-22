@@ -638,4 +638,233 @@ describe('Frontend JS files', () => {
       expect(homeJs).toContain("It'll just be a sec. We're fact checking this quote for the first time...");
     });
   });
+
+  // Phase 8: New Card Type Renderers
+  describe('home.js timed card renderers', () => {
+    const homeJs = fs.readFileSync(path.join(process.cwd(), 'public/js/home.js'), 'utf-8');
+
+    it('should define buildTimedQuoteCardHtml function', () => {
+      expect(homeJs).toContain('function buildTimedQuoteCardHtml(card)');
+    });
+
+    it('buildTimedQuoteCardHtml should use noteworthy-card--timed-quote class', () => {
+      expect(homeJs).toContain('noteworthy-card--timed-quote');
+    });
+
+    it('buildTimedQuoteCardHtml should use slideToDetail for onclick', () => {
+      const fnIdx = homeJs.indexOf('function buildTimedQuoteCardHtml');
+      const nextFnIdx = homeJs.indexOf('\nfunction ', fnIdx + 1);
+      const fnBody = homeJs.substring(fnIdx, nextFnIdx > 0 ? nextFnIdx : fnIdx + 2000);
+      expect(fnBody).toContain('slideToDetail');
+    });
+
+    it('buildTimedQuoteCardHtml should include noteworthy-card__badge with custom_title', () => {
+      const fnIdx = homeJs.indexOf('function buildTimedQuoteCardHtml');
+      const nextFnIdx = homeJs.indexOf('\nfunction ', fnIdx + 1);
+      const fnBody = homeJs.substring(fnIdx, nextFnIdx > 0 ? nextFnIdx : fnIdx + 2000);
+      expect(fnBody).toContain('noteworthy-card__badge');
+      expect(fnBody).toContain('custom_title');
+    });
+
+    it('should define buildTimedAuthorCardHtml function', () => {
+      expect(homeJs).toContain('function buildTimedAuthorCardHtml(card)');
+    });
+
+    it('buildTimedAuthorCardHtml should use noteworthy-card--timed-author class', () => {
+      expect(homeJs).toContain('noteworthy-card--timed-author');
+    });
+
+    it('buildTimedAuthorCardHtml should include mini quotes', () => {
+      const fnIdx = homeJs.indexOf('function buildTimedAuthorCardHtml');
+      const nextFnIdx = homeJs.indexOf('\nfunction ', fnIdx + 1);
+      const fnBody = homeJs.substring(fnIdx, nextFnIdx > 0 ? nextFnIdx : fnIdx + 2000);
+      expect(fnBody).toContain('buildMiniQuotesHtml');
+    });
+
+    it('should define buildTimedSourceCardHtml function', () => {
+      expect(homeJs).toContain('function buildTimedSourceCardHtml(card)');
+    });
+
+    it('buildTimedSourceCardHtml should use noteworthy-card--timed-source class', () => {
+      expect(homeJs).toContain('noteworthy-card--timed-source');
+    });
+
+    it('should define buildTimedTopicCardHtml function', () => {
+      expect(homeJs).toContain('function buildTimedTopicCardHtml(card)');
+    });
+
+    it('buildTimedTopicCardHtml should use noteworthy-card--timed-topic class', () => {
+      expect(homeJs).toContain('noteworthy-card--timed-topic');
+    });
+
+    it('should define buildTimedCategoryCardHtml function', () => {
+      expect(homeJs).toContain('function buildTimedCategoryCardHtml(card)');
+    });
+
+    it('buildTimedCategoryCardHtml should use noteworthy-card--timed-category class', () => {
+      expect(homeJs).toContain('noteworthy-card--timed-category');
+    });
+  });
+
+  describe('home.js search card renderer', () => {
+    const homeJs = fs.readFileSync(path.join(process.cwd(), 'public/js/home.js'), 'utf-8');
+
+    it('should define buildSearchCardHtml function', () => {
+      expect(homeJs).toContain('function buildSearchCardHtml(card)');
+    });
+
+    it('should use noteworthy-card--search class', () => {
+      expect(homeJs).toContain('noteworthy-card--search');
+    });
+
+    it('should use noteworthy-card--full-width class for search cards', () => {
+      const fnIdx = homeJs.indexOf('function buildSearchCardHtml');
+      const nextFnIdx = homeJs.indexOf('\nfunction ', fnIdx + 1);
+      const fnBody = homeJs.substring(fnIdx, nextFnIdx > 0 ? nextFnIdx : fnIdx + 2000);
+      expect(fnBody).toContain('noteworthy-card--full-width');
+    });
+
+    it('should have search input field with oninput handler', () => {
+      const fnIdx = homeJs.indexOf('function buildSearchCardHtml');
+      const nextFnIdx = homeJs.indexOf('\nfunction ', fnIdx + 1);
+      const fnBody = homeJs.substring(fnIdx, nextFnIdx > 0 ? nextFnIdx : fnIdx + 2000);
+      expect(fnBody).toContain('search-card__input');
+      expect(fnBody).toContain('oninput');
+    });
+
+    it('should have search results container', () => {
+      const fnIdx = homeJs.indexOf('function buildSearchCardHtml');
+      const nextFnIdx = homeJs.indexOf('\nfunction ', fnIdx + 1);
+      const fnBody = homeJs.substring(fnIdx, nextFnIdx > 0 ? nextFnIdx : fnIdx + 2000);
+      expect(fnBody).toContain('search-card__results');
+    });
+
+    it('should define searchCardAutocomplete function', () => {
+      expect(homeJs).toContain('function searchCardAutocomplete(');
+    });
+
+    it('should define searchCardKeydown function', () => {
+      expect(homeJs).toContain('function searchCardKeydown(');
+    });
+
+    it('should have labels for all 4 search types', () => {
+      const fnIdx = homeJs.indexOf('function buildSearchCardHtml');
+      const nextFnIdx = homeJs.indexOf('\nfunction ', fnIdx + 1);
+      const fnBody = homeJs.substring(fnIdx, nextFnIdx > 0 ? nextFnIdx : fnIdx + 2000);
+      expect(fnBody).toContain('topic');
+      expect(fnBody).toContain('quote_text');
+      expect(fnBody).toContain('source_author');
+      expect(fnBody).toContain('source');
+    });
+  });
+
+  describe('home.js info card renderer', () => {
+    const homeJs = fs.readFileSync(path.join(process.cwd(), 'public/js/home.js'), 'utf-8');
+
+    it('should define buildInfoCardHtml function', () => {
+      expect(homeJs).toContain('function buildInfoCardHtml(card)');
+    });
+
+    it('should use noteworthy-card--info class', () => {
+      expect(homeJs).toContain('noteworthy-card--info');
+    });
+
+    it('should have content for importance info type', () => {
+      const fnIdx = homeJs.indexOf('function buildInfoCardHtml');
+      const nextFnIdx = homeJs.indexOf('\nfunction ', fnIdx + 1);
+      const fnBody = homeJs.substring(fnIdx, nextFnIdx > 0 ? nextFnIdx : fnIdx + 2000);
+      expect(fnBody).toContain('importance');
+      expect(fnBody).toContain('IMPORTANT');
+    });
+
+    it('should have content for fact_check info type', () => {
+      const fnIdx = homeJs.indexOf('function buildInfoCardHtml');
+      const nextFnIdx = homeJs.indexOf('\nfunction ', fnIdx + 1);
+      const fnBody = homeJs.substring(fnIdx, nextFnIdx > 0 ? nextFnIdx : fnIdx + 2000);
+      expect(fnBody).toContain('fact_check');
+      expect(fnBody).toContain('FACT CHECK');
+    });
+
+    it('should have content for bug info type', () => {
+      const fnIdx = homeJs.indexOf('function buildInfoCardHtml');
+      const nextFnIdx = homeJs.indexOf('\nfunction ', fnIdx + 1);
+      const fnBody = homeJs.substring(fnIdx, nextFnIdx > 0 ? nextFnIdx : fnIdx + 2000);
+      expect(fnBody).toContain('bug');
+    });
+
+    it('should have content for donate info type', () => {
+      const fnIdx = homeJs.indexOf('function buildInfoCardHtml');
+      const nextFnIdx = homeJs.indexOf('\nfunction ', fnIdx + 1);
+      const fnBody = homeJs.substring(fnIdx, nextFnIdx > 0 ? nextFnIdx : fnIdx + 2000);
+      expect(fnBody).toContain('donate');
+      expect(fnBody).toContain('Support');
+    });
+
+    it('should have info-card__icon element', () => {
+      const fnIdx = homeJs.indexOf('function buildInfoCardHtml');
+      const nextFnIdx = homeJs.indexOf('\nfunction ', fnIdx + 1);
+      const fnBody = homeJs.substring(fnIdx, nextFnIdx > 0 ? nextFnIdx : fnIdx + 2000);
+      expect(fnBody).toContain('info-card__icon');
+    });
+
+    it('should have info-card__body element', () => {
+      const fnIdx = homeJs.indexOf('function buildInfoCardHtml');
+      const nextFnIdx = homeJs.indexOf('\nfunction ', fnIdx + 1);
+      const fnBody = homeJs.substring(fnIdx, nextFnIdx > 0 ? nextFnIdx : fnIdx + 2000);
+      expect(fnBody).toContain('info-card__body');
+    });
+  });
+
+  describe('home.js peppered card dispatch', () => {
+    const homeJs = fs.readFileSync(path.join(process.cwd(), 'public/js/home.js'), 'utf-8');
+
+    it('should define buildPepperedCardHtml function', () => {
+      expect(homeJs).toContain('function buildPepperedCardHtml(card)');
+    });
+
+    it('should dispatch to correct renderer by card type', () => {
+      const fnIdx = homeJs.indexOf('function buildPepperedCardHtml');
+      const nextFnIdx = homeJs.indexOf('\nfunction ', fnIdx + 1);
+      const fnBody = homeJs.substring(fnIdx, nextFnIdx > 0 ? nextFnIdx : fnIdx + 2000);
+      expect(fnBody).toContain('buildTimedQuoteCardHtml');
+      expect(fnBody).toContain('buildTimedAuthorCardHtml');
+      expect(fnBody).toContain('buildTimedSourceCardHtml');
+      expect(fnBody).toContain('buildTimedTopicCardHtml');
+      expect(fnBody).toContain('buildTimedCategoryCardHtml');
+      expect(fnBody).toContain('buildSearchCardHtml');
+      expect(fnBody).toContain('buildInfoCardHtml');
+    });
+  });
+
+  describe('home.js card renderer CSS classes', () => {
+    const css = fs.readFileSync(path.join(process.cwd(), 'public/css/styles.css'), 'utf-8');
+
+    it('should have noteworthy-card--timed-quote CSS', () => {
+      expect(css).toContain('.noteworthy-card--timed-quote');
+    });
+
+    it('should have noteworthy-card--search CSS', () => {
+      expect(css).toContain('.noteworthy-card--search');
+    });
+
+    it('should have noteworthy-card--info CSS', () => {
+      expect(css).toContain('.noteworthy-card--info');
+    });
+
+    it('should have search-card__input CSS', () => {
+      expect(css).toContain('.search-card__input');
+    });
+
+    it('should have search-card__results CSS', () => {
+      expect(css).toContain('.search-card__results');
+    });
+
+    it('should have info-card__icon CSS', () => {
+      expect(css).toContain('.info-card__icon');
+    });
+
+    it('should have info-card__body CSS', () => {
+      expect(css).toContain('.info-card__body');
+    });
+  });
 });

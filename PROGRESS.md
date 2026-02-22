@@ -1,9 +1,9 @@
 # Build Progress
 
 ## Current Status
-- **Current Phase:** 8
+- **Current Phase:** 9
 - **Last Updated:** 2026-02-22
-- **Last Commit:** phase-7: add time-based card evaluation engine with evaluator wiring
+- **Last Commit:** phase-8: add card type renderers for timed, search, and info cards
 
 ## Phase 0: Prerequisites ✅
 - [x] Existing project with passing test suite (`npx vitest run`)
@@ -46,11 +46,11 @@
 - [x] Add evaluators for Source-of-X (source_author with highest aggregate importants), Topic-of-X, Category-of-X — each returns entity + top 3 quotes by importants_count
 - [x] Write tests: each evaluator returns correct data for given time window, handles empty results, respects filter config
 
-## Phase 8: New Card Type Renderers
-- [ ] Build frontend renderers for time-based cards: `buildTimedQuoteCardHtml()`, `buildTimedAuthorCardHtml()`, `buildTimedSourceCardHtml()`, `buildTimedTopicCardHtml()`, `buildTimedCategoryCardHtml()` — each with custom title, entity data, top quotes, and tap/swipe-to-reveal behavior
-- [ ] Build search card renderers: `buildSearchCardHtml(searchType)` with subhead text, full-width search bar, autocomplete dropdown — 4 types (topic, quote_text, source_author, source)
-- [ ] Build info card renderers: `buildInfoCardHtml(infoType)` for Importance, Fact Check, Bug Report, Donate — each with descriptive text and relevant icon/image
-- [ ] Write tests: each renderer produces valid HTML, search cards trigger autocomplete, info cards display correct content
+## Phase 8: New Card Type Renderers ✅
+- [x] Build frontend renderers for time-based cards: `buildTimedQuoteCardHtml()`, `buildTimedAuthorCardHtml()`, `buildTimedSourceCardHtml()`, `buildTimedTopicCardHtml()`, `buildTimedCategoryCardHtml()` — each with custom title, entity data, top quotes, and tap/swipe-to-reveal behavior
+- [x] Build search card renderers: `buildSearchCardHtml(searchType)` with subhead text, full-width search bar, autocomplete dropdown — 4 types (topic, quote_text, source_author, source)
+- [x] Build info card renderers: `buildInfoCardHtml(infoType)` for Importance, Fact Check, Bug Report, Donate — each with descriptive text and relevant icon/image
+- [x] Write tests: each renderer produces valid HTML, search cards trigger autocomplete, info cards display correct content
 
 ## Phase 9: Card Peppering System
 - [ ] Implement peppering algorithm in `public/js/home.js`: after loading each page of quotes, determine insertion points based on `noteworthy_pepper_frequency` and `noteworthy_pepper_chance`; pick next card from enabled configs using sequential or random mode; handle reuse toggle
