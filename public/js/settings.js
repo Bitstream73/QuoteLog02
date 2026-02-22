@@ -293,7 +293,16 @@ async function renderSettings() {
             <button class="btn btn-secondary" id="purge-preview-btn" onclick="runPurgeQuality(true)">Preview</button>
             <button class="btn btn-danger" id="purge-execute-btn" onclick="runPurgeQuality(false)">Purge Now</button>
           </div>
-          <div id="purge-quality-results" style="display:none; margin-top:12px; padding:12px; background:var(--bg-secondary); border-radius:8px; font-size:0.9rem"></div>
+          <div id="purge-quality-results" style="display:none; margin-top:12px; padding:12px; background:var(--bg-secondary); border-radius:8px; font-size:0.9rem">
+            <div id="purge-summary-bar" style="display:none; margin-bottom:8px; font-weight:600; font-size:0.85rem">
+              <span style="color:var(--success)">Kept: <span id="purge-kept-count">0</span></span> |
+              <span style="color:var(--danger)">Deleted: <span id="purge-deleted-count">0</span></span> |
+              Remaining: ~<span id="purge-remaining-count">0</span> |
+              ETA: <span id="purge-eta">—</span>
+            </div>
+            <div id="purge-activity-log" style="display:none; max-height:320px; overflow-y:auto; font-family:monospace; font-size:0.8rem; line-height:1.5; padding:8px; background:var(--bg-primary); border-radius:6px; border:1px solid var(--border-color)"></div>
+            <div id="purge-final-summary" style="display:none; margin-top:8px"></div>
+          </div>
         </div>
       </div>
 
@@ -780,32 +789,122 @@ async function runPurgeQuality(dryRun) {
   await executePurge(true);
 }
 
+function getCategoryLabel(category) {
+  if (category === 'A') return 'Verifiable fact';
+  if (category === 'B') return 'Opinion';
+  if (category === 'C') return 'Platitude';
+  return category;
+}
+
+function formatEta(seconds) {
+  if (!seconds || seconds <= 0) return '< 1s';
+  if (seconds < 60) return `~${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return s > 0 ? `~${m}m ${s}s` : `~${m}m`;
+}
+
+function updatePurgeSummary(kept, deleted, remaining, eta) {
+  const bar = document.getElementById('purge-summary-bar');
+  if (bar) {
+    bar.style.display = 'block';
+    document.getElementById('purge-kept-count').textContent = kept;
+    document.getElementById('purge-deleted-count').textContent = deleted;
+    document.getElementById('purge-remaining-count').textContent = remaining;
+    document.getElementById('purge-eta').textContent = formatEta(eta);
+  }
+}
+
+function appendPurgeLogEntry(container, type, html) {
+  const div = document.createElement('div');
+  div.style.padding = '1px 0';
+  if (type === 'kept') div.style.color = 'var(--success)';
+  else if (type === 'deleted') div.style.color = 'var(--danger)';
+  else if (type === 'warning') div.style.color = 'var(--warning, #f59e0b)';
+  else div.style.color = 'var(--text-secondary)';
+  div.innerHTML = html;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+}
+
+function handlePurgeProgress(data, logContainer, dryRun) {
+  if (data.type === 'kept' || data.type === 'deleted') {
+    const icon = data.type === 'kept' ? '✓' : '✗';
+    const label = dryRun ? (data.type === 'kept' ? 'KEEP' : 'WOULD DELETE') : (data.type === 'kept' ? 'KEPT' : 'DELETE');
+    const catLabel = getCategoryLabel(data.category);
+    appendPurgeLogEntry(logContainer, data.type, `${icon} ${label}: "${escapeHtml(data.quoteText)}" — ${escapeHtml(data.author)} (Cat ${data.category}: ${catLabel})`);
+    updatePurgeSummary(data.totalKept, data.totalDeleted, data.remaining, data.estimatedSecondsLeft);
+  } else if (data.type === 'warning') {
+    appendPurgeLogEntry(logContainer, 'warning', `⚠ ${escapeHtml(data.message)}`);
+  } else {
+    appendPurgeLogEntry(logContainer, 'info', `ℹ ${escapeHtml(data.message)}`);
+  }
+}
+
+function renderPurgeFinalSummary(result, dryRun, el) {
+  const p1 = result.phase1 || {};
+  const p2 = result.phase2 || {};
+  el.style.display = 'block';
+  el.innerHTML = `
+    <strong>${dryRun ? 'Preview Complete' : 'Purge Complete'}</strong><br>
+    <strong>Phase 1 — Hidden quotes:</strong> ${p1.invisible_found || 0} found, ${p1.deleted || 0} deleted<br>
+    <strong>Phase 2 — AI Classification:</strong> ${p2.classified || 0} classified (A: ${p2.breakdown?.category_A || 0}, B: ${p2.breakdown?.category_B || 0}, C: ${p2.breakdown?.category_C || 0})<br>
+    B+C pending deletion: ${p2.pending_deletion || 0}, deleted: ${p2.deleted || 0}<br>
+    ${p2.remaining_unclassified > 0 ? `<em>${p2.remaining_unclassified} quotes still unclassified — run again to continue</em><br>` : ''}
+    ${!dryRun ? `Pinecone cleaned: ${result.pinecone_deleted || 0}` : ''}
+    ${result.pinecone_error ? `<br><span style="color:var(--danger)">Pinecone error: ${escapeHtml(result.pinecone_error)}</span>` : ''}
+  `;
+}
+
 async function executePurge(dryRun) {
-  const btn = document.getElementById(dryRun ? 'purge-preview-btn' : 'purge-execute-btn');
+  const previewBtn = document.getElementById('purge-preview-btn');
+  const executeBtn = document.getElementById('purge-execute-btn');
   const resultsDiv = document.getElementById('purge-quality-results');
-  btn.disabled = true;
-  btn.textContent = dryRun ? 'Previewing...' : 'Purging...';
+  const summaryBar = document.getElementById('purge-summary-bar');
+  const logContainer = document.getElementById('purge-activity-log');
+  const finalSummary = document.getElementById('purge-final-summary');
+
+  previewBtn.disabled = true;
+  executeBtn.disabled = true;
+  (dryRun ? previewBtn : executeBtn).textContent = dryRun ? 'Previewing...' : 'Purging...';
+
+  // Reset and show panel
+  resultsDiv.style.display = 'block';
+  summaryBar.style.display = 'none';
+  logContainer.style.display = 'block';
+  logContainer.innerHTML = '';
+  finalSummary.style.display = 'none';
+  finalSummary.innerHTML = '';
+  document.getElementById('purge-kept-count').textContent = '0';
+  document.getElementById('purge-deleted-count').textContent = '0';
+  document.getElementById('purge-remaining-count').textContent = '0';
+  document.getElementById('purge-eta').textContent = '—';
+
+  // Register Socket.IO listeners
+  const onProgress = (data) => handlePurgeProgress(data, logContainer, dryRun);
+  const onComplete = (data) => {
+    updatePurgeSummary(data.totalKept, data.totalDeleted, 0, 0);
+  };
+  if (typeof socket !== 'undefined' && socket) {
+    socket.on('purge_progress', onProgress);
+    socket.on('purge_complete', onComplete);
+  }
 
   try {
     const result = await API.post('/admin/purge-quality', { dry_run: dryRun, batch_size: 10 });
-    resultsDiv.style.display = 'block';
-    const p1 = result.phase1 || {};
-    const p2 = result.phase2 || {};
-    resultsDiv.innerHTML = `
-      <strong>${dryRun ? 'Preview' : 'Purge Complete'}</strong><br>
-      <strong>Phase 1 — Hidden quotes:</strong> ${p1.invisible_found || 0} found, ${p1.deleted || 0} deleted<br>
-      <strong>Phase 2 — AI Classification:</strong> ${p2.classified || 0} classified (A: ${p2.breakdown?.category_A || 0}, B: ${p2.breakdown?.category_B || 0}, C: ${p2.breakdown?.category_C || 0})<br>
-      B+C pending deletion: ${p2.pending_deletion || 0}, deleted: ${p2.deleted || 0}<br>
-      ${p2.remaining_unclassified > 0 ? `<em>${p2.remaining_unclassified} quotes still unclassified — run again to continue</em><br>` : ''}
-      ${!dryRun ? `Pinecone cleaned: ${result.pinecone_deleted || 0}` : ''}
-      ${result.pinecone_error ? `<br><span style="color:var(--danger)">Pinecone error: ${escapeHtml(result.pinecone_error)}</span>` : ''}
-    `;
-    showToast(dryRun ? 'Preview complete' : `Purge complete: ${(p1.deleted || 0) + (p2.deleted || 0)} quotes deleted`, dryRun ? 'info' : 'success', 5000);
+    renderPurgeFinalSummary(result, dryRun, finalSummary);
+    showToast(dryRun ? 'Preview complete' : `Purge complete: ${(result.phase1?.deleted || 0) + (result.phase2?.deleted || 0)} quotes deleted`, dryRun ? 'info' : 'success', 5000);
   } catch (err) {
     showToast('Purge failed: ' + err.message, 'error', 5000);
   } finally {
-    btn.disabled = false;
-    btn.textContent = dryRun ? 'Preview' : 'Purge Now';
+    if (typeof socket !== 'undefined' && socket) {
+      socket.off('purge_progress', onProgress);
+      socket.off('purge_complete', onComplete);
+    }
+    previewBtn.disabled = false;
+    executeBtn.disabled = false;
+    previewBtn.textContent = 'Preview';
+    executeBtn.textContent = 'Purge Now';
   }
 }
 

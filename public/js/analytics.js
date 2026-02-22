@@ -179,9 +179,9 @@ function renderHighestImportanceHtml(highlightsData) {
     <div class="analytics-highlights-section">
       <div class="trending-section-header"><hr class="topic-section-rule"><h2 class="trending-section-heading">HIGHEST IMPORTANCE</h2><hr class="topic-section-rule"></div>
       <div class="analytics-highlights-grid">
-        <div class="highlights-column"><h3>Top Quotes</h3>${quotesCol}</div>
-        <div class="highlights-column"><h3>Top Authors</h3>${authorsCol}</div>
         <div class="highlights-column"><h3>Top Topics</h3>${topicsCol}</div>
+        <div class="highlights-column"><h3>Top Authors</h3>${authorsCol}</div>
+        <div class="highlights-column"><h3>Top Quotes</h3>${quotesCol}</div>
       </div>
     </div>
   `;

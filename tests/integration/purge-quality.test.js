@@ -236,4 +236,91 @@ describe('Quote Quality Purge', () => {
     const remaining = db.prepare(`SELECT COUNT(*) as count FROM quotes WHERE person_id = ?`).get(personId);
     expect(remaining.count).toBe(1);
   });
+
+  it('emits Socket.IO purge_progress and purge_complete events', async () => {
+    const mockIo = { emit: vi.fn() };
+    app.set('io', mockIo);
+
+    // Pre-classify all existing to avoid uncontrolled classification
+    db.prepare(`UPDATE quotes SET fact_check_category = 'A' WHERE fact_check_category IS NULL`).run();
+
+    const person = insertPerson('SocketIO Speaker');
+    const personId = person.lastInsertRowid;
+    insertQuote(personId, 'hidden socket quote', { isVisible: 0 });
+    updatePersonQuoteCount(personId);
+
+    gemini.generateJSON.mockResolvedValue({ classifications: [] });
+
+    const res = await request(app)
+      .post('/api/admin/purge-quality')
+      .set('Cookie', authCookie)
+      .send({ dry_run: false });
+
+    expect(res.status).toBe(200);
+
+    // Should have emitted purge_progress for phase1
+    const progressCalls = mockIo.emit.mock.calls.filter(c => c[0] === 'purge_progress');
+    expect(progressCalls.length).toBeGreaterThanOrEqual(1);
+    const phase1Events = progressCalls.filter(c => c[1].phase === 'phase1');
+    expect(phase1Events.length).toBeGreaterThanOrEqual(1);
+
+    // Should have emitted purge_complete
+    const completeCalls = mockIo.emit.mock.calls.filter(c => c[0] === 'purge_complete');
+    expect(completeCalls.length).toBe(1);
+    expect(completeCalls[0][1]).toHaveProperty('totalDeleted');
+    expect(completeCalls[0][1]).toHaveProperty('totalKept');
+
+    app.set('io', undefined);
+  });
+
+  it('emits per-quote progress with kept/deleted types during classification', async () => {
+    const mockIo = { emit: vi.fn() };
+    app.set('io', mockIo);
+
+    // Pre-classify all existing to avoid uncontrolled classification
+    db.prepare(`UPDATE quotes SET fact_check_category = 'A' WHERE fact_check_category IS NULL`).run();
+
+    const person = insertPerson('PerQuote Speaker');
+    const personId = person.lastInsertRowid;
+    const q1 = insertQuote(personId, 'The budget is $4.7 trillion');
+    const q2 = insertQuote(personId, 'I feel strongly about this');
+    updatePersonQuoteCount(personId);
+
+    gemini.generateJSON.mockResolvedValue({
+      classifications: [
+        { index: 1, category: 'A', confidence: 0.95 },
+        { index: 2, category: 'B', confidence: 0.85 },
+      ],
+    });
+
+    const res = await request(app)
+      .post('/api/admin/purge-quality')
+      .set('Cookie', authCookie)
+      .send({ dry_run: true, batch_size: 10 });
+
+    expect(res.status).toBe(200);
+
+    const progressCalls = mockIo.emit.mock.calls.filter(c => c[0] === 'purge_progress');
+    const keptEvents = progressCalls.filter(c => c[1].type === 'kept');
+    const deletedEvents = progressCalls.filter(c => c[1].type === 'deleted');
+
+    expect(keptEvents.length).toBeGreaterThanOrEqual(1);
+    expect(deletedEvents.length).toBeGreaterThanOrEqual(1);
+
+    // Verify kept event has expected fields
+    const keptEvent = keptEvents[0][1];
+    expect(keptEvent.category).toBe('A');
+    expect(keptEvent).toHaveProperty('quoteText');
+    expect(keptEvent).toHaveProperty('author');
+    expect(keptEvent).toHaveProperty('totalKept');
+    expect(keptEvent).toHaveProperty('totalDeleted');
+    expect(keptEvent).toHaveProperty('remaining');
+    expect(keptEvent).toHaveProperty('estimatedSecondsLeft');
+
+    // Verify deleted event
+    const deletedEvent = deletedEvents[0][1];
+    expect(deletedEvent.category).toBe('B');
+
+    app.set('io', undefined);
+  });
 });
