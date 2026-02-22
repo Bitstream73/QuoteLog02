@@ -25,7 +25,7 @@ For each quote, return:
 - context: One sentence describing what the quote is about and why it was said.
 - quote_date: The date when this quote was actually spoken/written, in ISO format (YYYY-MM-DD).
   * For current news quotes: use the article's publication date provided above.
-  * For historical quotes (quoting someone from the past, reprinting old statements): use the original date if mentioned in the article, otherwise "unknown".
+  * For historical quotes (quoting someone from the past, reprinting old statements): use the original date if mentioned in the article. If only a year is known, use "YYYY-01-01" (e.g., "2001-01-01"). If only year and month, use "YYYY-MM-01". If no date context at all, return "unknown".
   * For "yesterday"/"last week" references: compute the actual date relative to the article publication date.
   * If the speaker is deceased or the quote clearly predates the article, do NOT use the article date.
 - topics: Array of 1-3 SPECIFIC subject categories. Use the most specific applicable name:
@@ -71,10 +71,24 @@ For each quote, return:
   3-4: Routine statement, standard commentary, generic encouragement
   1-2: Vague platitude, meaningless fragment, purely descriptive, no substance
 
-  HIGH: makes a specific claim, sets a goal, predicts, reveals information, accuses, is funny/memorable, provides genuine insight
-  LOW: "We need to do better" (platitude), "It was a nice event" (descriptive), "The meeting begins at noon" (procedural), fragments without assertion
+  HIGH (5+): makes a specific, checkable claim; sets a measurable goal; predicts a concrete outcome; reveals new information; makes a direct accusation; provides genuine analytical insight
+  LOW (1-4): "We need to do better" (platitude), "It was a nice event" (descriptive), "The meeting begins at noon" (procedural), fragments without assertion, pure rhetoric without a specific claim ("For 47 years, they've been talking and talking"), descriptions of routine actions ("Investigative actions are being carried out"), vague motivational statements
+
+- fact_check_category: Classify this quote's verifiability:
+  "A" - Contains SPECIFIC, VERIFIABLE factual claims (statistics, dates, quantities, named events, measurable outcomes)
+  "B" - Expresses opinion, value judgment, policy position, or prediction — substantive but not verifiable by data lookup
+  "C" - Vague platitude, procedural statement, meaningless fragment, or purely rhetorical with no substance
+  Examples: "Unemployment is at 3.5%" = A, "This policy is a disaster for working families" = B, "We need to do better" = C
+- fact_check_score: Float 0.0-1.0 confidence in the fact_check_category assignment (1.0 = certain, 0.5 = borderline)
+- contains_claim: Boolean — does this quote contain at least one specific factual assertion,
+  substantive claim, concrete prediction, accusation, or policy position with specifics?
+  TRUE: "Inflation will hit 5% by Q3" (prediction), "They cut 2 million jobs" (assertion),
+        "This bill will devastate rural hospitals" (claim with specifics)
+  FALSE: "I think we're doing well" (vague opinion), "It was a great event" (pleasantry),
+         "We need to do better" (platitude), "I'm honored to be here" (courtesy)
 
 Rules:
+- Do NOT extract quotes that are purely rhetorical, procedural, or vague. A quote must contain at least one specific claim, assertion, opinion, accusation, or prediction to be worth extracting.
 - ONLY extract verbatim quotes that appear inside quotation marks.
 - Do NOT extract indirect/reported speech, paraphrases, or descriptions of what someone said.
 - Only extract quotes attributed to a specific named person. Skip unattributed quotes.
@@ -83,8 +97,20 @@ Rules:
 - Do NOT fabricate or embellish quotes. Only extract what is in the article.
 - For speaker names, use the most complete version that appears in the article.
 
-Return a JSON object: { "quotes": [...] }
-If there are no attributable direct quotes, return: { "quotes": [] }
+Additionally, extract all notable entities and key themes from the entire article (not just the quotes). For each entity, provide:
+- name: The full proper name of the entity (e.g., "Donald Trump", not "Trump")
+- type: One of "person", "organization", "place", "event", or "theme"
+
+Entity extraction rules:
+- Extract people, organizations, places, events, and broad themes/topics discussed in the article
+- Use full proper names: "Donald Trump" not "Trump", "Federal Reserve" not "Fed"
+- For themes, use concise noun phrases: "tariffs", "immigration reform", "climate change"
+- Do NOT include the speakers already listed in the quotes — focus on other entities mentioned
+- Aim for 5-15 entities that capture the key subjects of the article
+
+Return a JSON object: { "quotes": [...], "extracted_entities": [{"name": "...", "type": "..."}] }
+If there are no attributable direct quotes, return: { "quotes": [], "extracted_entities": [...] }
+Always return extracted_entities even if quotes is empty.
 
 Article text:
 {{article_text}}`,

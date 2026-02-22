@@ -1,4 +1,5 @@
 async function renderQuote(id) {
+  window._currentQuoteId = id;
   const content = document.getElementById('content');
   content.innerHTML = typeof buildSkeletonHtml === 'function' ? buildSkeletonHtml(1) : '<div class="loading">Loading quote...</div>';
   try {
@@ -8,6 +9,12 @@ async function renderQuote(id) {
       return;
     }
     const q = data.quote;
+
+    // Update page metadata
+    if (typeof updatePageMeta === 'function') {
+      const metaText = q.text.length > 100 ? q.text.substring(0, 100) + '...' : q.text;
+      updatePageMeta(`"${metaText}" - ${q.personName}`, q.context || q.text.substring(0, 200), `/quote/${q.id}`);
+    }
 
     // Build main quote using homepage quote block layout
     const mainQuoteData = {
@@ -26,14 +33,12 @@ async function renderQuote(id) {
       source_name: (data.articles && data.articles[0]) ? (data.articles[0].source_name || '') : '',
       is_visible: q.isVisible,
     };
-    const mainQuoteTopics = q.topics || [];
-
     // Author block
     const heroPersonName = q.personName || '';
     const heroPhotoUrl = q.photoUrl || '';
     const heroInitial = (heroPersonName || '?').charAt(0).toUpperCase();
     const heroAvatarHtml = heroPhotoUrl
-      ? `<img src="${escapeHtml(heroPhotoUrl)}" alt="${escapeHtml(heroPersonName)}" class="quote-hero__avatar" onerror="this.outerHTML='<div class=\\'quote-hero__avatar-placeholder\\'>${heroInitial}</div>'" loading="lazy">`
+      ? `<img src="${escapeHtml(heroPhotoUrl)}" alt="${escapeHtml(heroPersonName)}" class="quote-hero__avatar" onerror="if(!this.dataset.retry){this.dataset.retry='1';this.src=this.src}else{this.outerHTML='<div class=\\'quote-hero__avatar-placeholder\\'>${heroInitial}</div>'}" loading="lazy">`
       : `<div class="quote-hero__avatar-placeholder">${heroInitial}</div>`;
 
     const shareHtml = typeof buildShareButtonsHtml === 'function'
@@ -65,8 +70,8 @@ async function renderQuote(id) {
 
       <!-- 3. Context — date, context text, share + IMPORTANT -->
       <div class="quote-page__context">
-        ${quoteDateStr ? `<span class="quote-date-inline">${quoteDateStr}</span>` : ''}
-        ${q.context ? `<div class="quote-hero__summary">${escapeHtml(q.context)}</div>` : ''}
+        ${quoteDateStr ? `<div style="font-family:var(--font-ui);font-size:var(--text-sm);margin-bottom:0.5rem"><strong>Uttered:</strong> ${quoteDateStr}</div>` : ''}
+        ${q.context ? `<div style="margin-bottom:0.5rem"><strong style="font-family:var(--font-ui);font-size:var(--text-sm)">Quote Context:</strong><div class="quote-hero__summary">${escapeHtml(q.context)}</div></div>` : ''}
         <div class="quote-hero__actions">
           ${shareHtml}
           ${importantHtml}
@@ -77,17 +82,42 @@ async function renderQuote(id) {
     // 4. Source — title (links to article), context, org + published date
     if (data.articles && data.articles.length > 0) {
       html += '<div class="quote-page__source">';
+      html += `<strong style="font-family:var(--font-ui);font-size:var(--text-sm)">Quote Source:</strong>`;
       for (const a of data.articles) {
         const sourceName = a.source_name || a.domain || 'Source';
         const articleDate = a.published_at ? formatDateTime(a.published_at) : '';
+        const saId = a.source_author_id;
+        const saName = a.source_author_name || sourceName;
+        const saImg = a.source_author_image_url;
+        const saInitial = (saName || '?').charAt(0).toUpperCase();
+
+        let avatarHtml;
+        if (saImg) {
+          const imgTag = `<img src="${escapeHtml(saImg)}" alt="${escapeHtml(saName)}" class="source-author-avatar__img" onerror="this.outerHTML='<div class=\\'source-author-avatar__placeholder\\'>${saInitial}</div>'" loading="lazy">`;
+          if (typeof isAdmin !== 'undefined' && isAdmin && saId) {
+            avatarHtml = `<div class="source-author-avatar" onclick="adminChangeSourceAuthorImage(${saId}, '${escapeHtml(saName.replace(/'/g, "\\'"))}')" style="cursor:pointer" title="Change image">${imgTag}</div>`;
+          } else {
+            avatarHtml = `<div class="source-author-avatar">${imgTag}</div>`;
+          }
+        } else {
+          if (typeof isAdmin !== 'undefined' && isAdmin && saId) {
+            avatarHtml = `<div class="source-author-avatar" onclick="adminChangeSourceAuthorImage(${saId}, '${escapeHtml(saName.replace(/'/g, "\\'"))}')" style="cursor:pointer" title="Add image"><div class="source-author-avatar__placeholder">${saInitial}</div></div>`;
+          } else {
+            avatarHtml = `<div class="source-author-avatar"><div class="source-author-avatar__placeholder">${saInitial}</div></div>`;
+          }
+        }
+
         html += `
-          <div class="quote-detail-source-item">
-            <a href="/article/${a.id}" onclick="navigate(event, '/article/${a.id}')" class="quote-article-title-link">${escapeHtml(a.title || 'Untitled Article')}</a>
-            ${a.context ? `<div style="font-family:var(--font-ui);font-size:var(--text-sm);color:var(--text-secondary);margin-top:0.25rem">${escapeHtml(a.context)}</div>` : ''}
-            <div style="display:flex;gap:0.5rem;align-items:center;margin-top:0.25rem">
-              <span class="quote-primary-source">${escapeHtml(sourceName)}</span>
-              ${articleDate ? `<span class="quote-date-inline">${articleDate}</span>` : ''}
-              ${a.url ? `<a href="${escapeHtml(a.url)}" target="_blank" rel="noopener" style="font-family:var(--font-ui);font-size:var(--text-xs);color:var(--accent);text-decoration:none">View original &rarr;</a>` : ''}
+          <div class="quote-detail-source-item" style="display:flex;gap:0.75rem;align-items:stretch">
+            ${avatarHtml}
+            <div class="source-author-content">
+              <a href="/article/${a.id}" onclick="navigate(event, '/article/${a.id}')" class="quote-article-title-link">${escapeHtml(a.title || 'Untitled Article')}</a>
+              ${a.context ? `<div style="font-family:var(--font-ui);font-size:var(--text-sm);color:var(--text-secondary);margin-top:0.25rem">${escapeHtml(a.context)}</div>` : ''}
+              <div style="display:flex;gap:0.5rem;align-items:center;margin-top:0.25rem">
+                <span class="quote-primary-source">${escapeHtml(sourceName)}</span>
+                ${articleDate ? `<span class="quote-date-inline">${articleDate}</span>` : ''}
+                ${a.url ? `<a href="${escapeHtml(a.url)}" target="_blank" rel="noopener" style="font-family:var(--font-ui);font-size:var(--text-xs);color:var(--accent);text-decoration:none">View original &rarr;</a>` : ''}
+              </div>
             </div>
           </div>
         `;
@@ -95,27 +125,10 @@ async function renderQuote(id) {
       html += '</div>';
     }
 
-    // 5. AI Analysis — no header, no rerun button; truth badge at top
+    // 5. Fact Check section
     html += `
-      <div id="context-container" style="margin-top:2rem;padding-top:1.5rem;border-top:1px solid var(--divider-light)">
-        <div id="truth-badge-slot"></div>
-        <div id="context-content">
-          <div class="context-loading">
-            <div class="context-loading-spinner"></div>
-            <span style="font-family:var(--font-ui);font-size:var(--text-sm);color:var(--text-muted)">Analyzing quote...</span>
-          </div>
-        </div>
-      </div>
-    `;
-
-    // Fact Check section (renders into truth badge + inline content)
-    html += `
-      <div id="fact-check-container" style="margin-top:1.5rem">
+      <div id="fact-check-container" style="margin-top:2rem;padding-top:1.5rem;border-top:1px solid var(--divider-light)">
         <div id="fact-check-content">
-          <div class="context-loading">
-            <div class="context-loading-spinner"></div>
-            <span style="font-family:var(--font-ui);font-size:var(--text-sm);color:var(--text-muted)">Checking facts...</span>
-          </div>
         </div>
       </div>
     `;
@@ -141,6 +154,11 @@ async function renderQuote(id) {
       }
     }
 
+    // Admin details panel (twirl-down)
+    if (typeof isAdmin !== 'undefined' && isAdmin) {
+      html += buildAdminQuoteDetailsPanel(data);
+    }
+
     content.innerHTML = html;
 
     // Reset annotation flag for this page render
@@ -148,7 +166,6 @@ async function renderQuote(id) {
 
     // Auto-load all sections in parallel
     loadSmartRelated(q.id);
-    loadQuoteContext(q.id);
     runFactCheck(q.id);
   } catch (err) {
     content.innerHTML = `<div class="empty-state"><h3>Error</h3><p>${escapeHtml(err.message)}</p></div>`;
@@ -178,7 +195,7 @@ async function loadSmartRelated(quoteId) {
     if (data.supportingContext && data.supportingContext.length > 0) {
       col1 += '<div class="smart-related-group">';
       col1 += '<h3 class="smart-related-group-title">More Context from Same Author</h3>';
-      for (const c of data.supportingContext) {
+      for (const c of data.supportingContext.slice(0, 4)) {
         col1 += buildSmartRelatedQuoteBlock(c);
       }
       col1 += '</div>';
@@ -189,7 +206,7 @@ async function loadSmartRelated(quoteId) {
     if (data.mentionsByOthers && data.mentionsByOthers.length > 0) {
       col2 += '<div class="smart-related-group">';
       col2 += '<h3 class="smart-related-group-title" style="color:var(--accent)">What Others Say</h3>';
-      for (const m of data.mentionsByOthers) {
+      for (const m of data.mentionsByOthers.slice(0, 4)) {
         col2 += buildSmartRelatedQuoteBlock(m);
       }
       col2 += '</div>';
@@ -226,6 +243,7 @@ function buildSmartRelatedQuoteBlock(item) {
     person_name: item.person_name || item.authorName,
     person_id: item.person_id || '',
     photo_url: item.photo_url || '',
+    person_category_context: item.person_category_context || '',
     importants_count: item.importants_count || 0,
     quote_datetime: item.quote_datetime || item.date || '',
     article_id: item.article_id || '',
@@ -233,122 +251,7 @@ function buildSmartRelatedQuoteBlock(item) {
     source_domain: item.source_domain || '',
     source_name: item.source_name || item.sourceName || '',
   };
-  const topics = item.topics || [];
-  return buildQuoteBlockHtml(quoteData, topics, false, { variant: 'compact', showAvatar: false, showSummary: false });
-}
-
-/**
- * Load AI context analysis for a quote (auto-loads on page render).
- */
-async function loadQuoteContext(quoteId, force) {
-  const container = document.getElementById('context-content');
-  if (!container) return;
-
-  // Check client-side cache (skip if force refresh)
-  if (!force) {
-    try {
-      const raw = sessionStorage.getItem(CTX_CACHE_PREFIX + quoteId);
-      if (raw) {
-        const cached = JSON.parse(raw);
-        if (Date.now() - cached.timestamp < CTX_CACHE_TTL_MS) {
-          renderContextResult(container, cached.data);
-          return;
-        }
-        sessionStorage.removeItem(CTX_CACHE_PREFIX + quoteId);
-      }
-    } catch { /* ignore */ }
-  }
-
-  // Show loading spinner
-  container.innerHTML = `
-    <div class="context-loading">
-      <div class="context-loading-spinner"></div>
-      <span style="font-family:var(--font-ui);font-size:var(--text-sm);color:var(--text-muted)">Analyzing quote...</span>
-    </div>
-  `;
-
-  try {
-    const data = await API.post(`/quotes/${quoteId}/context${force ? '?force=true' : ''}`);
-
-    // Cache result
-    try {
-      sessionStorage.setItem(CTX_CACHE_PREFIX + quoteId, JSON.stringify({
-        data,
-        timestamp: Date.now(),
-      }));
-    } catch { /* sessionStorage full */ }
-
-    renderContextResult(container, data);
-  } catch (err) {
-    container.innerHTML = `<div class="context-error"><p>Analysis unavailable. ${escapeHtml(err.message)}</p><button class="context-btn" onclick="loadQuoteContext(${quoteId}, false)">Try Again</button></div>`;
-  }
-}
-
-/**
- * Render context analysis result into a container.
- */
-function renderContextResult(container, data) {
-  let html = '';
-
-  // "Referenced in this Quote" section
-  const hasEvidence = data.claims && data.claims.some(c =>
-    (c.supporting && c.supporting.length) || (c.contradicting && c.contradicting.length) || (c.addingContext && c.addingContext.length)
-  );
-  if (hasEvidence) {
-    html += '<h3 class="quote-section-label" style="margin-top:0">Referenced in this Quote</h3>';
-  }
-
-  // Summary
-  if (data.summary) {
-    html += `<div class="context-summary">${escapeHtml(data.summary)}</div>`;
-  }
-
-  // Claims with cited quotes at 0.5em
-  if (data.claims && data.claims.length > 0) {
-    for (const claim of data.claims) {
-      html += '<div class="context-claim">';
-      html += `<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem">`;
-      html += buildClaimTypeBadge(claim.type);
-      html += `<span style="font-family:var(--font-headline);font-weight:600">${escapeHtml(claim.claim)}</span>`;
-      html += '</div>';
-
-      if (claim.supporting && claim.supporting.length > 0) {
-        html += '<div class="context-evidence context-evidence-supporting">';
-        html += '<div class="context-evidence-label">Supporting</div>';
-        for (const ev of claim.supporting) {
-          html += buildEvidenceItem(ev);
-        }
-        html += '</div>';
-      }
-
-      if (claim.contradicting && claim.contradicting.length > 0) {
-        html += '<div class="context-evidence context-evidence-contradicting">';
-        html += '<div class="context-evidence-label">Contradicting</div>';
-        for (const ev of claim.contradicting) {
-          html += buildEvidenceItem(ev);
-        }
-        html += '</div>';
-      }
-
-      if (claim.addingContext && claim.addingContext.length > 0) {
-        html += '<div class="context-evidence context-evidence-context">';
-        html += '<div class="context-evidence-label">Additional Context</div>';
-        for (const ev of claim.addingContext) {
-          html += buildEvidenceItem(ev);
-        }
-        html += '</div>';
-      }
-
-      html += '</div>';
-    }
-  }
-
-  // Confidence note
-  if (data.confidenceNote) {
-    html += `<div class="context-confidence-note">${escapeHtml(data.confidenceNote)}</div>`;
-  }
-
-  container.innerHTML = html;
+  return buildQuoteBlockHtml(quoteData, false, { variant: 'compact', showAvatar: true, showSummary: true });
 }
 
 /**
@@ -359,61 +262,110 @@ function showRefreshBtn(btnId) {
   if (btn) btn.style.display = '';
 }
 
-/**
- * Build a claim type badge.
- */
-function buildClaimTypeBadge(type) {
-  const colors = {
-    factual: 'var(--accent, #2563eb)',
-    opinion: '#d97706',
-    prediction: '#7c3aed',
-    promise: '#059669',
-    accusation: '#dc2626',
-  };
-  const color = colors[type] || 'var(--text-muted)';
-  return `<span class="claim-type-badge" style="background:${color}">${escapeHtml(type)}</span>`;
-}
-
-/**
- * Build an evidence item (supporting/contradicting/context) with source citation.
- */
-function buildEvidenceItem(ev) {
-  let html = '<div class="context-evidence-item">';
-
-  // Cited quote with link — half font size, clickable to /quote/:id
-  if (ev.quoteId && ev.quoteText) {
-    html += `<a href="/quote/${ev.quoteId}" onclick="navigate(event, '/quote/${ev.quoteId}')" class="evidence-quote-link">"${escapeHtml(ev.quoteText)}"</a>`;
-    if (ev.authorName) {
-      html += `<span class="evidence-author"> — ${escapeHtml(ev.authorName)}</span>`;
-    }
-  }
-
-  html += `<div class="evidence-explanation">${escapeHtml(ev.explanation)}</div>`;
-
-  // Source citation with hyperlink
-  if (ev.sourceUrl) {
-    const label = ev.sourceName || 'Source';
-    html += `<a href="${escapeHtml(ev.sourceUrl)}" target="_blank" rel="noopener" class="evidence-source-cite">Source: ${escapeHtml(label)} &rarr;</a>`;
-  } else if (ev.sourceName) {
-    html += `<span class="evidence-source-cite">Source: ${escapeHtml(ev.sourceName)}</span>`;
-  }
-
-  html += '</div>';
-  return html;
-}
-
 // ---------------------------------------------------------------------------
 // Client-side caching
 // ---------------------------------------------------------------------------
-
-const CTX_CACHE_PREFIX = 'ctx_cache_';
-const CTX_CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
 
 const FC_CACHE_PREFIX = 'fc_cache_';
 const FC_CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
 
 // Guard against double annotation of quote text
 let quoteTextAnnotated = false;
+
+// Flag: true while a first-time fact-check is running (blocks sharing)
+let _factCheckInProgress = false;
+
+// Quote ID awaiting async fact-check result via Socket.IO
+let _awaitingFactCheckQuoteId = null;
+
+// ---------------------------------------------------------------------------
+// Fact-check loading animation
+// ---------------------------------------------------------------------------
+
+const FACT_CHECK_LOADING_MESSAGES = [
+  'Pulling the original document\u2026',
+  'Fetching primary sources\u2026',
+  'Checking the public record\u2026',
+  'Retrieving filings and transcripts\u2026',
+  'Verifying dates, names, and numbers\u2026',
+  'Cross-referencing multiple sources\u2026',
+  'Comparing official statements over time\u2026',
+  'Triangulating claims with data\u2026',
+  'Confirming the chain of custody\u2026',
+  'Checking archived versions for edits\u2026',
+  'Matching quotes to the earliest known appearance\u2026',
+  'Checking whether a clip is missing context\u2026',
+  'Searching the archives\u2026',
+  'Dusting off the microfilm\u2026',
+  'Paging through old editions\u2026',
+  'Hunting for buried PDFs\u2026',
+  'Following the paper trail\u2026',
+  'Digging through meeting minutes\u2026',
+  'Scanning footnotes and appendices\u2026',
+  'Pulling records from the stacks\u2026',
+  'Sifting through decades of coverage\u2026',
+  'Revisiting prior reporting\u2026',
+  'Comparing revisions across snapshots\u2026',
+  'Mapping citations back to the source\u2026',
+  'Tracking a story across years, not hours\u2026',
+  'Cleaning the dataset\u2026',
+  'Standardizing messy numbers\u2026',
+  'Running a sanity check on the stats\u2026',
+  'Rebuilding the timeline\u2026',
+  'Plotting key events\u2026',
+  'Looking for outliers and inconsistencies\u2026',
+  'Checking denominators (because they matter)\u2026',
+  'Translating jargon into plain English\u2026',
+  'Comparing claims to historical baselines\u2026',
+  'Looking for what\u2019s missing, not just what\u2019s there\u2026',
+  'Compiling evidence packets\u2026',
+  'Building a source map\u2026',
+  'Logging what we know\u2014and what we don\u2019t\u2026',
+  'Marking unverified details as unverified\u2026',
+  'Separating reporting from speculation\u2026',
+  'Updating the working notes\u2026',
+  'Putting on the \u201Cdocument detective\u201D hat\u2026',
+  'Following the breadcrumbs\u2026',
+  'Doing a quick \u201Ctrust, but verify\u201D pass\u2026',
+  'Asking the archives nicely to cooperate\u2026',
+  'Making the timeline behave\u2026',
+  'Chasing citations down rabbit holes\u2026',
+  'Squinting at fine print so you don\u2019t have to\u2026',
+  'Holding a magnifying glass to the details\u2026',
+  'Turning \u201Csomeone said\u201D into \u201Chere\u2019s the source\u201D\u2026',
+  'Watching for the classic \u201Cchart without axes\u201D move\u2026',
+  'Checking if the numbers are doing that thing where they lie\u2026',
+  'Staying up late to comb the archives (so you can sleep)\u2026',
+];
+
+let _fcLoadingTimer = null;
+
+function startFactCheckLoadingAnimation(container) {
+  stopFactCheckLoadingAnimation();
+  container.innerHTML = `
+    <div class="context-loading" style="flex-direction:column;align-items:flex-start;gap:0.5rem">
+      <div style="font-family:var(--font-ui);font-size:var(--text-sm);color:var(--text-muted);margin-bottom:0.25rem">
+        Just a sec. We're researching this for the first time.
+      </div>
+      <div style="display:flex;align-items:center;gap:0.5rem">
+        <div class="context-loading-spinner"></div>
+        <span id="fc-loading-msg" style="font-family:var(--font-ui);font-size:var(--text-sm);color:var(--text-muted)"></span>
+      </div>
+    </div>
+  `;
+  function cycle() {
+    const el = document.getElementById('fc-loading-msg');
+    if (!el) { _fcLoadingTimer = null; return; }
+    el.textContent = FACT_CHECK_LOADING_MESSAGES[Math.floor(Math.random() * FACT_CHECK_LOADING_MESSAGES.length)];
+    const delay = (Math.floor(Math.random() * 3) + 1) * 1000;
+    _fcLoadingTimer = setTimeout(cycle, delay);
+  }
+  cycle();
+}
+
+function stopFactCheckLoadingAnimation() {
+  if (_fcLoadingTimer) { clearTimeout(_fcLoadingTimer); _fcLoadingTimer = null; }
+}
 
 /**
  * Run fact-check + reference enrichment for a quote (auto-loads on page render).
@@ -429,7 +381,7 @@ async function runFactCheck(quoteId, force) {
       if (raw) {
         const cached = JSON.parse(raw);
         if (Date.now() - cached.timestamp < FC_CACHE_TTL_MS) {
-          renderFactCheckResult(container, cached.data);
+          renderFactCheckResult(container, cached.data, quoteId);
           annotateQuoteText(cached.data);
           return;
         }
@@ -438,13 +390,9 @@ async function runFactCheck(quoteId, force) {
     } catch { /* ignore */ }
   }
 
-  // Show loading spinner
-  container.innerHTML = `
-    <div class="context-loading">
-      <div class="context-loading-spinner"></div>
-      <span style="font-family:var(--font-ui);font-size:var(--text-sm);color:var(--text-muted)">Checking facts...</span>
-    </div>
-  `;
+  // Show animated loading messages
+  startFactCheckLoadingAnimation(container);
+  _factCheckInProgress = true;
 
   // Gather quote data from the DOM
   const heroText = document.querySelector('.quote-page__text') || document.querySelector('.quote-hero__text');
@@ -457,13 +405,11 @@ async function runFactCheck(quoteId, force) {
   const contextText = heroSummary?.textContent?.trim() || '';
   const sourceEl = document.querySelector('.quote-primary-source');
   const sourceName = sourceEl?.textContent?.trim() || '';
-  const tagEls = document.querySelectorAll('.quote-block__topic-tag') || [];
-  const tags = [...tagEls].map(t => t.textContent.trim());
   const dateEl = document.querySelector('.quote-date-inline');
   const sourceDate = dateEl?.textContent?.trim() || new Date().toISOString().split('T')[0];
 
   try {
-    const result = await API.post('/fact-check/check', {
+    const postBody = {
       quoteId,
       quoteText,
       authorName,
@@ -471,8 +417,17 @@ async function runFactCheck(quoteId, force) {
       context: contextText,
       sourceName,
       sourceDate,
-      tags,
-    });
+    };
+    if (force) postBody.force = true;
+
+    const result = await API.post('/fact-check/check', postBody);
+
+    // Async 202 — result will arrive via Socket.IO
+    if (result.queued) {
+      _awaitingFactCheckQuoteId = quoteId;
+      // Loading animation continues until Socket.IO delivers result
+      return;
+    }
 
     // Cache result
     try {
@@ -482,47 +437,164 @@ async function runFactCheck(quoteId, force) {
       }));
     } catch { /* sessionStorage full */ }
 
-    renderFactCheckResult(container, result);
+    renderFactCheckResult(container, result, quoteId);
     annotateQuoteText(result);
+    _factCheckInProgress = false;
 
   } catch (err) {
+    _factCheckInProgress = false;
+    _awaitingFactCheckQuoteId = null;
+    stopFactCheckLoadingAnimation();
     container.innerHTML = `<div class="context-error"><p>Fact check unavailable.</p><button class="context-btn" onclick="runFactCheck(${quoteId}, false)">Try Again</button></div>`;
   }
 }
 
-function renderFactCheckResult(container, result) {
+function renderFactCheckResult(container, result, quoteId) {
+  stopFactCheckLoadingAnimation();
   container.innerHTML = result.combinedHtml || result.html || '';
 
-  // Extract verdict badge and place it at top of analysis section
-  const badgeSlot = document.getElementById('truth-badge-slot');
-  if (badgeSlot && result.verdict) {
-    const verdictColors = {
-      TRUE: 'var(--success, #16a34a)',
-      FALSE: 'var(--error, #c41e3a)',
-      MOSTLY_TRUE: '#059669',
-      MOSTLY_FALSE: '#d97706',
-      MISLEADING: '#d97706',
-      LACKS_CONTEXT: 'var(--info, #2563eb)',
-      UNVERIFIABLE: 'var(--text-muted)',
-    };
-    const verdictLabels = {
-      TRUE: 'True',
-      FALSE: 'False',
-      MOSTLY_TRUE: 'Mostly True',
-      MOSTLY_FALSE: 'Mostly False',
-      MISLEADING: 'Misleading',
-      LACKS_CONTEXT: 'Lacks Context',
-      UNVERIFIABLE: 'Unverifiable',
-    };
-    const color = verdictColors[result.verdict] || 'var(--text-muted)';
-    const label = verdictLabels[result.verdict] || result.verdict;
-    badgeSlot.innerHTML = `<div class="truth-badge" style="background:${color}">${escapeHtml(label)}</div>`;
+  // Load feedback counts and apply session state
+  initFactCheckFeedback(quoteId, result);
+
+  // Admin-only rerun button
+  if (typeof isAdmin !== 'undefined' && isAdmin) {
+    const rerunBtn = document.createElement('button');
+    rerunBtn.className = 'fc-rerun-btn';
+    rerunBtn.textContent = 'Rerun Fact Check';
+    rerunBtn.onclick = () => rerunFactCheck(quoteId);
+    container.appendChild(rerunBtn);
+  }
+}
+
+function rerunFactCheck(quoteId) {
+  sessionStorage.removeItem(FC_CACHE_PREFIX + quoteId);
+  sessionStorage.removeItem('fc_feedback_' + quoteId);
+  runFactCheck(quoteId, true);
+}
+
+function handleQuotePageFactCheckComplete(data) {
+  const quoteId = parseInt(data.quoteId, 10);
+  if (!_awaitingFactCheckQuoteId || parseInt(_awaitingFactCheckQuoteId, 10) !== quoteId) return;
+  _awaitingFactCheckQuoteId = null;
+
+  const container = document.getElementById('fact-check-content');
+  if (!container) return;
+
+  // Fetch the full result from DB cache
+  API.get('/fact-check/check/' + quoteId).then(result => {
+    try {
+      sessionStorage.setItem(FC_CACHE_PREFIX + quoteId, JSON.stringify({
+        data: result,
+        timestamp: Date.now(),
+      }));
+    } catch { /* sessionStorage full */ }
+
+    renderFactCheckResult(container, result, quoteId);
+    annotateQuoteText(result);
+    _factCheckInProgress = false;
+  }).catch(() => {
+    _factCheckInProgress = false;
+    stopFactCheckLoadingAnimation();
+    container.innerHTML = `<div class="context-error"><p>Fact check unavailable.</p><button class="context-btn" onclick="runFactCheck(${quoteId}, false)">Try Again</button></div>`;
+  });
+}
+
+function handleQuotePageFactCheckError(data) {
+  const quoteId = parseInt(data.quoteId, 10);
+  if (!_awaitingFactCheckQuoteId || parseInt(_awaitingFactCheckQuoteId, 10) !== quoteId) return;
+  _awaitingFactCheckQuoteId = null;
+  _factCheckInProgress = false;
+
+  const container = document.getElementById('fact-check-content');
+  if (!container) return;
+
+  stopFactCheckLoadingAnimation();
+  container.innerHTML = `<div class="context-error"><p>Fact check failed: ${escapeHtml(data.error || 'Unknown error')}</p><button class="context-btn" onclick="runFactCheck(${quoteId}, false)">Try Again</button></div>`;
+}
+
+/**
+ * Initialize fact-check feedback buttons: load counts and restore session vote state.
+ */
+async function initFactCheckFeedback(quoteId, result) {
+  const feedbackEl = document.querySelector('.fc-feedback[data-quote-id]');
+  if (!feedbackEl) return;
+
+  // Check if user already voted this session
+  const voted = sessionStorage.getItem('fc_feedback_' + quoteId);
+  if (voted) {
+    disableFeedbackButtons(quoteId, voted);
+  }
+
+  // Populate counts from result if available, otherwise fetch
+  let agreeCount = result?.agree_count;
+  let disagreeCount = result?.disagree_count;
+
+  if (agreeCount == null || disagreeCount == null) {
+    try {
+      const counts = await API.get('/fact-check/' + quoteId + '/feedback');
+      agreeCount = counts.agree_count || 0;
+      disagreeCount = counts.disagree_count || 0;
+    } catch {
+      return;
+    }
+  }
+
+  updateFeedbackCounts(quoteId, agreeCount, disagreeCount);
+}
+
+/**
+ * Handle agree/disagree button click.
+ */
+async function handleFactCheckFeedback(event, quoteId, value) {
+  event.preventDefault();
+  const btn = event.currentTarget;
+  if (btn.disabled) return;
+
+  try {
+    const result = await API.post('/fact-check/' + quoteId + '/feedback', { value });
+    sessionStorage.setItem('fc_feedback_' + quoteId, value);
+    updateFeedbackCounts(quoteId, result.agree_count, result.disagree_count);
+    disableFeedbackButtons(quoteId, value);
+  } catch (err) {
+    showToast('Could not submit feedback', 'error');
+  }
+}
+
+function updateFeedbackCounts(quoteId, agreeCount, disagreeCount) {
+  const feedbackEl = document.querySelector('.fc-feedback[data-quote-id="' + quoteId + '"]');
+  if (!feedbackEl) return;
+
+  const counts = feedbackEl.querySelectorAll('.fc-feedback-count');
+  if (counts[0]) counts[0].textContent = '(' + (agreeCount || 0) + ')';
+  if (counts[1]) counts[1].textContent = '(' + (disagreeCount || 0) + ')';
+}
+
+function disableFeedbackButtons(quoteId, votedValue) {
+  const feedbackEl = document.querySelector('.fc-feedback[data-quote-id="' + quoteId + '"]');
+  if (!feedbackEl) return;
+
+  const buttons = feedbackEl.querySelectorAll('.fc-feedback-btn');
+  buttons.forEach(btn => {
+    btn.disabled = true;
+    btn.classList.add('fc-feedback-btn--disabled');
+  });
+
+  // Highlight the voted button
+  const votedBtn = feedbackEl.querySelector(
+    votedValue === 'agree' ? '.fc-feedback-agree' : '.fc-feedback-disagree'
+  );
+  if (votedBtn) {
+    votedBtn.classList.add('fc-feedback-btn--voted');
+    votedBtn.classList.remove('fc-feedback-btn--disabled');
+    votedBtn.style.opacity = '1';
   }
 }
 
 /**
  * After rendering reference cards, annotate the quote text with inline links
- * for referenced phrases. Guarded against double-run.
+ * for referenced phrases. Uses DOM TreeWalker to only match inside text nodes,
+ * preventing accidental replacement inside href URLs or HTML attributes.
+ * Guarded against double-run.
  */
 function annotateQuoteText(result) {
   if (quoteTextAnnotated) return;
@@ -568,7 +640,6 @@ function annotateQuoteText(result) {
     }
   }
 
-  quoteTextEl.innerHTML = html;
   quoteTextAnnotated = true;
 }
 
@@ -584,3 +655,252 @@ function cleanUrlForAttr(url) {
     .replace(/&#39;/g, "'");
 }
 
+// ---------------------------------------------------------------------------
+// Admin Details Panel
+// ---------------------------------------------------------------------------
+
+function buildAdminQuoteDetailsPanel(data) {
+  const q = data.quote;
+  const author = data.adminAuthor;
+  const sources = data.adminSources || [];
+  const topics = data.adminTopics || [];
+  const keywords = data.adminKeywords || [];
+  const extractedKeywords = data.adminExtractedKeywords || [];
+
+  // Filter keywords that are NOT in any topic (topics have their own keywords)
+  const topicNames = new Set(topics.map(t => t.name.toLowerCase()));
+
+  let html = `
+    <details class="admin-details-panel" id="admin-details-panel">
+      <summary class="admin-details-panel__summary">
+        <span class="admin-details-panel__title">Admin Details</span>
+      </summary>
+      <div class="admin-details-panel__body">
+  `;
+
+  // --- Topics section ---
+  html += `<div class="admin-details-section">
+    <h4 class="admin-details-section__title">Topics</h4>`;
+  if (topics.length > 0) {
+    html += '<div class="admin-details-tags">';
+    for (const t of topics) {
+      html += `<span class="admin-details-tag admin-details-tag--topic">${escapeHtml(t.name)}<span class="admin-details-tag__status">${t.status}</span></span>`;
+    }
+    html += '</div>';
+  } else {
+    html += '<p class="admin-details-empty">No topics associated</p>';
+  }
+  html += '</div>';
+
+  // --- Keywords section ---
+  const matchedNames = new Set(keywords.map(k => k.name.toLowerCase()));
+  const pendingExtracted = extractedKeywords.filter(ek => !matchedNames.has(ek.toLowerCase()));
+
+  html += `<div class="admin-details-section">
+    <h4 class="admin-details-section__title">Keywords</h4>`;
+  if (keywords.length > 0 || pendingExtracted.length > 0) {
+    html += '<div class="admin-details-tags">';
+    for (const k of keywords) {
+      html += `<span class="admin-details-tag admin-details-tag--keyword">${escapeHtml(k.name)}${k.confidence ? `<span class="admin-details-tag__confidence">${k.confidence}</span>` : ''}</span>`;
+    }
+    for (const ek of pendingExtracted) {
+      html += `<span class="admin-details-tag admin-details-tag--keyword admin-details-tag--pending">${escapeHtml(ek)}<span class="admin-details-tag__confidence">pending</span></span>`;
+    }
+    html += '</div>';
+  } else {
+    html += '<p class="admin-details-empty">No keywords associated</p>';
+  }
+  html += '</div>';
+
+  // --- Quote Fields section ---
+  html += `<div class="admin-details-section">
+    <h4 class="admin-details-section__title">Quote Fields</h4>
+    <table class="admin-details-table">
+      <tbody>
+        ${adminFieldRow('ID', q.id, false)}
+        ${adminFieldRow('Text', q.text, true, 'textarea', q.id, 'quote', 'text')}
+        ${adminFieldRow('Context', q.context || '', true, 'textarea', q.id, 'quote', 'context')}
+        ${adminFieldRow('Type', q.quoteType || 'direct', true, 'select:direct,indirect', q.id, 'quote', 'quoteType')}
+        ${adminFieldRow('Visible', q.isVisible ? 'Yes' : 'No', true, 'toggle', q.id, 'quote', 'isVisible')}
+        ${adminFieldRow('Quote Date', q.quoteDateTime || '', true, 'text', q.id, 'quote', 'quoteDateTime')}
+        ${adminFieldRow('First Seen', q.firstSeenAt || '', false)}
+        ${adminFieldRow('Created', q.createdAt || '', false)}
+        ${adminFieldRow('Canonical Quote ID', q.canonicalQuoteId || 'None', false)}
+        ${adminFieldRow('Importants', q.importantsCount || 0, false)}
+        ${adminFieldRow('Shares', q.shareCount || 0, false)}
+        ${adminFieldRow('Trending Score', q.trendingScore || 0, false)}
+        ${adminFieldRow('Fact Check', q.factCheckCategory ? q.factCheckCategory + (q.factCheckConfidence != null ? ' (' + (q.factCheckConfidence * 100).toFixed(0) + '%)' : '') : 'None', false)}
+        ${adminFieldRow('Source URLs', (q.sourceUrls || []).length > 0 ? q.sourceUrls.map(u => '<a href="' + escapeHtml(u) + '" target="_blank" rel="noopener" style="color:var(--accent);word-break:break-all">' + escapeHtml(u) + '</a>').join('<br>') : 'None', false, 'html')}
+        ${q.rssMetadata ? adminFieldRow('RSS Article', '<a href="' + escapeHtml(q.rssMetadata.articleUrl || '') + '" target="_blank" rel="noopener" style="color:var(--accent)">' + escapeHtml(q.rssMetadata.articleTitle || '') + '</a><br><span style="color:var(--text-muted)">' + escapeHtml(q.rssMetadata.domain || '') + ' &middot; ' + escapeHtml(q.rssMetadata.publishedAt || '') + '</span>', false, 'html') : ''}
+      </tbody>
+    </table>
+  </div>`;
+
+  // --- Author Fields section ---
+  if (author) {
+    html += `<div class="admin-details-section">
+      <h4 class="admin-details-section__title">Author Fields</h4>
+      <table class="admin-details-table">
+        <tbody>
+          ${adminFieldRow('ID', author.id, false)}
+          ${adminFieldRow('Name', author.canonicalName || '', true, 'text', author.id, 'author', 'canonicalName')}
+          ${adminFieldRow('Disambiguation', author.disambiguation || '', true, 'text', author.id, 'author', 'disambiguation')}
+          ${adminFieldRow('Photo URL', author.photoUrl || '', true, 'text', author.id, 'author', 'photoUrl')}
+          ${adminFieldRow('Category', author.category || 'Other', true, 'text', author.id, 'author', 'category')}
+          ${adminFieldRow('Category Context', author.categoryContext || '', true, 'text', author.id, 'author', 'categoryContext')}
+          ${adminFieldRow('Wikidata ID', author.wikidataId || 'None', false)}
+          ${adminFieldRow('First Seen', author.firstSeenAt || '', false)}
+          ${adminFieldRow('Last Seen', author.lastSeenAt || '', false)}
+          ${adminFieldRow('Quote Count', author.quoteCount || 0, false)}
+          ${adminFieldRow('Importants', author.importantsCount || 0, false)}
+          ${adminFieldRow('Shares', author.shareCount || 0, false)}
+          ${adminFieldRow('Views', author.viewCount || 0, false)}
+          ${adminFieldRow('Trending Score', author.trendingScore || 0, false)}
+          ${(author.organizations || []).length > 0 ? adminFieldRow('Organizations', author.organizations.join(', '), false) : ''}
+          ${(author.titles || []).length > 0 ? adminFieldRow('Titles', author.titles.join(', '), false) : ''}
+        </tbody>
+      </table>
+    </div>`;
+  }
+
+  // --- Source Fields section ---
+  if (sources.length > 0) {
+    for (const src of sources) {
+      html += `<div class="admin-details-section">
+        <h4 class="admin-details-section__title">Source: ${escapeHtml(src.name || src.domain)}</h4>
+        <table class="admin-details-table">
+          <tbody>
+            ${adminFieldRow('ID', src.id, false)}
+            ${adminFieldRow('Domain', src.domain || '', true, 'text', src.id, 'source', 'domain')}
+            ${adminFieldRow('Name', src.name || '', true, 'text', src.id, 'source', 'name')}
+            ${adminFieldRow('RSS URL', src.rssUrl || '', true, 'text', src.id, 'source', 'rss_url')}
+            ${adminFieldRow('Enabled', src.enabled ? 'Yes' : 'No', true, 'toggle', src.id, 'source', 'enabled')}
+            ${adminFieldRow('Top Story', src.isTopStory ? 'Yes' : 'No', true, 'toggle', src.id, 'source', 'is_top_story')}
+            ${adminFieldRow('Failures', src.consecutiveFailures || 0, false)}
+            ${adminFieldRow('Created', src.createdAt || '', false)}
+            ${adminFieldRow('Updated', src.updatedAt || '', false)}
+          </tbody>
+        </table>
+      </div>`;
+    }
+  }
+
+  html += '</div></details>';
+  return html;
+}
+
+function adminFieldRow(label, value, editable, inputType, entityId, entityType, fieldName) {
+  const displayValue = inputType === 'html' ? value : escapeHtml(String(value));
+
+  if (!editable) {
+    return `<tr class="admin-details-row">
+      <td class="admin-details-row__label">${escapeHtml(label)}</td>
+      <td class="admin-details-row__value">${displayValue}</td>
+    </tr>`;
+  }
+
+  const editId = `admin-edit-${entityType}-${fieldName}-${entityId}`;
+  return `<tr class="admin-details-row">
+    <td class="admin-details-row__label">${escapeHtml(label)}</td>
+    <td class="admin-details-row__value admin-details-row__value--editable">
+      <span id="${editId}-display" onclick="adminStartInlineEdit('${editId}', '${inputType}', '${entityType}', '${fieldName}', ${entityId})">${displayValue}</span>
+      <button class="admin-details-edit-btn" onclick="adminStartInlineEdit('${editId}', '${inputType}', '${entityType}', '${fieldName}', ${entityId})" title="Edit">&#9998;</button>
+    </td>
+  </tr>`;
+}
+
+function adminStartInlineEdit(editId, inputType, entityType, fieldName, entityId) {
+  const display = document.getElementById(editId + '-display');
+  if (!display || display.style.display === 'none') return;
+
+  const currentValue = display.textContent.trim();
+  display.style.display = 'none';
+
+  // Hide the edit button
+  const editBtn = display.nextElementSibling;
+  if (editBtn) editBtn.style.display = 'none';
+
+  let inputHtml;
+  if (inputType === 'textarea') {
+    inputHtml = `<textarea id="${editId}-input" class="admin-details-input" rows="3">${escapeHtml(currentValue)}</textarea>`;
+  } else if (inputType.startsWith('select:')) {
+    const options = inputType.substring(7).split(',');
+    inputHtml = `<select id="${editId}-input" class="admin-details-input">
+      ${options.map(o => `<option value="${o}" ${o === currentValue ? 'selected' : ''}>${o}</option>`).join('')}
+    </select>`;
+  } else if (inputType === 'toggle') {
+    const isOn = currentValue === 'Yes';
+    inputHtml = `<select id="${editId}-input" class="admin-details-input">
+      <option value="true" ${isOn ? 'selected' : ''}>Yes</option>
+      <option value="false" ${!isOn ? 'selected' : ''}>No</option>
+    </select>`;
+  } else {
+    inputHtml = `<input id="${editId}-input" type="text" class="admin-details-input" value="${escapeHtml(currentValue)}">`;
+  }
+
+  const actionsHtml = `<div id="${editId}-actions" class="admin-details-actions">
+    ${inputHtml}
+    <div class="admin-details-actions__buttons">
+      <button class="admin-details-save-btn" onclick="adminSaveInlineEdit('${editId}', '${inputType}', '${entityType}', '${fieldName}', ${entityId})">Save</button>
+      <button class="admin-details-cancel-btn" onclick="adminCancelInlineEdit('${editId}')">Cancel</button>
+    </div>
+  </div>`;
+
+  display.insertAdjacentHTML('afterend', actionsHtml);
+
+  // Focus the input
+  const input = document.getElementById(editId + '-input');
+  if (input) input.focus();
+}
+
+function adminCancelInlineEdit(editId) {
+  const actions = document.getElementById(editId + '-actions');
+  if (actions) actions.remove();
+  const display = document.getElementById(editId + '-display');
+  if (display) display.style.display = '';
+  // Show the edit button again
+  if (display && display.nextElementSibling) display.nextElementSibling.style.display = '';
+}
+
+async function adminSaveInlineEdit(editId, inputType, entityType, fieldName, entityId) {
+  const input = document.getElementById(editId + '-input');
+  if (!input) return;
+
+  let newValue = input.value;
+
+  // Convert toggle values
+  if (inputType === 'toggle') {
+    newValue = newValue === 'true';
+  }
+
+  // Build the API call
+  let url, body;
+  if (entityType === 'quote') {
+    url = `/quotes/${entityId}`;
+    body = { [fieldName]: newValue };
+  } else if (entityType === 'author') {
+    url = `/authors/${entityId}`;
+    body = { [fieldName]: newValue };
+  } else if (entityType === 'source') {
+    url = `/sources/${entityId}`;
+    body = { [fieldName]: newValue };
+  }
+
+  try {
+    await API.patch(url, body);
+    showToast('Updated successfully', 'success');
+
+    // Update the display value
+    const display = document.getElementById(editId + '-display');
+    if (display) {
+      if (inputType === 'toggle') {
+        display.textContent = newValue ? 'Yes' : 'No';
+      } else {
+        display.textContent = input.value;
+      }
+    }
+    adminCancelInlineEdit(editId);
+  } catch (err) {
+    showToast('Error: ' + err.message, 'error');
+  }
+}

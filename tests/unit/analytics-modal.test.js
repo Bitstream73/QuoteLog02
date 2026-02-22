@@ -25,27 +25,48 @@ describe('Analytics Page', () => {
     };
 
     global.API = {
-      get: vi.fn().mockResolvedValue({
-        period_days: 30,
-        total_quotes: 100,
-        total_authors: 25,
-        topics: [
-          { id: 1, name: 'U.S. Politics', slug: 'us-politics', quote_count: 50 },
-          { id: 2, name: 'Economy', slug: 'economy', quote_count: 30 },
-        ],
-        keywords: [
-          { id: 1, name: 'Donald Trump', keyword_type: 'person', quote_count: 20 },
-          { id: 2, name: 'Federal Reserve', keyword_type: 'organization', quote_count: 10 },
-        ],
-        authors: [
-          { id: 1, canonical_name: 'Author A', photo_url: null, category: 'Politician', quote_count: 15 },
-        ],
+      get: vi.fn((url) => {
+        if (url.startsWith('/analytics/overview')) {
+          return Promise.resolve({
+            period_days: 30,
+            total_quotes: 100,
+            total_authors: 25,
+            authors: [
+              { id: 1, canonical_name: 'Author A', photo_url: null, category: 'Politician', quote_count: 15 },
+            ],
+          });
+        }
+        if (url.startsWith('/analytics/trending-quotes')) {
+          return Promise.resolve({
+            quote_of_day: null,
+            quote_of_week: null,
+            quote_of_month: null,
+            recent_quotes: [],
+          });
+        }
+        if (url.startsWith('/analytics/highlights')) {
+          return Promise.resolve({
+            period_days: 30,
+            importance: {
+              quotes: [{ id: 1, text: 'Important quote', context: 'ctx', importants_count: 10, person_id: 1, person_name: 'Author A', photo_url: null, canonical_name: 'Author A', created_at: '2026-01-01T00:00:00Z' }],
+              authors: [{ id: 1, canonical_name: 'Author A', photo_url: null, category: 'Politician', total_importants: 15 }],
+              topics: [{ id: 1, name: 'Economy', slug: 'economy', total_importants: 15 }],
+            },
+            truth_falsehood: {
+              truthful: [{ id: 1, canonical_name: 'Author A', photo_url: null, category: 'Politician', verdict_count: 2 }],
+              misleading: [{ id: 2, canonical_name: 'Author B', photo_url: null, category: 'Business', verdict_count: 1 }],
+              false: [{ id: 3, canonical_name: 'Author C', photo_url: null, category: 'Journalist', verdict_count: 1 }],
+            },
+          });
+        }
+        return Promise.resolve({});
       }),
     };
 
     global.navigate = vi.fn();
     global.escapeHtml = (s) => s || '';
     global.escapeAttr = (s) => s || '';
+    global.isAdmin = false;
     global.console = { ...console, error: vi.fn() };
 
     mod = {};
@@ -54,109 +75,155 @@ describe('Analytics Page', () => {
       '\nmod.changeAnalyticsPeriod = changeAnalyticsPeriod;' +
       '\nmod.loadAnalytics = loadAnalytics;' +
       '\nmod.renderAnalyticsData = renderAnalyticsData;' +
-      '\nmod.formatDateShort = formatDateShort;';
-    const fn = new Function('mod', 'document', 'API', 'escapeHtml', 'escapeAttr', 'navigate', 'console', combined);
-    fn(mod, global.document, global.API, global.escapeHtml, global.escapeAttr, global.navigate, global.console);
+      '\nmod.formatDateShort = formatDateShort;' +
+      '\nmod.renderHighestImportanceHtml = renderHighestImportanceHtml;' +
+      '\nmod.renderTruthFalsehoodHtml = renderTruthFalsehoodHtml;';
+    const fn = new Function('mod', 'document', 'API', 'escapeHtml', 'escapeAttr', 'navigate', 'console', 'isAdmin', combined);
+    fn(mod, global.document, global.API, global.escapeHtml, global.escapeAttr, global.navigate, global.console, global.isAdmin);
   });
 
-  it('renderAnalytics sets up page structure', async () => {
+  it('renderAnalytics sets up page structure with 24h option', async () => {
     await mod.renderAnalytics();
     expect(mockContent.innerHTML).toContain('Analytics');
     expect(mockContent.innerHTML).toContain('analytics-period');
     expect(mockContent.innerHTML).toContain('analytics-page');
+    expect(mockContent.innerHTML).toContain('Last 24 hours');
+    expect(mockContent.innerHTML).toContain('value="1"');
   });
 
-  it('renderAnalytics calls API.get with overview endpoint', async () => {
+  it('renderAnalytics calls API.get with overview, trending-quotes, and highlights', async () => {
     await mod.renderAnalytics();
     expect(global.API.get).toHaveBeenCalledWith('/analytics/overview?days=30');
+    expect(global.API.get).toHaveBeenCalledWith('/analytics/trending-quotes');
+    expect(global.API.get).toHaveBeenCalledWith('/analytics/highlights?days=30');
   });
 
-  it('changeAnalyticsPeriod updates days and calls API', async () => {
+  it('changeAnalyticsPeriod updates days and calls API with highlights', async () => {
     // First render to set up the page
     await mod.renderAnalytics();
     global.API.get.mockClear();
     await mod.changeAnalyticsPeriod(7);
     expect(global.API.get).toHaveBeenCalledWith('/analytics/overview?days=7');
+    expect(global.API.get).toHaveBeenCalledWith('/analytics/trending-quotes');
+    expect(global.API.get).toHaveBeenCalledWith('/analytics/highlights?days=7');
   });
 
-  it('renderAnalyticsData renders stats cards', () => {
-    // Set up DOM for renderAnalyticsData
-    const page = {
-      querySelector: vi.fn((sel) => {
-        if (sel === '.analytics-loading') return { remove: vi.fn() };
-        return null;
-      }),
-      querySelectorAll: vi.fn(() => []),
-      insertAdjacentHTML: vi.fn(),
-    };
-    global.document.querySelector = vi.fn(() => page);
+  describe('admin-conditional stat cards', () => {
+    it('hides stat cards when not admin', async () => {
+      const page = {
+        querySelector: vi.fn((sel) => {
+          if (sel === '.analytics-loading') return { remove: vi.fn() };
+          return null;
+        }),
+        querySelectorAll: vi.fn(() => []),
+        insertAdjacentHTML: vi.fn(),
+      };
+      global.document.querySelector = vi.fn(() => page);
 
-    mod.renderAnalyticsData({
-      total_quotes: 100,
-      total_authors: 25,
-      topics: [{ id: 1, name: 'U.S. Politics', slug: 'us-politics', quote_count: 50 }],
-      keywords: [{ id: 1, name: 'GDP Growth', keyword_type: 'concept', quote_count: 10 }],
-      authors: [{ id: 1, canonical_name: 'Author A', photo_url: null, category: 'Politician', quote_count: 15 }],
+      await mod.renderAnalyticsData(
+        { total_quotes: 100, total_authors: 25, authors: [] },
+        null,
+        { importance: { quotes: [], authors: [], topics: [] }, truth_falsehood: { truthful: [], misleading: [], false: [] } }
+      );
+
+      expect(page.insertAdjacentHTML).toHaveBeenCalled();
+      const html = page.insertAdjacentHTML.mock.calls[0][1];
+      expect(html).not.toContain('analytics-stats');
     });
 
-    expect(page.insertAdjacentHTML).toHaveBeenCalled();
-    const html = page.insertAdjacentHTML.mock.calls[0][1];
-    expect(html).toContain('100');
-    expect(html).toContain('25');
-    expect(html).toContain('U.S. Politics');
-    expect(html).toContain('GDP Growth');
-    expect(html).toContain('Author A');
+    it('shows stat cards when admin', async () => {
+      // Re-initialize with isAdmin = true
+      global.isAdmin = true;
+      const mod2 = {};
+      const combined2 = analyticsJsSrc +
+        '\nmod2.renderAnalyticsData = renderAnalyticsData;';
+      const fn2 = new Function('mod2', 'document', 'API', 'escapeHtml', 'escapeAttr', 'navigate', 'console', 'isAdmin', combined2);
+      fn2(mod2, global.document, global.API, global.escapeHtml, global.escapeAttr, global.navigate, global.console, true);
+
+      const page = {
+        querySelector: vi.fn((sel) => {
+          if (sel === '.analytics-loading') return { remove: vi.fn() };
+          return null;
+        }),
+        querySelectorAll: vi.fn(() => []),
+        insertAdjacentHTML: vi.fn(),
+      };
+      global.document.querySelector = vi.fn(() => page);
+
+      await mod2.renderAnalyticsData(
+        { total_quotes: 100, total_authors: 25, authors: [] },
+        null,
+        { importance: { quotes: [], authors: [], topics: [] }, truth_falsehood: { truthful: [], misleading: [], false: [] } }
+      );
+
+      expect(page.insertAdjacentHTML).toHaveBeenCalled();
+      const html = page.insertAdjacentHTML.mock.calls[0][1];
+      expect(html).toContain('analytics-stats');
+      expect(html).toContain('100');
+    });
   });
 
-  it('renderAnalyticsData renders topic cloud', () => {
-    const page = {
-      querySelector: vi.fn(() => ({ remove: vi.fn() })),
-      querySelectorAll: vi.fn(() => []),
-      insertAdjacentHTML: vi.fn(),
-    };
-    global.document.querySelector = vi.fn(() => page);
-
-    mod.renderAnalyticsData({
-      total_quotes: 10,
-      total_authors: 2,
-      topics: [
-        { id: 1, name: 'Economy', slug: 'economy', quote_count: 5 },
-        { id: 2, name: 'Trade', slug: 'trade', quote_count: 3 },
-      ],
-      keywords: [],
-      authors: [],
+  describe('Highest Importance section', () => {
+    it('renders importance section with data', () => {
+      const html = mod.renderHighestImportanceHtml({
+        importance: {
+          quotes: [{ id: 1, text: 'Test quote', context: 'ctx', importants_count: 10, person_id: 1, person_name: 'Author A', photo_url: null, canonical_name: 'Author A', created_at: '2026-01-01T00:00:00Z' }],
+          authors: [{ id: 1, canonical_name: 'Author A', photo_url: null, category: 'Politician', total_importants: 15 }],
+          topics: [{ id: 1, name: 'Economy', slug: 'economy', total_importants: 15 }],
+        },
+      });
+      expect(html).toContain('HIGHEST IMPORTANCE');
+      expect(html).toContain('Top Quotes');
+      expect(html).toContain('Top Authors');
+      expect(html).toContain('Top Topics');
+      expect(html).toContain('Author A');
+      expect(html).toContain('Economy');
     });
 
-    const html = page.insertAdjacentHTML.mock.calls[0][1];
-    expect(html).toContain('Trending Topics');
-    expect(html).toContain('topics-cloud');
-    expect(html).toContain('Economy');
-    expect(html).toContain('Trade');
+    it('returns empty string when no data', () => {
+      const html = mod.renderHighestImportanceHtml({
+        importance: { quotes: [], authors: [], topics: [] },
+      });
+      expect(html).toBe('');
+    });
   });
 
-  it('renderAnalyticsData renders keyword groups by type', () => {
-    const page = {
-      querySelector: vi.fn(() => ({ remove: vi.fn() })),
-      querySelectorAll: vi.fn(() => []),
-      insertAdjacentHTML: vi.fn(),
-    };
-    global.document.querySelector = vi.fn(() => page);
-
-    mod.renderAnalyticsData({
-      total_quotes: 10,
-      total_authors: 2,
-      topics: [],
-      keywords: [
-        { id: 1, name: 'Donald Trump', keyword_type: 'person', quote_count: 10 },
-        { id: 2, name: 'Federal Reserve', keyword_type: 'organization', quote_count: 5 },
-      ],
-      authors: [],
+  describe('Truth and Falsehood section', () => {
+    it('renders truth/falsehood section with data', () => {
+      const html = mod.renderTruthFalsehoodHtml({
+        truth_falsehood: {
+          truthful: [{ id: 1, canonical_name: 'Truth Author', photo_url: null, category: 'Politician', verdict_count: 5 }],
+          misleading: [{ id: 2, canonical_name: 'Mislead Author', photo_url: null, category: 'Business', verdict_count: 3 }],
+          false: [{ id: 3, canonical_name: 'False Author', photo_url: null, category: 'Journalist', verdict_count: 2 }],
+        },
+      });
+      expect(html).toContain('HIGHEST TRUTH AND FALSEHOOD');
+      expect(html).toContain('Most Truthful');
+      expect(html).toContain('Most Misleading');
+      expect(html).toContain('Most False');
+      expect(html).toContain('Truth Author');
+      expect(html).toContain('Mislead Author');
+      expect(html).toContain('False Author');
     });
 
-    const html = page.insertAdjacentHTML.mock.calls[0][1];
-    expect(html).toContain('Trending Keywords');
-    expect(html).toContain('keyword-type-person');
-    expect(html).toContain('keyword-type-organization');
+    it('returns empty string when no data', () => {
+      const html = mod.renderTruthFalsehoodHtml({
+        truth_falsehood: { truthful: [], misleading: [], false: [] },
+      });
+      expect(html).toBe('');
+    });
+
+    it('shows empty message for columns without data', () => {
+      const html = mod.renderTruthFalsehoodHtml({
+        truth_falsehood: {
+          truthful: [{ id: 1, canonical_name: 'Author', photo_url: null, category: 'Pol', verdict_count: 1 }],
+          misleading: [],
+          false: [],
+        },
+      });
+      expect(html).toContain('Most Truthful');
+      expect(html).toContain('No data for this period');
+    });
   });
 
   it('formatDateShort formats dates correctly', () => {

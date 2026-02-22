@@ -3,6 +3,9 @@ import jwt from 'jsonwebtoken';
 import { getDb } from '../config/database.js';
 import { requireAdmin } from '../middleware/auth.js';
 import config from '../config/index.js';
+import gemini from '../services/ai/gemini.js';
+import { fetchHeadshotUrl } from '../services/personPhoto.js';
+import logger from '../services/logger.js';
 
 const router = Router();
 
@@ -23,15 +26,24 @@ router.get('/', (req, res) => {
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 50;
   const offset = (page - 1) * limit;
+  const search = (req.query.search || '').trim();
 
-  const total = db.prepare('SELECT COUNT(*) as count FROM persons').get().count;
+  let searchFilter = '';
+  const params = [];
+  if (search.length >= 2) {
+    searchFilter = 'WHERE canonical_name LIKE ?';
+    params.push(`%${search}%`);
+  }
+
+  const total = db.prepare(`SELECT COUNT(*) as count FROM persons ${searchFilter}`).get(...params).count;
 
   const authors = db.prepare(`
     SELECT id, canonical_name, disambiguation, quote_count, last_seen_at, photo_url, category, category_context
     FROM persons
+    ${searchFilter}
     ORDER BY quote_count DESC, last_seen_at DESC
     LIMIT ? OFFSET ?
-  `).all(limit, offset);
+  `).all(...params, limit, offset);
 
   res.json({
     authors,
@@ -51,8 +63,11 @@ router.get('/:id', (req, res) => {
   if (/^\d+$/.test(id)) {
     person = db.prepare('SELECT * FROM persons WHERE id = ?').get(id);
   } else {
-    // Search by name (for backwards compatibility with old URL format)
+    // Search by name — redirect to canonical numeric URL
     person = db.prepare('SELECT * FROM persons WHERE canonical_name = ?').get(decodeURIComponent(id));
+    if (person) {
+      return res.redirect(301, `/api/authors/${person.id}`);
+    }
   }
 
   if (!person) {
@@ -131,6 +146,104 @@ router.patch('/:id', requireAdmin, (req, res) => {
   });
 });
 
+// Get cached image suggestions for an author (admin only)
+router.get('/:id/image-suggestions', requireAdmin, (req, res) => {
+  const db = getDb();
+  const { id } = req.params;
+
+  const person = db.prepare('SELECT image_suggestions FROM persons WHERE id = ?').get(id);
+  if (!person) {
+    return res.status(404).json({ error: 'Author not found' });
+  }
+
+  let suggestions = [];
+  if (person.image_suggestions) {
+    try {
+      suggestions = JSON.parse(person.image_suggestions);
+    } catch { /* invalid JSON, return empty */ }
+  }
+
+  res.json({ suggestions });
+});
+
+// AI-powered image search for an author (admin only)
+router.post('/:id/image-search', requireAdmin, async (req, res) => {
+  const db = getDb();
+  const { id } = req.params;
+
+  const person = db.prepare('SELECT canonical_name, disambiguation FROM persons WHERE id = ?').get(id);
+  if (!person) {
+    return res.status(404).json({ error: 'Author not found' });
+  }
+
+  const name = person.canonical_name;
+  const desc = person.disambiguation || '';
+
+  try {
+    // Try Wikipedia first
+    const wikiUrl = await fetchHeadshotUrl(name);
+
+    // Call Gemini with grounded search
+    const prompt = `Find 3 high-quality portrait/headshot photograph URLs of ${name}${desc ? ` (${desc})` : ''}.
+Return direct image file URLs (jpg, png, webp) from reliable sources like Wikipedia, news outlets, government sites, or official sources.
+Return a JSON array of objects: [{ "url": "direct image URL", "description": "brief description", "source": "website name" }]
+Only return URLs that point directly to image files. Prefer official portraits and professional photos.`;
+
+    let aiResults = [];
+    try {
+      const raw = await gemini.generateGroundedJSON(prompt, { temperature: 0.2 });
+      aiResults = Array.isArray(raw) ? raw : (raw._groundingMetadata ? [] : [raw]);
+      // Strip grounding metadata if present at top level
+      aiResults = aiResults.filter(r => r && r.url);
+    } catch (aiErr) {
+      logger.warn('authors', 'image_search_ai_failed', { personId: id, error: aiErr.message });
+    }
+
+    // Validate each URL with HEAD request
+    const validated = [];
+    for (const item of aiResults) {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5000);
+        const headRes = await fetch(item.url, {
+          method: 'HEAD',
+          signal: controller.signal,
+          redirect: 'follow',
+        });
+        clearTimeout(timeout);
+        if (headRes.ok && (headRes.headers.get('content-type') || '').startsWith('image/')) {
+          validated.push({
+            url: item.url,
+            description: item.description || '',
+            source: item.source || '',
+          });
+        }
+      } catch { /* skip invalid URLs */ }
+    }
+
+    // Add Wikipedia result as first suggestion if valid and not already present
+    if (wikiUrl && !validated.some(v => v.url === wikiUrl)) {
+      validated.unshift({
+        url: wikiUrl,
+        description: 'Wikipedia portrait',
+        source: 'Wikipedia',
+      });
+    }
+
+    // Limit to 3 suggestions
+    const suggestions = validated.slice(0, 3);
+
+    // Cache in database
+    db.prepare('UPDATE persons SET image_suggestions = ? WHERE id = ?')
+      .run(JSON.stringify(suggestions), id);
+
+    res.json({ suggestions });
+  } catch (err) {
+    logger.error('authors', 'image_search_failed', { personId: id }, err);
+    res.status(500).json({ error: 'Image search failed' });
+  }
+});
+
 // Get quotes for a specific author
 router.get('/:id/quotes', (req, res) => {
   const db = getDb();
@@ -138,6 +251,28 @@ router.get('/:id/quotes', (req, res) => {
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 50;
   const offset = (page - 1) * limit;
+  const sort = req.query.sort;
+
+  const QUOTE_DATE_EXPR = `COALESCE(
+    CASE WHEN q.quote_datetime GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]*'
+      THEN q.quote_datetime ELSE NULL END,
+    q.created_at)`;
+
+  let orderBy;
+  if (sort === 'importance') {
+    orderBy = `
+      CASE
+        WHEN q.importants_count > 0 AND ${QUOTE_DATE_EXPR} >= datetime('now', '-1 day') THEN 1
+        WHEN q.importants_count > 0 AND ${QUOTE_DATE_EXPR} >= datetime('now', '-7 days') THEN 2
+        WHEN q.importants_count > 0 AND ${QUOTE_DATE_EXPR} >= datetime('now', '-30 days') THEN 3
+        WHEN q.importants_count > 0 THEN 4
+        ELSE 5
+      END ASC,
+      CASE WHEN q.importants_count > 0 THEN q.importants_count ELSE 0 END DESC,
+      ${QUOTE_DATE_EXPR} DESC`;
+  } else {
+    orderBy = `${QUOTE_DATE_EXPR} DESC`;
+  }
 
   // Find person
   let personId;
@@ -161,6 +296,7 @@ router.get('/:id/quotes', (req, res) => {
 
   const quotes = db.prepare(`
     SELECT q.id, q.text, q.source_urls, q.created_at, q.context, q.quote_type, q.is_visible,
+           q.fact_check_verdict, q.importants_count, q.quote_datetime,
            a.id AS article_id, a.title AS article_title, a.published_at AS article_published_at, a.url AS article_url,
            s.domain AS primary_source_domain, s.name AS primary_source_name,
            COALESCE((SELECT SUM(vote_value) FROM votes WHERE votes.quote_id = q.id), 0) as vote_score
@@ -170,9 +306,51 @@ router.get('/:id/quotes', (req, res) => {
     LEFT JOIN sources s ON a.source_id = s.id
     WHERE q.person_id = ? AND q.canonical_quote_id IS NULL ${visFilter}
     GROUP BY q.id
-    ORDER BY q.created_at DESC
+    ORDER BY ${orderBy}
     LIMIT ? OFFSET ?
   `).all(personId, limit, offset);
+
+  // Featured quote: page 1 only
+  let featuredQuote = null;
+  if (page === 1) {
+    const featured = db.prepare(`
+      SELECT q.id, q.text, q.source_urls, q.created_at, q.context, q.quote_type, q.is_visible,
+             q.fact_check_verdict, q.importants_count, q.quote_datetime,
+             a.id AS article_id, a.title AS article_title, a.published_at AS article_published_at, a.url AS article_url,
+             s.domain AS primary_source_domain, s.name AS primary_source_name,
+             COALESCE((SELECT SUM(vote_value) FROM votes WHERE votes.quote_id = q.id), 0) as vote_score
+      FROM quotes q
+      LEFT JOIN quote_articles qa ON qa.quote_id = q.id
+      LEFT JOIN articles a ON qa.article_id = a.id
+      LEFT JOIN sources s ON a.source_id = s.id
+      WHERE q.person_id = ? AND q.canonical_quote_id IS NULL ${visFilter}
+      GROUP BY q.id
+      ORDER BY q.importants_count DESC, ${QUOTE_DATE_EXPR} DESC
+      LIMIT 1
+    `).get(personId);
+
+    if (featured) {
+      featuredQuote = {
+        id: featured.id,
+        text: featured.text,
+        context: featured.context,
+        quoteType: featured.quote_type,
+        sourceUrls: JSON.parse(featured.source_urls || '[]'),
+        createdAt: featured.created_at,
+        quoteDateTime: featured.quote_datetime || null,
+        importantsCount: featured.importants_count || 0,
+        isVisible: featured.is_visible,
+        articleId: featured.article_id || null,
+        articleTitle: featured.article_title || null,
+        articlePublishedAt: featured.article_published_at || null,
+        articleUrl: featured.article_url || null,
+        primarySourceDomain: featured.primary_source_domain || null,
+        primarySourceName: featured.primary_source_name || null,
+        voteScore: featured.vote_score,
+        factCheckVerdict: featured.fact_check_verdict || null,
+      };
+    }
+  }
 
   res.json({
     quotes: quotes.map(q => ({
@@ -182,6 +360,9 @@ router.get('/:id/quotes', (req, res) => {
       quoteType: q.quote_type,
       sourceUrls: JSON.parse(q.source_urls || '[]'),
       createdAt: q.created_at,
+      quoteDateTime: q.quote_datetime || null,
+      importantsCount: q.importants_count || 0,
+      isVisible: q.is_visible,
       articleId: q.article_id || null,
       articleTitle: q.article_title || null,
       articlePublishedAt: q.article_published_at || null,
@@ -189,7 +370,9 @@ router.get('/:id/quotes', (req, res) => {
       primarySourceDomain: q.primary_source_domain || null,
       primarySourceName: q.primary_source_name || null,
       voteScore: q.vote_score,
+      factCheckVerdict: q.fact_check_verdict || null,
     })),
+    featuredQuote: page === 1 ? featuredQuote : null,
     total,
     page,
     totalPages: Math.ceil(total / limit),

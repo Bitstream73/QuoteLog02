@@ -68,6 +68,7 @@ function renderLogsFilters() {
         <option value="db" ${logsState.category === 'db' ? 'selected' : ''}>Database</option>
         <option value="system" ${logsState.category === 'system' ? 'selected' : ''}>System</option>
         <option value="vectordb" ${logsState.category === 'vectordb' ? 'selected' : ''}>Vector DB</option>
+        <option value="test" ${logsState.category === 'test' ? 'selected' : ''}>Test</option>
       </select>
       <input type="search" placeholder="Search logs..." value="${escapeHtml(logsState.search)}" oninput="debounceSearch(this.value)">
       <input type="date" value="${logsState.startDate}" onchange="setDateRange(this.value, 'start')">

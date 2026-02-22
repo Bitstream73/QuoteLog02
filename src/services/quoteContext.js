@@ -101,31 +101,6 @@ Rules:
       logger.warn('quote_context', 'pinecone_search_failed', { quoteId, claim: claim.claim, error: err.message });
     }
 
-    // SQLite: quotes sharing same topics
-    try {
-      const topicQuotes = db.prepare(`
-        SELECT DISTINCT q.id, q.text, q.context, q.created_at, q.quote_datetime,
-               p.canonical_name, p.disambiguation,
-               a.url AS article_url, a.title AS article_title,
-               s.name AS source_name, s.domain AS source_domain
-        FROM quotes q
-        JOIN persons p ON q.person_id = p.id
-        LEFT JOIN quote_articles qa ON qa.quote_id = q.id
-        LEFT JOIN articles a ON qa.article_id = a.id
-        LEFT JOIN sources s ON a.source_id = s.id
-        JOIN quote_topics qt1 ON qt1.quote_id = q.id
-        JOIN quote_topics qt2 ON qt2.topic_id = qt1.topic_id
-        WHERE qt2.quote_id = ? AND q.id != ? AND q.is_visible = 1 AND q.canonical_quote_id IS NULL
-        LIMIT 10
-      `).all(quoteId, quoteId);
-      for (const eq of topicQuotes) {
-        if (!evidenceQuotes.has(eq.id)) {
-          evidenceQuotes.set(eq.id, eq);
-        }
-      }
-    } catch (err) {
-      logger.warn('quote_context', 'topic_search_failed', { quoteId, error: err.message });
-    }
   }
 
   // Cap at 15 evidence quotes
@@ -135,7 +110,7 @@ Rules:
   let analysis;
   try {
     const evidenceBlock = evidenceList.map((eq, i) =>
-      `[${i + 1}] (ID: ${eq.id}) "${eq.text.substring(0, 300)}" — ${eq.canonical_name}${eq.quote_datetime ? ` (${eq.quote_datetime})` : ''}`
+      `[${i + 1}] (ID: ${eq.id}) "${eq.text.substring(0, 300)}" \u2014 ${eq.canonical_name}${eq.quote_datetime ? ` (${eq.quote_datetime})` : ''}`
     ).join('\n');
 
     const analysisPrompt = `You are analyzing a political/news quote to provide context and fact-checking.
@@ -156,7 +131,7 @@ For each claim, find supporting evidence, contradicting evidence, and additional
 ONLY from the evidence quotes provided above. Do NOT include conclusions from your own
 training data or general knowledge.
 
-If no evidence quotes are relevant to a claim, leave its arrays empty — do not fabricate
+If no evidence quotes are relevant to a claim, leave its arrays empty \u2014 do not fabricate
 or assume evidence. Every evidence item MUST reference one of the numbered evidence quotes
 above by its ID.
 
@@ -174,15 +149,15 @@ Return a JSON object (no markdown, just raw JSON):
     }
   ],
   "summary": "2-3 sentence editorial summary of the overall context",
-  "confidenceNote": "Note: analysis is based solely on quotes in our database. Claims without evidence listed may still be true or false — we simply lack sourced quotes to confirm."
+  "confidenceNote": "Note: analysis is based solely on quotes in our database. Claims without evidence listed may still be true or false \u2014 we simply lack sourced quotes to confirm."
 }
 
 Rules:
-- ONLY cite evidence quotes from the numbered list above — never general knowledge
+- ONLY cite evidence quotes from the numbered list above \u2014 never general knowledge
 - Every evidence item MUST have a valid quoteId matching an evidence quote ID above
 - If a claim has no relevant evidence, leave supporting/contradicting/addingContext as empty arrays
 - Keep explanations concise (1-2 sentences each)
-- Be balanced — include both supporting and contradicting evidence when available
+- Be balanced \u2014 include both supporting and contradicting evidence when available
 - Maximum 3 items per category (supporting/contradicting/addingContext) per claim`;
 
     const analysisResponse = await gemini.generateText(analysisPrompt);
@@ -252,7 +227,7 @@ Rules:
 
 /**
  * Get smart related quotes: contradictions, supporting context (same author),
- * and mentions by other authors within ±7 days.
+ * and mentions by other authors within \u00B17 days.
  */
 export async function getSmartRelatedQuotes(quoteId) {
   const db = getDb();
@@ -263,7 +238,8 @@ export async function getSmartRelatedQuotes(quoteId) {
   ).all(quoteId);
 
   if (cachedRows.length > 0) {
-    return formatSmartRelated(db, cachedRows, true);
+    const realRows = cachedRows.filter(r => r.related_type !== '_none');
+    return formatSmartRelated(db, realRows, true);
   }
 
   // Load quote + person
@@ -335,9 +311,9 @@ CANDIDATE QUOTES (same author):
 ${candidateBlock}
 
 For each candidate, classify as one of:
-- "contradiction" — directly contradicts the original quote
-- "supporting_context" — supports, expands on, or adds context to the original
-- "unrelated" — no meaningful connection
+- "contradiction" \u2014 directly contradicts the original quote
+- "supporting_context" \u2014 supports, expands on, or adds context to the original
+- "unrelated" \u2014 no meaningful connection
 
 Return a JSON array (no markdown, just raw JSON):
 [
@@ -379,7 +355,7 @@ Rules:
     }
   }
 
-  // Section B: Mentions by others (±7 days)
+  // Section B: Mentions by others (\u00B17 days)
   const personName = quote.canonical_name;
   const lastName = personName.split(' ').pop();
   const refDate = quote.quote_datetime || quote.created_at;
@@ -447,9 +423,20 @@ Rules:
   });
   insertMany(results);
 
-  // Fetch fresh cache rows to return
+  // If no results, insert a sentinel row so cache knows "we looked and found nothing"
+  if (results.length === 0) {
+    db.prepare(`
+      INSERT INTO quote_smart_related (quote_id, related_type, related_quote_id, confidence, explanation)
+      VALUES (?, '_none', 0, 0, 'No related quotes found')
+      ON CONFLICT(quote_id, related_quote_id, related_type) DO UPDATE SET
+        created_at = datetime('now'),
+        expires_at = datetime('now', '+7 days')
+    `).run(quoteId);
+  }
+
+  // Fetch fresh cache rows to return (exclude sentinel rows)
   const freshRows = db.prepare(
-    `SELECT * FROM quote_smart_related WHERE quote_id = ? AND expires_at > datetime('now')`
+    `SELECT * FROM quote_smart_related WHERE quote_id = ? AND expires_at > datetime('now') AND related_type != '_none'`
   ).all(quoteId);
 
   logger.info('quote_context', 'smart_related_complete', {
@@ -474,6 +461,7 @@ function formatSmartRelated(db, rows, fromCache) {
     const rq = db.prepare(`
       SELECT q.id, q.text, q.context, q.created_at, q.quote_datetime,
              q.person_id, q.importants_count, p.canonical_name, p.photo_url,
+             p.category_context,
              a.id AS article_id, a.url AS article_url, a.title AS article_title,
              s.name AS source_name, s.domain AS source_domain
       FROM quotes q
@@ -486,13 +474,6 @@ function formatSmartRelated(db, rows, fromCache) {
 
     if (!rq) continue;
 
-    // Fetch topics for this related quote
-    const topicRows = db.prepare(`
-      SELECT t.id, t.name, t.slug FROM topics t
-      JOIN quote_topics qt ON qt.topic_id = t.id
-      WHERE qt.quote_id = ?
-    `).all(rq.id);
-
     const item = {
       id: rq.id,
       text: rq.text,
@@ -500,6 +481,7 @@ function formatSmartRelated(db, rows, fromCache) {
       person_id: rq.person_id,
       person_name: rq.canonical_name,
       photo_url: rq.photo_url || '',
+      person_category_context: rq.category_context || '',
       importants_count: rq.importants_count || 0,
       authorName: rq.canonical_name,
       date: rq.quote_datetime || rq.created_at,
@@ -512,7 +494,6 @@ function formatSmartRelated(db, rows, fromCache) {
       article_title: rq.article_title || null,
       source_domain: rq.source_domain || null,
       source_name: rq.source_name || null,
-      topics: topicRows,
     };
 
     if (row.related_type === 'contradiction') contradictions.push(item);

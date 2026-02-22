@@ -5,8 +5,38 @@ import { recalculateEntityScore } from '../services/trendingCalculator.js';
 
 const router = Router();
 
-const VIEW_TABLES = { article: 'articles', person: 'persons', topic: 'topics' };
-const SHARE_TABLES = { quote: 'quotes', article: 'articles', person: 'persons', topic: 'topics' };
+const VIEW_TABLES = { article: 'articles', person: 'persons' };
+const SHARE_TABLES = { quote: 'quotes', article: 'articles', person: 'persons' };
+
+// Pre-built SQL queries per entity type — eliminates all dynamic table name interpolation
+const VIEW_QUERIES = {
+  article: {
+    exists: 'SELECT id FROM articles WHERE id = ?',
+    increment: 'UPDATE articles SET view_count = view_count + 1 WHERE id = ?',
+  },
+  person: {
+    exists: 'SELECT id FROM persons WHERE id = ?',
+    increment: 'UPDATE persons SET view_count = view_count + 1 WHERE id = ?',
+  },
+};
+
+const SHARE_QUERIES = {
+  quote: {
+    exists: 'SELECT id FROM quotes WHERE id = ?',
+    increment: 'UPDATE quotes SET share_count = share_count + 1 WHERE id = ?',
+    getCount: 'SELECT share_count FROM quotes WHERE id = ?',
+  },
+  article: {
+    exists: 'SELECT id FROM articles WHERE id = ?',
+    increment: 'UPDATE articles SET share_count = share_count + 1 WHERE id = ?',
+    getCount: 'SELECT share_count FROM articles WHERE id = ?',
+  },
+  person: {
+    exists: 'SELECT id FROM persons WHERE id = ?',
+    increment: 'UPDATE persons SET share_count = share_count + 1 WHERE id = ?',
+    getCount: 'SELECT share_count FROM persons WHERE id = ?',
+  },
+};
 
 function getVoterHash(req) {
   const ip = req.ip || req.connection.remoteAddress;
@@ -46,10 +76,10 @@ router.post('/view', (req, res) => {
       return res.status(400).json({ error: 'Missing entity_id' });
     }
 
-    const tableName = VIEW_TABLES[entity_type];
+    const viewQueries = VIEW_QUERIES[entity_type];
 
     // Validate entity exists
-    const entity = db.prepare(`SELECT id FROM ${tableName} WHERE id = ?`).get(entity_id);
+    const entity = db.prepare(viewQueries.exists).get(entity_id);
     if (!entity) {
       return res.status(404).json({ error: `${entity_type} not found` });
     }
@@ -57,7 +87,7 @@ router.post('/view', (req, res) => {
     // Dedup check
     const voterHash = getVoterHash(req);
     if (!isDuplicateView(voterHash, entity_type, entity_id)) {
-      db.prepare(`UPDATE ${tableName} SET view_count = view_count + 1 WHERE id = ?`).run(entity_id);
+      db.prepare(viewQueries.increment).run(entity_id);
     }
 
     res.json({ success: true });
@@ -81,19 +111,19 @@ router.post('/share', (req, res) => {
       return res.status(400).json({ error: 'Missing entity_id' });
     }
 
-    const tableName = SHARE_TABLES[entity_type];
+    const shareQueries = SHARE_QUERIES[entity_type];
 
     // Validate entity exists
-    const entity = db.prepare(`SELECT id FROM ${tableName} WHERE id = ?`).get(entity_id);
+    const entity = db.prepare(shareQueries.exists).get(entity_id);
     if (!entity) {
       return res.status(404).json({ error: `${entity_type} not found` });
     }
 
     // Increment share_count
-    db.prepare(`UPDATE ${tableName} SET share_count = share_count + 1 WHERE id = ?`).run(entity_id);
+    db.prepare(shareQueries.increment).run(entity_id);
 
     // Get updated count
-    const updated = db.prepare(`SELECT share_count FROM ${tableName} WHERE id = ?`).get(entity_id);
+    const updated = db.prepare(shareQueries.getCount).get(entity_id);
 
     // Trigger trending score recalculation
     try {

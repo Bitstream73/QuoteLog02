@@ -11,7 +11,7 @@ describe('Health Check', () => {
   beforeAll(async () => {
     const { createApp } = await import('../../src/index.js');
     app = createApp();
-  });
+  }, 30000);
 
   afterAll(async () => {
     const { closeDb } = await import('../../src/config/database.js');

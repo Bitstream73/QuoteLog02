@@ -168,6 +168,18 @@ const vectorDb = {
     logger.info('vectordb', 'delete', { count: ids.length, namespace });
   },
 
+  async deleteManyByIds(ids, namespace = 'default') {
+    const idx = getIndex();
+    if (!idx) throw new Error('Pinecone not configured');
+    if (ids.length === 0) return;
+    const ns = idx.namespace(namespace);
+    const BATCH = 100;
+    for (let i = 0; i < ids.length; i += BATCH) {
+      await ns.deleteMany({ ids: ids.slice(i, i + BATCH) });
+    }
+    logger.info('vectordb', 'delete_many', { count: ids.length, namespace });
+  },
+
   async getIndexStats() {
     const idx = getIndex();
     if (!idx) throw new Error('Pinecone not configured');

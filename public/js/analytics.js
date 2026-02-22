@@ -1,8 +1,12 @@
-// Analytics page - Trending Topics & Keywords
+// Analytics page
 
 let _analyticsDays = 30;
 
 async function renderAnalytics() {
+  // Update page metadata
+  if (typeof updatePageMeta === 'function') {
+    updatePageMeta('Analytics', 'Explore trends in public statements, top quoted figures, and source analytics.', '/analytics');
+  }
   const content = document.getElementById('content');
   content.innerHTML = `
     <div class="analytics-page">
@@ -10,6 +14,7 @@ async function renderAnalytics() {
         <h1>Analytics</h1>
         <div class="analytics-period">
           <select id="analytics-period" onchange="changeAnalyticsPeriod(this.value)">
+            <option value="1">Last 24 hours</option>
             <option value="7">Last 7 days</option>
             <option value="30" selected>Last 30 days</option>
             <option value="90">Last 90 days</option>
@@ -31,8 +36,12 @@ async function changeAnalyticsPeriod(days) {
 
 async function loadAnalytics() {
   try {
-    const data = await API.get(`/analytics/overview?days=${_analyticsDays}`);
-    renderAnalyticsData(data);
+    const [data, trendingData, highlightsData] = await Promise.all([
+      API.get(`/analytics/overview?days=${_analyticsDays}`),
+      API.get('/analytics/trending-quotes'),
+      API.get(`/analytics/highlights?days=${_analyticsDays}`),
+    ]);
+    renderAnalyticsData(data, trendingData, highlightsData);
   } catch (err) {
     const content = document.querySelector('.analytics-page');
     if (content) {
@@ -44,7 +53,7 @@ async function loadAnalytics() {
   }
 }
 
-function renderAnalyticsData(data) {
+async function renderAnalyticsData(data, trendingData, highlightsData) {
   const page = document.querySelector('.analytics-page');
   if (!page) return;
 
@@ -55,9 +64,47 @@ function renderAnalyticsData(data) {
   // Remove existing content sections (keep header)
   page.querySelectorAll('.analytics-section').forEach(el => el.remove());
   page.querySelectorAll('.analytics-stats').forEach(el => el.remove());
+  page.querySelectorAll('.analytics-qotd-section').forEach(el => el.remove());
+  page.querySelectorAll('.analytics-highlights-section').forEach(el => el.remove());
 
-  // Stats summary
-  const statsHtml = `
+  // Build QotD/W/M section
+  let qotdHtml = '';
+  if (trendingData) {
+    // Fetch importance statuses for featured quotes
+    const featuredKeys = [];
+    if (trendingData.quote_of_day) featuredKeys.push(`quote:${trendingData.quote_of_day.id}`);
+    if (trendingData.quote_of_week) featuredKeys.push(`quote:${trendingData.quote_of_week.id}`);
+    if (trendingData.quote_of_month) featuredKeys.push(`quote:${trendingData.quote_of_month.id}`);
+    if (featuredKeys.length > 0 && typeof fetchImportantStatuses === 'function') {
+      await fetchImportantStatuses(featuredKeys);
+    }
+    const impStatuses = typeof _importantStatuses !== 'undefined' ? _importantStatuses : {};
+
+    if (trendingData.quote_of_day || trendingData.quote_of_week || trendingData.quote_of_month) {
+      qotdHtml += '<div class="analytics-qotd-section">';
+
+      if (trendingData.quote_of_day && typeof buildQuoteBlockHtml === 'function') {
+        qotdHtml += `<div class="trending-section-header"><hr class="topic-section-rule"><h2 class="trending-section-heading">QUOTE OF THE DAY</h2><hr class="topic-section-rule"></div>`;
+        qotdHtml += buildQuoteBlockHtml(trendingData.quote_of_day, impStatuses[`quote:${trendingData.quote_of_day.id}`] || false, { variant: 'hero' });
+      }
+
+      if (trendingData.quote_of_week && typeof buildQuoteBlockHtml === 'function') {
+        qotdHtml += `<div class="trending-section-header"><hr class="topic-section-rule"><h2 class="trending-section-heading">QUOTE OF THE WEEK</h2><hr class="topic-section-rule"></div>`;
+        qotdHtml += buildQuoteBlockHtml(trendingData.quote_of_week, impStatuses[`quote:${trendingData.quote_of_week.id}`] || false, { variant: 'featured' });
+      }
+
+      if (trendingData.quote_of_month && typeof buildQuoteBlockHtml === 'function') {
+        qotdHtml += `<div class="trending-section-header"><hr class="topic-section-rule"><h2 class="trending-section-heading">QUOTE OF THE MONTH</h2><hr class="topic-section-rule"></div>`;
+        qotdHtml += buildQuoteBlockHtml(trendingData.quote_of_month, impStatuses[`quote:${trendingData.quote_of_month.id}`] || false, { variant: 'featured' });
+      }
+
+      qotdHtml += `<p class="trending-disclaimer"><em>*Trending quotes change over time as views and shares change</em></p>`;
+      qotdHtml += '</div>';
+    }
+  }
+
+  // Stats summary (admin-only)
+  const statsHtml = (typeof isAdmin !== 'undefined' && isAdmin) ? `
     <div class="analytics-stats">
       <div class="stat-card">
         <div class="stat-number">${data.total_quotes.toLocaleString()}</div>
@@ -67,95 +114,12 @@ function renderAnalyticsData(data) {
         <div class="stat-number">${data.total_authors.toLocaleString()}</div>
         <div class="stat-label">Authors</div>
       </div>
-      <div class="stat-card">
-        <div class="stat-number">${data.topics.length}</div>
-        <div class="stat-label">Topics</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-number">${data.keywords.length}</div>
-        <div class="stat-label">Keywords</div>
-      </div>
     </div>
-  `;
+  ` : '';
 
-  // Topics section
-  const topicsHtml = `
-    <div class="analytics-section">
-      <h2>Trending Topics</h2>
-      <p class="analytics-subtitle">Broad subject categories across all quotes</p>
-      <div class="topics-cloud">
-        ${data.topics.length > 0 ? data.topics.map(t => `
-          <a href="#" class="topic-tag" onclick="navigateToTopic(event, '${escapeAttr(t.slug)}')" title="${t.quote_count} quotes">
-            <span class="topic-name">${escapeHtml(t.name)}</span>
-            <span class="topic-count">${t.quote_count}</span>
-          </a>
-        `).join('') : '<p class="analytics-empty">No topics yet. Topics are extracted as new quotes are processed.</p>'}
-      </div>
-    </div>
-  `;
-
-  // Keywords section - grouped by type
-  const keywordsByType = {};
-  for (const kw of data.keywords) {
-    const type = kw.keyword_type || 'concept';
-    if (!keywordsByType[type]) keywordsByType[type] = [];
-    keywordsByType[type].push(kw);
-  }
-
-  const typeLabels = {
-    person: 'People',
-    organization: 'Organizations',
-    event: 'Events',
-    legislation: 'Legislation',
-    location: 'Locations',
-    concept: 'Concepts',
-  };
-
-  const typeOrder = ['person', 'event', 'organization', 'location', 'legislation', 'concept'];
-
-  let keywordsInnerHtml = '';
-  if (data.keywords.length > 0) {
-    // Show all keywords in a single cloud, but with type indicators
-    keywordsInnerHtml = `
-      <div class="keywords-cloud">
-        ${data.keywords.map(kw => `
-          <a href="#" class="keyword-tag keyword-type-${kw.keyword_type}" onclick="navigateToKeyword(event, ${kw.id})" title="${kw.quote_count} quotes - ${typeLabels[kw.keyword_type] || kw.keyword_type}">
-            <span class="keyword-name">${escapeHtml(kw.name)}</span>
-            <span class="keyword-count">${kw.quote_count}</span>
-          </a>
-        `).join('')}
-      </div>
-    `;
-
-    // Also show grouped view
-    const groupedSections = typeOrder
-      .filter(type => keywordsByType[type]?.length > 0)
-      .map(type => `
-        <div class="keyword-group">
-          <h4>${typeLabels[type]}</h4>
-          <div class="keywords-cloud">
-            ${keywordsByType[type].map(kw => `
-              <a href="#" class="keyword-tag keyword-type-${kw.keyword_type}" onclick="navigateToKeyword(event, ${kw.id})" title="${kw.quote_count} quotes">
-                <span class="keyword-name">${escapeHtml(kw.name)}</span>
-                <span class="keyword-count">${kw.quote_count}</span>
-              </a>
-            `).join('')}
-          </div>
-        </div>
-      `).join('');
-
-    keywordsInnerHtml += `<div class="keyword-groups">${groupedSections}</div>`;
-  } else {
-    keywordsInnerHtml = '<p class="analytics-empty">No keywords yet. Keywords are extracted as new quotes are processed.</p>';
-  }
-
-  const keywordsHtml = `
-    <div class="analytics-section">
-      <h2>Trending Keywords</h2>
-      <p class="analytics-subtitle">Specific people, events, organizations, and concepts</p>
-      ${keywordsInnerHtml}
-    </div>
-  `;
+  // Highlights sections
+  const importanceHtml = renderHighestImportanceHtml(highlightsData);
+  const truthHtml = renderTruthFalsehoodHtml(highlightsData);
 
   // Top Authors section
   const authorsHtml = `
@@ -177,78 +141,102 @@ function renderAnalyticsData(data) {
     </div>
   `;
 
-  page.insertAdjacentHTML('beforeend', statsHtml + topicsHtml + keywordsHtml + authorsHtml);
+  page.insertAdjacentHTML('beforeend', qotdHtml + statsHtml + importanceHtml + truthHtml + authorsHtml);
 }
 
-function navigateToTopic(event, slug) {
-  event.preventDefault();
-  navigate(null, `/analytics/topic/${slug}`);
-}
+function renderHighestImportanceHtml(highlightsData) {
+  if (!highlightsData || !highlightsData.importance) return '';
+  const imp = highlightsData.importance;
+  if (!imp.quotes.length && !imp.authors.length && !imp.topics.length) return '';
 
-function navigateToKeyword(event, id) {
-  event.preventDefault();
-  navigate(null, `/analytics/keyword/${id}`);
-}
+  const quotesCol = imp.quotes.length
+    ? imp.quotes.map(q => renderQuoteCard(q)).join('')
+    : '<p class="analytics-empty">No data for this period</p>';
 
-async function renderTopicDetail(slug) {
-  const content = document.getElementById('content');
-  content.innerHTML = `<div class="analytics-page"><div class="analytics-loading">Loading topic...</div></div>`;
-
-  try {
-    const data = await API.get(`/analytics/topic/${encodeURIComponent(slug)}`);
-    content.innerHTML = `
-      <div class="analytics-page">
-        <div class="analytics-header">
-          <h1><a href="#" onclick="navigate(event, '/analytics')" class="back-link">Analytics</a> / ${escapeHtml(data.topic.name)}</h1>
-          <span class="analytics-subtitle">${data.total} quotes in this topic</span>
-        </div>
-        <div class="topic-quotes-list">
-          ${data.quotes.map(q => renderQuoteCard(q)).join('')}
-        </div>
-        ${data.total > data.quotes.length ? `
-          <div class="load-more-container">
-            <button class="btn" onclick="loadMoreTopicQuotes('${escapeAttr(slug)}', 2)">Load more</button>
+  const authorsCol = imp.authors.length
+    ? imp.authors.map(a => `
+        <a href="#" class="verdict-author-row" onclick="navigate(event, '/author/${a.id}')">
+          <img src="${a.photo_url || '/img/default-avatar.svg'}" alt="" class="author-thumb" onerror="this.src='/img/default-avatar.svg'">
+          <div class="author-info">
+            <span class="author-name">${escapeHtml(a.canonical_name)}</span>
+            <span class="author-category">${escapeHtml(a.category || 'Other')}</span>
           </div>
-        ` : ''}
+          <span class="verdict-count">${a.total_importants}</span>
+        </a>
+      `).join('')
+    : '<p class="analytics-empty">No data for this period</p>';
+
+  const topicsCol = imp.topics.length
+    ? imp.topics.map(t => `
+        <a href="#" class="highlights-topic-row" onclick="navigate(event, '/topic/${escapeAttr(t.slug)}')">
+          <span class="topic-name">${escapeHtml(t.name)}</span>
+          <span class="topic-importants">${t.total_importants}</span>
+        </a>
+      `).join('')
+    : '<p class="analytics-empty">No data for this period</p>';
+
+  return `
+    <div class="analytics-highlights-section">
+      <div class="trending-section-header"><hr class="topic-section-rule"><h2 class="trending-section-heading">HIGHEST IMPORTANCE</h2><hr class="topic-section-rule"></div>
+      <div class="analytics-highlights-grid">
+        <div class="highlights-column"><h3>Top Topics</h3>${topicsCol}</div>
+        <div class="highlights-column"><h3>Top Authors</h3>${authorsCol}</div>
+        <div class="highlights-column"><h3>Top Quotes</h3>${quotesCol}</div>
       </div>
-    `;
-  } catch (err) {
-    content.innerHTML = `<div class="analytics-page"><p class="error-text">Failed to load topic: ${err.message}</p></div>`;
-  }
+    </div>
+  `;
 }
 
-async function renderKeywordDetail(id) {
-  const content = document.getElementById('content');
-  content.innerHTML = `<div class="analytics-page"><div class="analytics-loading">Loading keyword...</div></div>`;
+function renderTruthFalsehoodHtml(highlightsData) {
+  if (!highlightsData || !highlightsData.truth_falsehood) return '';
+  const tf = highlightsData.truth_falsehood;
+  if (!tf.truthful.length && !tf.misleading.length && !tf.false.length) return '';
 
-  try {
-    const data = await API.get(`/analytics/keyword/${id}`);
-    const typeLabels = { person: 'Person', organization: 'Organization', event: 'Event', legislation: 'Legislation', location: 'Location', concept: 'Concept' };
-    content.innerHTML = `
-      <div class="analytics-page">
-        <div class="analytics-header">
-          <h1><a href="#" onclick="navigate(event, '/analytics')" class="back-link">Analytics</a> / ${escapeHtml(data.keyword.name)}</h1>
-          <span class="analytics-subtitle">${typeLabels[data.keyword.keyword_type] || 'Keyword'} &middot; ${data.total} quotes</span>
+  function verdictAuthorRows(authors, colorVar) {
+    if (!authors.length) return '<p class="analytics-empty">No data for this period</p>';
+    return authors.map(a => `
+      <a href="#" class="verdict-author-row" onclick="navigate(event, '/author/${a.id}')">
+        <img src="${a.photo_url || '/img/default-avatar.svg'}" alt="" class="author-thumb" onerror="this.src='/img/default-avatar.svg'">
+        <div class="author-info">
+          <span class="author-name">${escapeHtml(a.canonical_name)}</span>
+          <span class="author-category">${escapeHtml(a.category || 'Other')}</span>
         </div>
-        <div class="topic-quotes-list">
-          ${data.quotes.map(q => renderQuoteCard(q)).join('')}
-        </div>
-        ${data.total > data.quotes.length ? `
-          <div class="load-more-container">
-            <button class="btn" onclick="loadMoreKeywordQuotes(${id}, 2)">Load more</button>
-          </div>
-        ` : ''}
-      </div>
-    `;
-  } catch (err) {
-    content.innerHTML = `<div class="analytics-page"><p class="error-text">Failed to load keyword: ${err.message}</p></div>`;
+        <span class="verdict-count" style="color: var(${colorVar})">${a.verdict_count}</span>
+      </a>
+    `).join('');
   }
+
+  return `
+    <div class="analytics-highlights-section">
+      <div class="trending-section-header"><hr class="topic-section-rule"><h2 class="trending-section-heading">HIGHEST TRUTH AND FALSEHOOD</h2><hr class="topic-section-rule"></div>
+      <div class="analytics-highlights-grid">
+        <div class="highlights-column"><h3>Most Truthful</h3>${verdictAuthorRows(tf.truthful, '--success')}</div>
+        <div class="highlights-column"><h3>Most Misleading</h3>${verdictAuthorRows(tf.misleading, '--warning')}</div>
+        <div class="highlights-column"><h3>Most False</h3>${verdictAuthorRows(tf.false, '--error')}</div>
+      </div>
+    </div>
+  `;
 }
 
 function renderQuoteCard(q) {
   const truncated = q.text.length > 200 ? q.text.substring(0, 200) + '...' : q.text;
+
+  // Populate _quoteMeta so runInlineFactCheck has data
+  if (typeof _quoteMeta !== 'undefined') {
+    _quoteMeta[q.id] = {
+      text: q.text,
+      personName: q.canonical_name || q.person_name || '',
+      personCategoryContext: q.category_context || q.person_category_context || '',
+      context: q.context || '',
+    };
+  }
+
+  const verdict = q.fact_check_verdict || q.factCheckVerdict || null;
+  const badgeHtml = typeof buildVerdictBadgeHtml === 'function' ? buildVerdictBadgeHtml(q.id, verdict) : '';
+
   return `
     <div class="analytics-quote-card" onclick="navigate(null, '/quote/${q.id}')">
+      ${badgeHtml}
       <div class="quote-card-header">
         <img src="${q.photo_url || '/img/default-avatar.svg'}" alt="" class="author-thumb" onerror="this.src='/img/default-avatar.svg'">
         <div>

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -114,8 +114,13 @@ const emptyReferencesResult = { references: [], media_clip: null };
 
 describe('Fact Check Service', () => {
   let factCheck;
+  let originalFetch;
 
   beforeEach(async () => {
+    originalFetch = global.fetch;
+    // Default: all URL validations pass (200 OK)
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+
     vi.resetModules();
     mockGenerateGroundedJSON.mockReset();
     mockGenerateText.mockReset();
@@ -131,6 +136,10 @@ describe('Fact Check Service', () => {
     }));
 
     factCheck = await import('../../src/services/factCheck.js');
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
   });
 
   // -----------------------------------------------------------------------
@@ -222,7 +231,7 @@ describe('Fact Check Service', () => {
       const result = await factCheck.factCheckQuote(sampleQuoteData);
 
       expect(result.category).toBe('B');
-      expect(result.verdict).toBeNull();
+      expect(result.verdict).toBe('OPINION');
       expect(result.html).toContain('Opinion');
     });
 
@@ -234,7 +243,7 @@ describe('Fact Check Service', () => {
       const result = await factCheck.factCheckQuote(sampleQuoteData);
 
       expect(result.category).toBe('C');
-      expect(result.verdict).toBeNull();
+      expect(result.verdict).toBe('FRAGMENT');
       expect(result.html).toContain('Unverifiable Fragment');
     });
 
@@ -532,6 +541,247 @@ describe('Fact Check Service', () => {
       expect(VERDICT_LABELS.TRUE).toContain('Verified');
       expect(VERDICT_LABELS.FALSE).toContain('False');
       expect(VERDICT_LABELS.MISLEADING).toContain('Misleading');
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // validateReferenceUrls
+  // -----------------------------------------------------------------------
+
+  describe('validateReferenceUrls', () => {
+    it('should keep valid URLs unchanged', async () => {
+      global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+
+      const data = {
+        references: [{
+          display_name: 'Test Ref',
+          enrichment: {
+            found: true,
+            primary_url: 'https://example.com/valid',
+            additional_links: [
+              { url: 'https://example.com/extra', label: 'Extra' },
+            ],
+          },
+        }],
+      };
+
+      await factCheck.validateReferenceUrls(data);
+      expect(data.references[0].enrichment.primary_url).toBe('https://example.com/valid');
+      expect(data.references[0].enrichment.additional_links).toHaveLength(1);
+    });
+
+    it('should null out broken primary_url with no additional_links', async () => {
+      global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 404 });
+
+      const data = {
+        references: [{
+          display_name: 'Dead Ref',
+          enrichment: {
+            found: true,
+            primary_url: 'https://example.com/dead',
+            additional_links: [],
+          },
+        }],
+      };
+
+      await factCheck.validateReferenceUrls(data);
+      expect(data.references[0].enrichment.primary_url).toBeNull();
+    });
+
+    it('should promote working additional_link when primary is broken', async () => {
+      global.fetch = vi.fn().mockImplementation((url) => {
+        if (url === 'https://example.com/dead') {
+          return Promise.resolve({ ok: false, status: 404 });
+        }
+        return Promise.resolve({ ok: true, status: 200 });
+      });
+
+      const data = {
+        references: [{
+          display_name: 'Mixed Ref',
+          enrichment: {
+            found: true,
+            primary_url: 'https://example.com/dead',
+            primary_source_name: 'Dead Source',
+            additional_links: [
+              { url: 'https://example.com/backup', label: 'Backup Source' },
+            ],
+          },
+        }],
+      };
+
+      await factCheck.validateReferenceUrls(data);
+      expect(data.references[0].enrichment.primary_url).toBe('https://example.com/backup');
+      expect(data.references[0].enrichment.primary_source_name).toBe('Backup Source');
+      expect(data.references[0].enrichment.additional_links).toHaveLength(0);
+    });
+
+    it('should remove broken additional_links', async () => {
+      global.fetch = vi.fn().mockImplementation((url) => {
+        if (url === 'https://example.com/broken-extra') {
+          return Promise.resolve({ ok: false, status: 500 });
+        }
+        return Promise.resolve({ ok: true, status: 200 });
+      });
+
+      const data = {
+        references: [{
+          display_name: 'Test',
+          enrichment: {
+            found: true,
+            primary_url: 'https://example.com/good',
+            additional_links: [
+              { url: 'https://example.com/broken-extra', label: 'Broken' },
+              { url: 'https://example.com/good-extra', label: 'Good' },
+            ],
+          },
+        }],
+      };
+
+      await factCheck.validateReferenceUrls(data);
+      expect(data.references[0].enrichment.primary_url).toBe('https://example.com/good');
+      expect(data.references[0].enrichment.additional_links).toHaveLength(1);
+      expect(data.references[0].enrichment.additional_links[0].label).toBe('Good');
+    });
+
+    it('should handle timeout as broken URL', async () => {
+      global.fetch = vi.fn().mockRejectedValue(new Error('AbortError'));
+
+      const data = {
+        references: [{
+          display_name: 'Timeout Ref',
+          enrichment: {
+            found: true,
+            primary_url: 'https://example.com/slow',
+            additional_links: [],
+          },
+        }],
+      };
+
+      await factCheck.validateReferenceUrls(data);
+      expect(data.references[0].enrichment.primary_url).toBeNull();
+    });
+
+    it('should handle empty/null enrichedData gracefully', async () => {
+      await factCheck.validateReferenceUrls(null);
+      await factCheck.validateReferenceUrls({ references: [] });
+      await factCheck.validateReferenceUrls({});
+      // No errors thrown
+    });
+
+    it('should skip references without enrichment', async () => {
+      global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+
+      const data = {
+        references: [
+          { display_name: 'No Enrichment', enrichment: null },
+          { display_name: 'Has Enrichment', enrichment: { found: true, primary_url: 'https://example.com', additional_links: [] } },
+        ],
+      };
+
+      await factCheck.validateReferenceUrls(data);
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('should use HEAD method with 4s timeout', async () => {
+      global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+
+      const data = {
+        references: [{
+          display_name: 'Test',
+          enrichment: { found: true, primary_url: 'https://example.com', additional_links: [] },
+        }],
+      };
+
+      await factCheck.validateReferenceUrls(data);
+      expect(global.fetch).toHaveBeenCalledWith('https://example.com', expect.objectContaining({
+        method: 'HEAD',
+        redirect: 'follow',
+      }));
+    });
+
+    it('should null out broken media clip embed URL', async () => {
+      global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 404 });
+
+      const data = {
+        references: [],
+        media_clip: {
+          enrichment: {
+            found: true,
+            primary_url: 'https://youtube.com/watch?v=abc',
+            media_embed: { type: 'youtube', url: 'https://www.youtube.com/embed/abc' },
+          },
+        },
+      };
+
+      await factCheck.validateReferenceUrls(data);
+      expect(data.media_clip.enrichment.media_embed.url).toBeNull();
+      expect(data.media_clip.enrichment.primary_url).toBeNull();
+    });
+
+    it('should keep valid media clip URLs', async () => {
+      global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+
+      const data = {
+        references: [],
+        media_clip: {
+          enrichment: {
+            found: true,
+            primary_url: 'https://youtube.com/watch?v=good',
+            media_embed: { type: 'youtube', url: 'https://www.youtube.com/embed/good' },
+          },
+        },
+      };
+
+      await factCheck.validateReferenceUrls(data);
+      expect(data.media_clip.enrichment.media_embed.url).toBe('https://www.youtube.com/embed/good');
+      expect(data.media_clip.enrichment.primary_url).toBe('https://youtube.com/watch?v=good');
+    });
+
+    it('should null broken embed but keep valid primary URL for media clip', async () => {
+      global.fetch = vi.fn().mockImplementation((url) => {
+        if (url === 'https://www.youtube.com/embed/bad') {
+          return Promise.resolve({ ok: false, status: 404 });
+        }
+        return Promise.resolve({ ok: true, status: 200 });
+      });
+
+      const data = {
+        references: [],
+        media_clip: {
+          enrichment: {
+            found: true,
+            primary_url: 'https://youtube.com/watch?v=good',
+            media_embed: { type: 'youtube', url: 'https://www.youtube.com/embed/bad' },
+          },
+        },
+      };
+
+      await factCheck.validateReferenceUrls(data);
+      expect(data.media_clip.enrichment.media_embed.url).toBeNull();
+      expect(data.media_clip.enrichment.primary_url).toBe('https://youtube.com/watch?v=good');
+    });
+
+    it('should validate both references and media clip URLs together', async () => {
+      global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+
+      const data = {
+        references: [{
+          display_name: 'Test',
+          enrichment: { found: true, primary_url: 'https://example.com/ref', additional_links: [] },
+        }],
+        media_clip: {
+          enrichment: {
+            found: true,
+            primary_url: 'https://youtube.com/watch?v=abc',
+            media_embed: { type: 'youtube', url: 'https://www.youtube.com/embed/abc' },
+          },
+        },
+      };
+
+      await factCheck.validateReferenceUrls(data);
+      // All 3 unique URLs validated
+      expect(global.fetch).toHaveBeenCalledTimes(3);
     });
   });
 });

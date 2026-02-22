@@ -164,7 +164,17 @@ async function extractWithReadability(url) {
 export async function processArticle(article, db, io) {
   db.prepare("UPDATE articles SET status = 'processing' WHERE id = ?").run(article.id);
 
-  const limiter = getLimiter(article.domain);
+  // Domain fallback: extract from URL when source_id is NULL (backprop articles)
+  if (!article.domain && article.url) {
+    try {
+      const urlObj = new URL(article.url);
+      article.domain = urlObj.hostname.toLowerCase().replace(/^www\./, '');
+    } catch {
+      article.domain = 'unknown';
+    }
+  }
+
+  const limiter = getLimiter(article.domain || 'unknown');
 
   return limiter(async () => {
     await respectRateLimit(article.domain);
@@ -189,18 +199,19 @@ export async function processArticle(article, db, io) {
     if (!extracted || !extracted.text || extracted.text.length < 200) {
       db.prepare("UPDATE articles SET status = 'failed', error = 'Text too short or extraction failed' WHERE id = ?")
         .run(article.id);
-      return [];
+      return { quotes: [], extracted_entities: [] };
     }
 
-    // Step 2 & 3: Extract quotes (includes pre-filter and Gemini extraction)
-    const quotes = await extractQuotesFromArticle(extracted.text, article, db, io);
+    // Step 2 & 3: Extract quotes and entities (includes pre-filter and Gemini extraction)
+    const extractionResult = await extractQuotesFromArticle(extracted.text, article, db, io);
+    const quotes = extractionResult.quotes;
 
     // Step 4: Update article status
     const status = quotes.length > 0 ? 'completed' : 'no_quotes';
     db.prepare(`UPDATE articles SET status = ?, quote_count = ?, processed_at = datetime('now') WHERE id = ?`)
       .run(status, quotes.length, article.id);
 
-    return quotes;
+    return extractionResult;
   });
 }
 

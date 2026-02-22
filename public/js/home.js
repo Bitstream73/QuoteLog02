@@ -1,4 +1,4 @@
-// Homepage - 4-Tab System (Trending Topics, Trending Sources, Trending Quotes, All)
+// Homepage - Tab System (Trending Quotes, Trending Authors, Trending Sources)
 
 // Store full quote texts for show more/less toggle
 const _quoteTexts = {};
@@ -7,17 +7,159 @@ const _quoteTexts = {};
 const _quoteMeta = {};
 
 // Current active tab
-let _activeTab = 'all';
+let _activeTab = 'trending-authors';
 
-// Pending new quotes count (for non-jarring updates)
-let _pendingNewQuotes = 0;
+// Per-tab state: sort, page, search, hasMore
+let _quotesSortBy = 'date';
+let _quotesPage = 1;
+let _quotesSearch = '';
+let _quotesHasMore = true;
+
+let _authorsPage = 1;
+let _authorsSearch = '';
+let _authorsHasMore = true;
+
+let _sourcesPage = 1;
+let _sourcesSearch = '';
+let _sourcesHasMore = true;
+
+let _isLoadingMore = false;
+let _infiniteScrollObserver = null;
+let _tabSearchDebounceTimer = null;
+
+// ======= Category Icon Mapping =======
+
+function getCategoryIcon(categoryName) {
+  if (!categoryName) return 'category';
+  const name = categoryName.toLowerCase();
+  const map = [
+    [['politics', 'political', 'government'], 'account_balance'],
+    [['business', 'economy', 'finance', 'market'], 'trending_up'],
+    [['technology', 'tech', 'cyber', 'digital'], 'devices'],
+    [['entertainment', 'celebrity', 'hollywood'], 'theater_comedy'],
+    [['sports', 'athletic'], 'sports_soccer'],
+    [['science', 'research'], 'science'],
+    [['health', 'medical', 'healthcare'], 'health_and_safety'],
+    [['world', 'international', 'global', 'foreign'], 'public'],
+    [['education', 'school', 'academic'], 'school'],
+    [['environment', 'climate', 'energy'], 'eco'],
+    [['law', 'legal', 'justice', 'court'], 'gavel'],
+    [['military', 'defense', 'war'], 'military_tech'],
+    [['crime', 'criminal', 'police'], 'local_police'],
+    [['culture', 'arts', 'art'], 'palette'],
+    [['media', 'news', 'press', 'journalism'], 'newspaper'],
+    [['religion', 'faith', 'church'], 'church'],
+    [['space', 'nasa', 'astronomy'], 'rocket'],
+  ];
+  for (const [keywords, icon] of map) {
+    if (keywords.some(k => name.includes(k))) return icon;
+  }
+  return 'category';
+}
+
+function buildCategoryAvatarHtml(imageUrl, iconName, categoryName, size) {
+  const sizeClass = size === 'sm' ? ' category-icon-avatar--sm' : '';
+  const cssClass = size === 'sm' ? 'noteworthy-card__avatar category-icon-avatar--sm' : 'noteworthy-card__avatar';
+  if (imageUrl) {
+    return `<img class="${cssClass}" src="${escapeHtml(imageUrl)}" alt="" onerror="this.outerHTML='<span class=\\'material-icons-outlined category-icon-avatar${sizeClass}\\'>${escapeHtml(iconName || getCategoryIcon(categoryName))}</span>'" style="border-radius:50%;object-fit:cover">`;
+  }
+  const icon = iconName || getCategoryIcon(categoryName);
+  return `<span class="material-icons-outlined category-icon-avatar${sizeClass}">${escapeHtml(icon)}</span>`;
+}
+
+// ======= Verdict Badge =======
+
+const VERDICT_COLORS = {
+  TRUE: 'var(--success)', MOSTLY_TRUE: 'var(--success)',
+  FALSE: 'var(--error)', MOSTLY_FALSE: 'var(--error)',
+  MISLEADING: 'var(--warning)', LACKS_CONTEXT: 'var(--warning)',
+  UNVERIFIABLE: 'var(--info)',
+  OPINION: 'var(--text-muted)',
+  FRAGMENT: 'var(--text-muted)',
+};
+const VERDICT_LABELS = {
+  TRUE: '\u2713 True', MOSTLY_TRUE: '\u2248 Mostly True',
+  FALSE: '\u2717 False', MOSTLY_FALSE: '\u2248 Mostly False',
+  MISLEADING: '\u26A0 Misleading', LACKS_CONTEXT: '\u26A0 Lacks Context',
+  UNVERIFIABLE: '? Unverifiable',
+  OPINION: '\uD83D\uDCAC Opinion',
+  FRAGMENT: '\u2014 Fragment',
+};
+
+function buildVerdictBadgeHtml(quoteId, verdict) {
+  if (verdict && VERDICT_LABELS[verdict]) {
+    const color = VERDICT_COLORS[verdict] || 'var(--text-muted)';
+    return `<span class="wts-verdict-badge" style="background:${color}" onclick="event.stopPropagation(); navigateTo('/quote/${quoteId}')">${VERDICT_LABELS[verdict]}</span>`;
+  }
+  return `<button class="wts-verdict-badge wts-verdict-badge--pending" onclick="event.stopPropagation(); runInlineFactCheck(${quoteId}, this)">Run Fact Check</button>`;
+}
+
+async function runInlineFactCheck(quoteId, btn) {
+  if (!btn || btn.disabled) return;
+  btn.disabled = true;
+  btn.textContent = 'One sec..';
+
+  const meta = _quoteMeta[quoteId];
+  if (!meta || !meta.text) {
+    btn.disabled = false;
+    btn.textContent = 'Run Fact Check';
+    showToast('Quote data not available', 'error');
+    return;
+  }
+
+  try {
+    const result = await API.post('/fact-check/check', {
+      quoteId,
+      quoteText: meta.text,
+      authorName: meta.personName || '',
+      authorDescription: meta.personCategoryContext || '',
+      context: meta.context || '',
+    });
+
+    // Async 202 — result will arrive via Socket.IO
+    if (result.queued) {
+      btn.textContent = result.position > 0 ? `Queued (#${result.position})...` : 'Checking...';
+      btn.dataset.pendingQuoteId = quoteId;
+      return;
+    }
+
+    const verdict = result.verdict || result.factCheck?.verdict;
+    if (verdict && VERDICT_LABELS[verdict]) {
+      const color = VERDICT_COLORS[verdict] || 'var(--text-muted)';
+      const badge = document.createElement('span');
+      badge.className = 'wts-verdict-badge';
+      badge.style.background = color;
+      badge.textContent = VERDICT_LABELS[verdict];
+      badge.onclick = function(e) { e.stopPropagation(); navigateTo('/quote/' + quoteId); };
+      btn.replaceWith(badge);
+    } else {
+      btn.disabled = false;
+      btn.textContent = 'Run Fact Check';
+      showToast('No verdict returned', 'info');
+    }
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = 'Run Fact Check';
+    showToast('Fact check failed: ' + (err.message || 'Unknown error'), 'error');
+  }
+}
+
+function handleFactCheckError(data) {
+  const { quoteId, error } = data;
+  if (!quoteId) return;
+
+  // Re-enable any pending inline buttons for this quote
+  document.querySelectorAll(`button.wts-verdict-badge--pending[data-pending-quote-id="${quoteId}"]`).forEach(btn => {
+    btn.disabled = false;
+    btn.textContent = 'Run Fact Check';
+    delete btn.dataset.pendingQuoteId;
+  });
+
+  showToast('Fact check failed: ' + (error || 'Unknown error'), 'error');
+}
 
 // Important status cache (entity_type:entity_id -> boolean)
 let _importantStatuses = {};
-
-// Autocomplete caches for topics/keywords
-let _topicsCacheAll = null;
-let _keywordsCacheAll = null;
 
 /**
  * Format a timestamp as mm/dd/yyyy - hh:mm:ss
@@ -88,6 +230,11 @@ function escapeHtml(str) {
  * Build share buttons for any entity type
  */
 function buildShareButtonsHtml(entityType, entityId, text, authorName) {
+  const downloadBtn = entityType === 'quote' ? `
+      <button class="share-btn share-btn--download" onclick="downloadShareImage(event, ${entityId})" title="Share Image">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+      </button>` : '';
+
   return `
     <div class="share-buttons" data-entity-type="${entityType}" data-entity-id="${entityId}">
       <button class="share-btn" onclick="shareEntity(event, '${entityType}', ${entityId}, 'twitter')" title="Share on X">
@@ -96,12 +243,7 @@ function buildShareButtonsHtml(entityType, entityId, text, authorName) {
       <button class="share-btn" onclick="shareEntity(event, '${entityType}', ${entityId}, 'facebook')" title="Share on Facebook">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
       </button>
-      <button class="share-btn" onclick="shareEntity(event, '${entityType}', ${entityId}, 'email')" title="Share via Email">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
-      </button>
-      <button class="share-btn" onclick="shareEntity(event, '${entityType}', ${entityId}, 'copy')" title="Copy link">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
-      </button>
+${downloadBtn}
     </div>
   `;
 }
@@ -112,6 +254,12 @@ function buildShareButtonsHtml(entityType, entityId, text, authorName) {
 async function shareEntity(event, entityType, entityId, platform) {
   event.stopPropagation();
   event.preventDefault();
+
+  // Block sharing while fact-check is in progress
+  if (entityType === 'quote' && typeof _factCheckInProgress !== 'undefined' && _factCheckInProgress) {
+    showToast("It'll just be a sec. We're fact checking this quote for the first time...", 'info');
+    return;
+  }
 
   // Increment share count via API
   try {
@@ -133,20 +281,63 @@ async function shareEntity(event, entityType, entityId, platform) {
     case 'facebook':
       window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`, '_blank');
       break;
-    case 'email': {
-      const subject = encodeURIComponent(`Quote from ${authorName} - WhatTheySaid.News`);
-      const body = encodeURIComponent(`${fullText}\n\nRead more: ${url}\n\n---\nShared from WhatTheySaid.News`);
-      window.open(`mailto:?subject=${subject}&body=${body}`, '_self');
-      break;
+  }
+}
+
+/**
+ * Download a share image (portrait format) for a quote
+ */
+async function downloadShareImage(event, quoteId) {
+  event.stopPropagation();
+  event.preventDefault();
+
+  // Block download while fact-check is in progress
+  if (typeof _factCheckInProgress !== 'undefined' && _factCheckInProgress) {
+    showToast("It'll just be a sec. We're fact checking this quote for the first time...", 'info');
+    return;
+  }
+
+  const btn = event.currentTarget;
+  btn.classList.add('share-btn--loading');
+
+  try {
+    // Try native share with image on supported platforms (mobile)
+    if (navigator.share && navigator.canShare) {
+      const res = await fetch(`/api/quotes/${quoteId}/share-image?format=portrait&t=${Date.now()}`);
+      if (!res.ok) throw new Error('Failed to fetch image');
+      const blob = await res.blob();
+      const file = new File([blob], `trueorfalse-quote-${quoteId}.jpg`, { type: 'image/jpeg' });
+
+      if (navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: 'Quote from TrueOrFalse.News',
+          url: window.location.origin + '/quote/' + quoteId,
+        });
+        btn.classList.remove('share-btn--loading');
+        return;
+      }
     }
-    case 'copy':
-      navigator.clipboard.writeText(`${fullText}\n${url}`).then(() => {
-        const btn = event.currentTarget;
-        btn.classList.add('share-copied');
-        setTimeout(() => btn.classList.remove('share-copied'), 1500);
-        showToast('Link copied to clipboard', 'success');
-      }).catch(() => {});
-      break;
+
+    // Fallback: download the image
+    const res = await fetch(`/api/quotes/${quoteId}/share-image?format=portrait&t=${Date.now()}`);
+    if (!res.ok) throw new Error('Failed to fetch image');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `trueorfalse-quote-${quoteId}.jpg`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('Image downloaded', 'success');
+  } catch (err) {
+    if (err.name !== 'AbortError') {
+      showToast('Failed to download image', 'error');
+    }
+  } finally {
+    btn.classList.remove('share-btn--loading');
   }
 }
 
@@ -178,10 +369,10 @@ function initViewTracking() {
 /**
  * Build HTML for a single quote block (new layout)
  */
-function buildQuoteBlockHtml(q, topics, isImportant, options = {}) {
+function buildQuoteBlockHtml(q, isImportant, options = {}) {
   // Admin mode: use expanded admin quote block
   if (typeof isAdmin !== 'undefined' && isAdmin) {
-    return buildAdminQuoteBlockHtml(q, topics, isImportant);
+    return buildAdminQuoteBlockHtml(q, isImportant);
   }
 
   const variant = options.variant || 'default';  // 'default'|'compact'|'hero'|'featured'
@@ -220,22 +411,19 @@ function buildQuoteBlockHtml(q, topics, isImportant, options = {}) {
   const _isAdm = typeof isAdmin !== 'undefined' && isAdmin;
   const _safeName = escapeHtml((personName || '').replace(/'/g, "\\'"));
   const headshotHtml = photoUrl
-    ? `<img src="${escapeHtml(photoUrl)}" alt="${escapeHtml(personName)}" class="quote-block__headshot" onerror="this.outerHTML='<div class=\\'quote-headshot-placeholder\\'>${initial}</div>'" loading="lazy">`
+    ? `<img src="${escapeHtml(photoUrl)}" alt="${escapeHtml(personName)}" class="quote-block__headshot" onerror="if(!this.dataset.retry){this.dataset.retry='1';this.src=this.src}else{this.outerHTML='<div class=\\'quote-headshot-placeholder\\'>${initial}</div>'}" loading="lazy">`
     : `<div class="quote-headshot-placeholder">${initial}</div>`;
-
-  // Topic tags
-  const topicTags = (topics || []).slice(0, 2).map(t =>
-    `<a class="quote-block__topic-tag" onclick="navigateTo('/topic/${t.slug}')">${escapeHtml(t.name)}</a>`
-  ).join('');
 
   // Share buttons + important
   const shareButtons = buildShareButtonsHtml('quote', q.id, q.text, personName);
   const importantButton = renderImportantButton('quote', q.id, importantsCount, isImportant);
 
   const variantClass = variant !== 'default' ? ' quote-block--' + variant : '';
+  const verdict = q.fact_check_verdict || q.factCheckVerdict || null;
 
   return `
-    <div class="quote-block${variantClass}" data-quote-id="${q.id}" data-track-type="quote" data-track-id="${q.id}" data-created-at="${q.created_at || ''}" data-importance="${(importantsCount + shareCount + viewCount) || 0}" data-share-view="${(shareCount + viewCount) || 0}">
+    <div class="quote-block${variantClass}" data-quote-id="${q.id}" data-track-type="quote" data-track-id="${q.id}" data-created-at="${quoteDateTime || q.created_at || ''}" data-importance="${(importantsCount + shareCount + viewCount) || 0}" data-share-view="${(shareCount + viewCount) || 0}">
+      ${buildVerdictBadgeHtml(q.id, verdict)}
       <div class="quote-block__text" onclick="navigateTo('/quote/${q.id}')">
         <span class="quote-mark quote-mark--open">\u201C</span>${escapeHtml(truncatedText)}${isLong ? `<a href="#" class="show-more-toggle" onclick="toggleQuoteText(event, ${q.id})">show more</a>` : ''}<span class="quote-mark quote-mark--close">\u201D</span>
       </div>
@@ -255,7 +443,6 @@ function buildQuoteBlockHtml(q, topics, isImportant, options = {}) {
           ${quoteDateTime ? `<span class="quote-block__time">${formatRelativeTime(quoteDateTime)}</span>` : ''}
         </div>
         <div class="quote-block__footer-hover">
-          ${topicTags}
           ${shareButtons}
           ${shareCount > 0 ? `<span class="quote-block__share-count">${shareCount}</span>` : ''}
           ${importantButton}
@@ -272,7 +459,7 @@ function buildQuoteBlockHtml(q, topics, isImportant, options = {}) {
 /**
  * Build HTML for an admin quote block — expanded layout with inline editing
  */
-function buildAdminQuoteBlockHtml(q, topics, isImportant) {
+function buildAdminQuoteBlockHtml(q, isImportant) {
   // Store text and metadata
   if (q.text) _quoteTexts[q.id] = q.text;
   _quoteMeta[q.id] = {
@@ -301,12 +488,15 @@ function buildAdminQuoteBlockHtml(q, topics, isImportant) {
   const initial = (personName || '?').charAt(0).toUpperCase();
   const _safeName = escapeHtml((personName || '').replace(/'/g, "\\'"));
   const headshotHtml = photoUrl
-    ? `<img src="${escapeHtml(photoUrl)}" alt="${escapeHtml(personName)}" class="quote-block__headshot admin-headshot-clickable" onclick="adminChangeHeadshot(${personId}, '${_safeName}')" title="Click to change photo" style="cursor:pointer" onerror="this.outerHTML='<div class=\\'quote-headshot-placeholder\\'>${initial}</div>'" loading="lazy">`
-    : `<a href="https://www.google.com/search?tbm=isch&q=${encodeURIComponent((personName || '') + ' ' + (personCategoryContext || ''))}" target="_blank" rel="noopener" class="admin-headshot-search" title="Search Google Images"><div class="quote-headshot-placeholder">${initial}</div></a>`;
+    ? `<img src="${escapeHtml(photoUrl)}" alt="${escapeHtml(personName)}" class="quote-block__headshot admin-headshot-clickable" onclick="adminChangeHeadshot(${personId}, '${_safeName}')" title="Click to change photo" style="cursor:pointer" onerror="if(!this.dataset.retry){this.dataset.retry='1';this.src=this.src}else{this.outerHTML='<div class=\\'quote-headshot-placeholder\\'>${initial}</div>'}" loading="lazy">`
+    : `<div class="quote-headshot-placeholder admin-headshot-clickable" onclick="adminChangeHeadshot(${personId}, '${_safeName}')" title="Click to find photo" style="cursor:pointer">${initial}</div>`;
+
+  const verdict = q.fact_check_verdict || q.factCheckVerdict || null;
 
   return `
     <div class="admin-quote-block quote-block" data-quote-id="${q.id}" data-track-type="quote" data-track-id="${q.id}" data-created-at="${q.created_at || ''}" data-importance="${(importantsCount + shareViewScore) || 0}" data-share-view="${shareViewScore}">
 
+      ${buildVerdictBadgeHtml(q.id, verdict)}
       <div class="quote-block__text" onclick="navigateTo('/quote/${q.id}')">
         <span class="quote-mark quote-mark--open">\u201C</span>${escapeHtml(q.text || '')}<span class="quote-mark quote-mark--close">\u201D</span>
       </div>
@@ -327,9 +517,6 @@ function buildAdminQuoteBlockHtml(q, topics, isImportant) {
 
       <div class="quote-block__links">
         ${articleId ? `<a class="quote-block__source-link" onclick="navigateTo('/article/${articleId}')">${escapeHtml(sourceName || sourceDomain || 'Source')}</a>` : ''}
-        ${(topics || []).slice(0, 2).map(t =>
-          `<a class="quote-block__topic-tag" onclick="navigateTo('/topic/${t.slug}')">${escapeHtml(t.name)}</a>`
-        ).join('')}
       </div>
 
       <div class="quote-block__share">
@@ -346,42 +533,24 @@ function buildAdminQuoteBlockHtml(q, topics, isImportant) {
       <div class="admin-edit-buttons">
         <button onclick="adminEditQuoteText(${q.id}, _quoteTexts[${q.id}] || '')">Quote</button>
         <button onclick="adminEditContext(${q.id}, _quoteMeta[${q.id}]?.context || '')">Context</button>
-        <button onclick="openAdminAutocomplete('topic', ${q.id})">Topics</button>
         <button onclick="navigateTo('/article/${articleId}')">Sources</button>
         <button onclick="adminEditAuthorFromQuote(${q.person_id || q.personId})">Author</button>
-        <button onclick="adminChangeHeadshotFromQuote(${q.person_id || q.personId})">Photo</button>
+        <button onclick="adminChangeHeadshot(${q.person_id || q.personId}, '${_safeName}')">Photo</button>
+        <button onclick="adminDeleteQuote(${q.id}, function(){ location.reload(); }, this)" title="Delete quote" style="color:var(--danger,#dc2626)">Delete</button>
       </div>
 
-      <div class="admin-keywords-section" id="admin-keywords-${q.id}">
-        <span class="admin-section-label">Keywords</span>
-        <button class="admin-inline-btn" onclick="openAdminAutocomplete('keyword', ${q.id})">Add Keyword</button>
-        <span>:</span>
-        <div class="admin-chips" id="keyword-chips-${q.id}"></div>
-      </div>
-
-      <div class="admin-topics-section" id="admin-topics-${q.id}">
-        <span class="admin-section-label">Topics</span>
-        <button class="admin-inline-btn" onclick="openAdminAutocomplete('topic', ${q.id})">Add Topic</button>
-        <span>:</span>
-        <div class="admin-chips" id="topic-chips-${q.id}"></div>
-      </div>
+      <details class="admin-details-panel admin-details-panel--list" ontoggle="loadListAdminDetails(this, ${q.id})">
+        <summary class="admin-details-panel__summary">
+          <span class="admin-details-panel__title">Admin Details</span>
+        </summary>
+        <div class="admin-details-panel__body" id="admin-details-body-${q.id}">
+        </div>
+      </details>
     </div>
   `;
 }
 
 // ======= Admin Quote Edit Functions =======
-
-async function adminEditQuoteTopics(quoteId) {
-  const name = prompt('Enter topic name to add to this quote:');
-  if (name === null || name.trim() === '') return;
-  try {
-    await API.post(`/admin/quotes/${quoteId}/topics`, { name: name.trim() });
-    showToast('Topic linked', 'success');
-    loadQuoteKeywordsTopics(quoteId);
-  } catch (err) {
-    showToast('Error: ' + err.message, 'error');
-  }
-}
 
 async function adminEditAuthorFromQuote(personId) {
   const newName = prompt('Edit author name:');
@@ -394,342 +563,28 @@ async function adminEditAuthorFromQuote(personId) {
   }
 }
 
-async function adminChangeHeadshotFromQuote(personId) {
-  const newUrl = prompt('Enter new headshot URL:');
-  if (newUrl === null) return;
+
+// ======= Lazy-Load Admin Details for List View =======
+
+async function loadListAdminDetails(detailsEl, quoteId) {
+  if (!detailsEl.open) return;
+  const body = detailsEl.querySelector('.admin-details-panel__body');
+  if (body.dataset.loaded) return;
+
+  body.innerHTML = '<div class="context-loading"><div class="context-loading-spinner"></div><span style="font-family:var(--font-ui);font-size:var(--text-sm);color:var(--text-muted)">Loading admin details...</span></div>';
+
   try {
-    await API.patch(`/authors/${personId}`, { photoUrl: newUrl.trim() || null });
-    showToast('Headshot updated', 'success');
+    const data = await API.get(`/quotes/${quoteId}`);
+    const fullPanel = buildAdminQuoteDetailsPanel(data);
+    // Extract just the body content from the full panel HTML
+    const temp = document.createElement('div');
+    temp.innerHTML = fullPanel;
+    const panelBody = temp.querySelector('.admin-details-panel__body');
+    body.innerHTML = panelBody ? panelBody.innerHTML : '<p class="admin-details-empty">No details available</p>';
+    body.dataset.loaded = 'true';
   } catch (err) {
-    showToast('Error: ' + err.message, 'error');
+    body.innerHTML = `<p class="admin-details-empty">Error loading details: ${escapeHtml(err.message)}</p>`;
   }
-}
-
-async function adminCreateKeyword(quoteId) {
-  const name = prompt('Keyword name:');
-  if (name === null || name.trim() === '') return;
-  try {
-    await API.post(`/admin/quotes/${quoteId}/keywords`, { name: name.trim() });
-    showToast('Keyword created and linked', 'success');
-    loadQuoteKeywordsTopics(quoteId);
-  } catch (err) {
-    showToast('Error: ' + err.message, 'error');
-  }
-}
-
-async function adminCreateTopicForQuote(quoteId) {
-  const name = prompt('Topic name:');
-  if (name === null || name.trim() === '') return;
-  try {
-    await API.post(`/admin/quotes/${quoteId}/topics`, { name: name.trim() });
-    showToast('Topic created and linked', 'success');
-    loadQuoteKeywordsTopics(quoteId);
-  } catch (err) {
-    showToast('Error: ' + err.message, 'error');
-  }
-}
-
-async function adminRemoveQuoteKeyword(quoteId, keywordId) {
-  try {
-    await API.delete(`/admin/quotes/${quoteId}/keywords/${keywordId}`);
-    const chip = document.querySelector(`#keyword-chips-${quoteId} [data-keyword-id="${keywordId}"]`);
-    if (chip) chip.remove();
-    showToast('Keyword unlinked', 'success');
-  } catch (err) {
-    showToast('Error: ' + err.message, 'error');
-  }
-}
-
-async function adminRemoveQuoteTopic(quoteId, topicId) {
-  try {
-    await API.delete(`/admin/quotes/${quoteId}/topics/${topicId}`);
-    const chip = document.querySelector(`#topic-chips-${quoteId} [data-topic-id="${topicId}"]`);
-    if (chip) chip.remove();
-    showToast('Topic unlinked', 'success');
-  } catch (err) {
-    showToast('Error: ' + err.message, 'error');
-  }
-}
-
-// ======= Admin Topic/Source Edit Functions =======
-
-async function adminEditTopic(topicId, currentName) {
-  const newName = prompt('Edit topic name:', currentName || '');
-  if (newName === null || newName.trim() === '' || newName.trim() === currentName) return;
-  try {
-    await API.put(`/admin/topics/${topicId}`, { name: newName.trim() });
-    showToast('Topic updated', 'success');
-  } catch (err) {
-    showToast('Error: ' + err.message, 'error');
-  }
-}
-
-async function adminCreateTopicKeyword(topicId) {
-  const name = prompt('Keyword name to add to this topic:');
-  if (name === null || name.trim() === '') return;
-  try {
-    // Create keyword if needed, then link via topic_keywords
-    const res = await API.post('/admin/keywords', { name: name.trim(), keyword_type: 'concept' });
-    const keywordId = res.keyword?.id;
-    if (keywordId) {
-      // Link keyword to topic — use a generic approach
-      await API.post(`/admin/topics/${topicId}/keywords`, { keyword_id: keywordId });
-    }
-    showToast('Keyword added to topic', 'success');
-  } catch (err) {
-    // If keyword already exists (409), try to find and link it
-    if (err.message && err.message.includes('409')) {
-      showToast('Keyword already exists', 'info');
-    } else {
-      showToast('Error: ' + err.message, 'error');
-    }
-  }
-}
-
-async function adminRemoveTopicKeyword(topicId, keywordId, btnEl) {
-  try {
-    await API.delete(`/admin/topics/${topicId}/keywords/${keywordId}`);
-    const chip = btnEl.closest('.keyword-chip');
-    if (chip) chip.remove();
-    showToast('Keyword removed from topic', 'success');
-  } catch (err) {
-    showToast('Error: ' + err.message, 'error');
-  }
-}
-
-// ======= Admin Autocomplete for Topics/Keywords =======
-
-async function _ensureTopicsCache() {
-  if (_topicsCacheAll) return _topicsCacheAll;
-  try {
-    const data = await API.get('/topics?limit=100');
-    _topicsCacheAll = (data.topics || []).map(t => ({ id: t.id, name: t.name, slug: t.slug }));
-  } catch (err) {
-    _topicsCacheAll = [];
-  }
-  return _topicsCacheAll;
-}
-
-async function _ensureKeywordsCache() {
-  if (_keywordsCacheAll) return _keywordsCacheAll;
-  try {
-    const data = await API.get('/admin/keywords');
-    _keywordsCacheAll = (data.keywords || []).map(k => ({ id: k.id, name: k.name }));
-  } catch (err) {
-    _keywordsCacheAll = [];
-  }
-  return _keywordsCacheAll;
-}
-
-function openAdminAutocomplete(type, quoteId) {
-  // Close any existing autocomplete first
-  document.querySelectorAll('.admin-autocomplete').forEach(el => el.remove());
-
-  // Find and hide the button
-  const sectionId = type === 'topic' ? `admin-topics-${quoteId}` : `admin-keywords-${quoteId}`;
-  const section = document.getElementById(sectionId);
-  if (!section) return;
-  const btn = section.querySelector('.admin-inline-btn');
-  if (btn) btn.style.display = 'none';
-
-  // Create autocomplete widget
-  const wrapper = document.createElement('span');
-  wrapper.className = 'admin-autocomplete';
-  wrapper.dataset.type = type;
-  wrapper.dataset.quoteId = quoteId;
-
-  const input = document.createElement('input');
-  input.type = 'text';
-  input.className = 'admin-ac-input';
-  input.placeholder = type === 'topic' ? 'Search topics...' : 'Search keywords...';
-
-  const dropdown = document.createElement('div');
-  dropdown.className = 'admin-ac-dropdown';
-  dropdown.style.display = 'none';
-
-  wrapper.appendChild(input);
-  wrapper.appendChild(dropdown);
-
-  // Insert after the button
-  if (btn && btn.nextSibling) {
-    section.insertBefore(wrapper, btn.nextSibling);
-  } else {
-    section.insertBefore(wrapper, section.querySelector('.admin-chips'));
-  }
-
-  input.focus();
-
-  // Load cache and show initial options
-  const loadItems = type === 'topic' ? _ensureTopicsCache : _ensureKeywordsCache;
-  loadItems().then(items => {
-    _renderAcDropdown(dropdown, items.slice(0, 8), type, quoteId, '');
-    dropdown.style.display = '';
-  });
-
-  // Input handler for filtering
-  input.addEventListener('input', async () => {
-    const query = input.value.trim().toLowerCase();
-    const items = type === 'topic' ? _topicsCacheAll : _keywordsCacheAll;
-    if (!items) return;
-    const filtered = query
-      ? items.filter(it => it.name.toLowerCase().includes(query)).slice(0, 8)
-      : items.slice(0, 8);
-    _renderAcDropdown(dropdown, filtered, type, quoteId, query);
-    dropdown.style.display = '';
-  });
-
-  // Keyboard navigation
-  input.addEventListener('keydown', (e) => {
-    const options = dropdown.querySelectorAll('.admin-ac-option, .admin-ac-create');
-    const current = dropdown.querySelector('.highlighted');
-    let idx = Array.from(options).indexOf(current);
-
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      idx = Math.min(idx + 1, options.length - 1);
-      options.forEach(o => o.classList.remove('highlighted'));
-      if (options[idx]) options[idx].classList.add('highlighted');
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      idx = Math.max(idx - 1, 0);
-      options.forEach(o => o.classList.remove('highlighted'));
-      if (options[idx]) options[idx].classList.add('highlighted');
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      if (current) {
-        current.click();
-      }
-    } else if (e.key === 'Escape') {
-      closeAdminAutocomplete(type, quoteId);
-    }
-  });
-
-  // Click-outside handler
-  const outsideHandler = (e) => {
-    if (!wrapper.contains(e.target)) {
-      document.removeEventListener('mousedown', outsideHandler);
-      closeAdminAutocomplete(type, quoteId);
-    }
-  };
-  setTimeout(() => document.addEventListener('mousedown', outsideHandler), 0);
-}
-
-function _renderAcDropdown(dropdown, items, type, quoteId, query) {
-  let html = '';
-  for (const item of items) {
-    html += `<div class="admin-ac-option" data-id="${item.id}" data-name="${escapeHtml(item.name)}" onclick="selectAutocompleteOption('${type}', ${quoteId}, ${item.id}, '${escapeHtml(item.name.replace(/'/g, "\\'"))}')">${escapeHtml(item.name)}</div>`;
-  }
-  // Show "Create: ..." option if query has text and no exact match
-  if (query) {
-    const exactMatch = items.some(it => it.name.toLowerCase() === query);
-    if (!exactMatch) {
-      html += `<div class="admin-ac-create" onclick="selectAutocompleteCreate('${type}', ${quoteId}, '${escapeHtml(query.replace(/'/g, "\\'"))}')">Create: ${escapeHtml(query)}</div>`;
-    }
-  }
-  if (!html) {
-    html = `<div class="admin-ac-create" onclick="event.stopPropagation()">Type to search or create...</div>`;
-  }
-  dropdown.innerHTML = html;
-}
-
-function closeAdminAutocomplete(type, quoteId) {
-  const sectionId = type === 'topic' ? `admin-topics-${quoteId}` : `admin-keywords-${quoteId}`;
-  const section = document.getElementById(sectionId);
-  if (!section) return;
-  const widget = section.querySelector('.admin-autocomplete');
-  if (widget) widget.remove();
-  const btn = section.querySelector('.admin-inline-btn');
-  if (btn) btn.style.display = '';
-}
-
-async function selectAutocompleteOption(type, quoteId, itemId, itemName) {
-  closeAdminAutocomplete(type, quoteId);
-  try {
-    if (type === 'topic') {
-      await API.post(`/admin/quotes/${quoteId}/topics`, { topic_id: itemId });
-      showToast('Topic linked', 'success');
-    } else {
-      await API.post(`/admin/quotes/${quoteId}/keywords`, { keyword_id: itemId });
-      showToast('Keyword linked', 'success');
-    }
-    loadQuoteKeywordsTopics(quoteId);
-  } catch (err) {
-    showToast('Error: ' + err.message, 'error');
-  }
-}
-
-async function selectAutocompleteCreate(type, quoteId, name) {
-  closeAdminAutocomplete(type, quoteId);
-  try {
-    if (type === 'topic') {
-      await API.post(`/admin/quotes/${quoteId}/topics`, { name: name.trim() });
-      showToast('Topic created and linked', 'success');
-      // Invalidate cache so new topic appears next time
-      _topicsCacheAll = null;
-    } else {
-      await API.post(`/admin/quotes/${quoteId}/keywords`, { name: name.trim() });
-      showToast('Keyword created and linked', 'success');
-      _keywordsCacheAll = null;
-    }
-    loadQuoteKeywordsTopics(quoteId);
-  } catch (err) {
-    showToast('Error: ' + err.message, 'error');
-  }
-}
-
-function highlightAcOption(el) {
-  const dropdown = el.closest('.admin-ac-dropdown');
-  if (dropdown) {
-    dropdown.querySelectorAll('.admin-ac-option, .admin-ac-create').forEach(o => o.classList.remove('highlighted'));
-  }
-  el.classList.add('highlighted');
-}
-
-// ======= Keyword/Topic Lazy Loading =======
-
-async function loadQuoteKeywordsTopics(quoteId) {
-  try {
-    const data = await API.get(`/quotes/${quoteId}/keywords-topics`);
-    renderKeywordChips(quoteId, data.keywords || []);
-    renderTopicChips(quoteId, data.topics || []);
-  } catch (err) {
-    // Non-blocking
-  }
-}
-
-function renderKeywordChips(quoteId, keywords) {
-  const container = document.getElementById(`keyword-chips-${quoteId}`);
-  if (!container) return;
-  container.innerHTML = keywords.map(kw =>
-    `<span class="keyword-chip" data-keyword-id="${kw.id}">
-      ${escapeHtml(kw.name)}
-      <button class="chip-remove" onclick="event.stopPropagation(); adminRemoveQuoteKeyword(${quoteId}, ${kw.id})">x</button>
-    </span>`
-  ).join('');
-}
-
-function renderTopicChips(quoteId, topics) {
-  const container = document.getElementById(`topic-chips-${quoteId}`);
-  if (!container) return;
-  container.innerHTML = topics.map(t =>
-    `<span class="topic-chip" data-topic-id="${t.id}" onclick="navigateTo('/topic/${escapeHtml(t.slug)}')">
-      ${escapeHtml(t.name)}
-      <button class="chip-remove" onclick="event.stopPropagation(); adminRemoveQuoteTopic(${quoteId}, ${t.id})">x</button>
-    </span>`
-  ).join('');
-}
-
-/**
- * Trigger lazy loading of keywords/topics for all admin quote blocks on the page
- */
-function initAdminQuoteBlocks() {
-  document.querySelectorAll('.admin-quote-block').forEach(block => {
-    const quoteId = block.dataset.quoteId;
-    if (quoteId && !block.dataset.adminLoaded) {
-      block.dataset.adminLoaded = 'true';
-      setTimeout(() => loadQuoteKeywordsTopics(parseInt(quoteId)), 0);
-    }
-  });
 }
 
 // ======= Navigation Helper =======
@@ -742,17 +597,263 @@ function navigateTo(path) {
   }
 }
 
+// ======= Tab Search + Sort Bar =======
+
+function getTabSearchState(tabKey) {
+  if (tabKey === 'trending-quotes') return { search: _quotesSearch, sort: _quotesSortBy };
+  if (tabKey === 'trending-authors') return { search: _authorsSearch, sort: _authorsSortBy };
+  if (tabKey === 'trending-sources') return { search: _sourcesSearch, sort: _sourcesSortBy };
+  return { search: '', sort: 'date' };
+}
+
+function buildSearchSortBarHtml(tabKey) {
+  const state = getTabSearchState(tabKey);
+  const isExpanded = state.search.length > 0;
+  const sortFn = tabKey === 'trending-quotes' ? 'switchQuotesSort'
+    : tabKey === 'trending-authors' ? 'switchAuthorsSort' : 'switchSourcesSort';
+
+  const searchIcon = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>`;
+
+  if (isExpanded) {
+    return `<div class="tab-search-sort-bar">
+      <div class="tab-search-input-wrap">
+        <input type="search" class="tab-search-input" id="tab-search-input" placeholder="Search..." value="${escapeHtml(state.search)}" onkeydown="onTabSearchKeydown(event)" oninput="onTabSearchInput()">
+        <button class="tab-search-close" onclick="clearTabSearch()">&times;</button>
+      </div>
+    </div>`;
+  }
+
+  return `<div class="tab-search-sort-bar">
+    <button class="tab-search-toggle" onclick="toggleTabSearch()" title="Search">${searchIcon}</button>
+    <div class="tab-sort-buttons">
+      Sort by:
+      <button class="sort-btn ${state.sort === 'date' ? 'active' : ''}" onclick="${sortFn}('date')">Date</button>
+      <button class="sort-btn ${state.sort === 'importance' ? 'active' : ''}" onclick="${sortFn}('importance')">Importance</button>
+    </div>
+  </div>`;
+}
+
+function toggleTabSearch() {
+  // Store current sort/search state and show search input
+  const tabKey = _activeTab;
+  // Set a temporary flag so buildSearchSortBarHtml shows expanded mode
+  if (tabKey === 'trending-quotes') _quotesSearch = ' ';
+  else if (tabKey === 'trending-authors') _authorsSearch = ' ';
+  else if (tabKey === 'trending-sources') _sourcesSearch = ' ';
+
+  // Re-render just the search bar
+  const bar = document.querySelector('.tab-search-sort-bar');
+  if (bar) {
+    const temp = document.createElement('div');
+    temp.innerHTML = buildSearchSortBarHtml(tabKey);
+    bar.replaceWith(temp.firstElementChild);
+    const input = document.getElementById('tab-search-input');
+    if (input) {
+      input.value = '';
+      input.focus();
+    }
+    // Reset the search state back to empty (we just want the UI expanded)
+    if (tabKey === 'trending-quotes') _quotesSearch = '';
+    else if (tabKey === 'trending-authors') _authorsSearch = '';
+    else if (tabKey === 'trending-sources') _sourcesSearch = '';
+  }
+}
+
+function onTabSearchKeydown(event) {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    clearTimeout(_tabSearchDebounceTimer);
+    executeTabSearch();
+  } else if (event.key === 'Escape') {
+    clearTabSearch();
+  }
+}
+
+function onTabSearchInput() {
+  clearTimeout(_tabSearchDebounceTimer);
+  _tabSearchDebounceTimer = setTimeout(() => executeTabSearch(), 300);
+}
+
+function executeTabSearch() {
+  const input = document.getElementById('tab-search-input');
+  const val = input ? input.value.trim() : '';
+  const tabKey = _activeTab;
+
+  if (tabKey === 'trending-quotes') { _quotesSearch = val; _quotesPage = 1; }
+  else if (tabKey === 'trending-authors') { _authorsSearch = val; _authorsPage = 1; }
+  else if (tabKey === 'trending-sources') { _sourcesSearch = val; _sourcesPage = 1; }
+
+  renderTabContent(tabKey);
+}
+
+function clearTabSearch() {
+  const tabKey = _activeTab;
+  if (tabKey === 'trending-quotes') { _quotesSearch = ''; _quotesPage = 1; }
+  else if (tabKey === 'trending-authors') { _authorsSearch = ''; _authorsPage = 1; }
+  else if (tabKey === 'trending-sources') { _sourcesSearch = ''; _sourcesPage = 1; }
+
+  renderTabContent(tabKey);
+}
+
+// ======= Infinite Scroll =======
+
+function setupInfiniteScroll() {
+  if (_infiniteScrollObserver) {
+    _infiniteScrollObserver.disconnect();
+    _infiniteScrollObserver = null;
+  }
+
+  const sentinel = document.getElementById('infinite-scroll-sentinel');
+  if (!sentinel) return;
+
+  // Check if current tab has more items
+  const tabKey = _activeTab;
+  let hasMore = false;
+  if (tabKey === 'trending-quotes') hasMore = _quotesHasMore;
+  else if (tabKey === 'trending-authors') hasMore = _authorsHasMore;
+  else if (tabKey === 'trending-sources') hasMore = _sourcesHasMore;
+
+  if (!hasMore) {
+    sentinel.innerHTML = '';
+    return;
+  }
+
+  sentinel.innerHTML = '<div class="infinite-scroll-loading" style="visibility:hidden">Loading more...</div>';
+
+  _infiniteScrollObserver = new IntersectionObserver((entries) => {
+    if (entries[0].isIntersecting) {
+      loadMoreItems();
+    }
+  }, { rootMargin: '200px' });
+
+  _infiniteScrollObserver.observe(sentinel);
+}
+
+async function loadMoreItems() {
+  if (_isLoadingMore) return;
+  _isLoadingMore = true;
+
+  const sentinel = document.getElementById('infinite-scroll-sentinel');
+  if (sentinel) sentinel.innerHTML = '<div class="infinite-scroll-loading">Loading more...</div>';
+
+  try {
+    const tabKey = _activeTab;
+    if (tabKey === 'trending-quotes') await loadMoreQuotes();
+    else if (tabKey === 'trending-authors') await loadMoreAuthors();
+    else if (tabKey === 'trending-sources') await loadMoreSources();
+  } finally {
+    _isLoadingMore = false;
+  }
+}
+
+async function loadMoreQuotes() {
+  _quotesPage++;
+  const searchParam = _quotesSearch.length >= 2 ? `&search=${encodeURIComponent(_quotesSearch)}` : '';
+  const sortParam = _quotesSortBy === 'importance' ? '&sort=importance' : '';
+  const data = await API.get(`/analytics/trending-quotes?page=${_quotesPage}&limit=20${sortParam}${searchParam}`);
+
+  if (_activeTab !== 'trending-quotes') return; // Tab changed during fetch
+
+  const recentQuotes = data.recent_quotes || [];
+  _quotesHasMore = recentQuotes.length >= 20 && (_quotesPage * 20) < data.total;
+
+  if (recentQuotes.length > 0) {
+    const entityKeys = recentQuotes.map(q => `quote:${q.id}`);
+    await fetchImportantStatuses(entityKeys);
+
+    let html = '';
+    for (const q of recentQuotes) {
+      html += buildQuoteBlockHtml(q, _importantStatuses[`quote:${q.id}`] || false);
+    }
+    const list = document.getElementById('tab-items-list');
+    if (list) list.insertAdjacentHTML('beforeend', html);
+    initViewTracking();
+  }
+
+  updateSentinel();
+}
+
+async function loadMoreAuthors() {
+  _authorsPage++;
+  const searchParam = _authorsSearch.length >= 2 ? `&search=${encodeURIComponent(_authorsSearch)}` : '';
+  const sortParam = _authorsSortBy === 'importance' ? '&sort=importance' : '';
+  const data = await API.get(`/analytics/trending-authors?page=${_authorsPage}&limit=20${sortParam}${searchParam}`);
+
+  if (_activeTab !== 'trending-authors') return;
+
+  const authors = data.authors || [];
+  _authorsHasMore = authors.length >= 20 && (_authorsPage * 20) < data.total;
+
+  if (authors.length > 0) {
+    const entityKeys = authors.map(a => `person:${a.id}`);
+    await fetchImportantStatuses(entityKeys);
+
+    let html = '';
+    for (const author of authors) {
+      html += buildAuthorCardHtml(author);
+    }
+    const list = document.getElementById('tab-items-list');
+    if (list) list.insertAdjacentHTML('beforeend', html);
+    initViewTracking();
+  }
+
+  updateSentinel();
+}
+
+async function loadMoreSources() {
+  _sourcesPage++;
+  const searchParam = _sourcesSearch.length >= 2 ? `&search=${encodeURIComponent(_sourcesSearch)}` : '';
+  const sortParam = _sourcesSortBy === 'importance' ? '&sort=importance' : '';
+  const data = await API.get(`/analytics/trending-sources?page=${_sourcesPage}&limit=20${sortParam}${searchParam}`);
+
+  if (_activeTab !== 'trending-sources') return;
+
+  const articles = data.articles || [];
+  _sourcesHasMore = articles.length >= 20 && (_sourcesPage * 20) < data.total;
+
+  if (articles.length > 0) {
+    await fetchImportantStatuses(articles.map(a => `article:${a.id}`));
+
+    let html = '';
+    for (const article of articles) {
+      const isImp = _importantStatuses[`article:${article.id}`] || false;
+      html += buildSourceCardHtml(article, isImp);
+    }
+    const list = document.getElementById('tab-items-list');
+    if (list) list.insertAdjacentHTML('beforeend', html);
+    initViewTracking();
+  }
+
+  updateSentinel();
+}
+
+function updateSentinel() {
+  const tabKey = _activeTab;
+  let hasMore = false;
+  if (tabKey === 'trending-quotes') hasMore = _quotesHasMore;
+  else if (tabKey === 'trending-authors') hasMore = _authorsHasMore;
+  else if (tabKey === 'trending-sources') hasMore = _sourcesHasMore;
+
+  const sentinel = document.getElementById('infinite-scroll-sentinel');
+  if (!hasMore && sentinel) {
+    sentinel.innerHTML = '';
+    if (_infiniteScrollObserver) {
+      _infiniteScrollObserver.disconnect();
+      _infiniteScrollObserver = null;
+    }
+  }
+}
+
 // ======= Tab System =======
 
 /**
- * Build the 4-tab bar HTML
+ * Build the 3-tab bar HTML
  */
 function buildTabBarHtml(activeTab) {
   const tabs = [
-    { key: 'all', label: 'All' },
-    { key: 'trending-topics', label: 'Trending Topics' },
-    { key: 'trending-sources', label: 'Trending Sources' },
-    { key: 'trending-quotes', label: 'Trending Quotes' },
+    { key: 'trending-quotes', label: 'Quotes' },
+    { key: 'trending-authors', label: 'Authors' },
+    { key: 'trending-sources', label: 'Sources' },
   ];
 
   return `
@@ -786,120 +887,81 @@ async function renderTabContent(tabKey) {
 
   try {
     switch (tabKey) {
-      case 'trending-topics':
-        await renderTrendingTopicsTab(container);
+      case 'trending-quotes':
+        await renderTrendingQuotesTab(container);
+        break;
+      case 'trending-authors':
+        await renderTrendingAuthorsTab(container);
         break;
       case 'trending-sources':
         await renderTrendingSourcesTab(container);
         break;
-      case 'trending-quotes':
-        await renderTrendingQuotesTab(container);
-        break;
-      case 'all':
-        await renderAllTab(container);
-        break;
     }
     // Initialize view tracking for newly rendered content
     initViewTracking();
-    // Lazy-load keywords/topics for admin quote blocks
-    if (typeof isAdmin !== 'undefined' && isAdmin) {
-      initAdminQuoteBlocks();
-    }
   } catch (err) {
     container.innerHTML = `<div class="empty-state"><h3>Error loading content</h3><p>${escapeHtml(err.message)}</p></div>`;
   }
 }
 
-// ======= Trending Topics Tab =======
+// ======= Trending Authors Tab =======
 
-async function renderTrendingTopicsTab(container) {
-  const data = await API.get('/analytics/trending-topics');
-  const topics = data.topics || [];
+let _authorsSortBy = 'importance';
 
-  if (topics.length === 0) {
-    container.innerHTML = `<div class="empty-state"><h3>No trending topics yet</h3><p>Topics will appear as quotes are extracted and categorized.</p></div>`;
+async function renderTrendingAuthorsTab(container) {
+  const searchParam = _authorsSearch.length >= 2 ? `&search=${encodeURIComponent(_authorsSearch)}` : '';
+  const sortParam = _authorsSortBy === 'importance' ? '&sort=importance' : '';
+  const data = await API.get(`/analytics/trending-authors?page=1&limit=20${sortParam}${searchParam}`);
+  const authors = data.authors || [];
+  const total = data.total || 0;
+
+  _authorsPage = 1;
+  _authorsHasMore = authors.length >= 20 && 20 < total;
+
+  if (authors.length === 0) {
+    const msg = _authorsSearch ? 'No authors match your search.' : 'No trending authors yet';
+    container.innerHTML = buildSearchSortBarHtml('trending-authors') + `<div class="empty-state"><h3>${msg}</h3><p>Authors will appear as quotes are extracted.</p></div>`;
     return;
   }
 
-  // Filter out topics with no quotes
-  const visibleTopics = topics.filter(t => (t.quotes || []).length > 0);
+  // Collect person IDs for importance status
+  const entityKeys = authors.map(a => `person:${a.id}`);
+  await fetchImportantStatuses(entityKeys);
 
-  if (visibleTopics.length === 0) {
-    container.innerHTML = `<div class="empty-state"><h3>No trending topics yet</h3><p>Topics will appear as quotes are extracted and categorized.</p></div>`;
-    return;
+  let html = buildSearchSortBarHtml('trending-authors');
+  html += `<div id="tab-items-list">`;
+  for (const author of authors) {
+    html += buildAuthorCardHtml(author);
   }
-
-  // Fetch important statuses for all topics
-  await fetchImportantStatuses(visibleTopics.map(t => `topic:${t.id}`));
-
-  let html = '';
-  for (const topic of visibleTopics) {
-    const isImp = _importantStatuses[`topic:${topic.id}`] || false;
-    html += buildTopicCardHtml(topic, isImp);
-  }
+  html += `</div>`;
+  html += `<div id="infinite-scroll-sentinel"></div>`;
 
   container.innerHTML = html;
+  setupInfiniteScroll();
 }
 
-function buildTopicCardHtml(topic, isImportant) {
-  const quotes = topic.quotes || [];
-  const _isAdm = typeof isAdmin !== 'undefined' && isAdmin;
-  const maxVisible = 4;
+function switchAuthorsSort(sortBy) {
+  _authorsSortBy = sortBy;
+  _authorsPage = 1;
+  renderTabContent('trending-authors');
+}
 
-  // Build quotes with variant options
-  const quotesHtml = quotes.slice(0, maxVisible).map((q, i) => {
-    const isQImp = _importantStatuses[`quote:${q.id}`] || false;
-    const opts = i === 0
-      ? { variant: 'featured', showAvatar: true }
-      : { showAvatar: false };
-    return buildQuoteBlockHtml(q, q.topics || [], isQImp, opts);
-  }).join('');
-
-  // Admin: stats row and edit button
-  const adminStatsHtml = _isAdm ? `
-    <div class="admin-stats-row">
-      <span>${topic.importants_count || 0} importants</span>
-      <span>${topic.quote_count || 0} quotes</span>
-    </div>
-    <div class="admin-edit-buttons">
-      <button onclick="adminEditTopic(${topic.id}, '${escapeHtml((topic.name || '').replace(/'/g, "\\'"))}')">${escapeHtml('Topic')}</button>
-    </div>` : '';
-
-  // Admin: keyword chips
-  const keywords = topic.keywords || [];
-  const adminKeywordsHtml = _isAdm ? `
-    <div class="admin-keywords-section">
-      <span class="admin-section-label">Keywords</span>
-      <button class="admin-inline-btn" onclick="adminCreateTopicKeyword(${topic.id})">Create Keyword</button>
-      <span>:</span>
-      <div class="admin-chips">
-        ${keywords.map(kw =>
-          `<span class="keyword-chip" data-keyword-id="${kw.id}">
-            ${escapeHtml(kw.name)}
-            <button class="chip-remove" onclick="event.stopPropagation(); adminRemoveTopicKeyword(${topic.id}, ${kw.id}, this)">x</button>
-          </span>`
-        ).join('')}
-      </div>
-    </div>` : '';
-
-  const seeAllLink = quotes.length > maxVisible
-    ? `<a class="topic-card__see-all" onclick="navigateTo('/topic/${escapeHtml(topic.slug)}')">See all ${topic.quote_count || quotes.length} quotes in ${escapeHtml(topic.name)} &rarr;</a>`
-    : '';
+function buildAuthorCardHtml(author) {
+  const initial = (author.canonical_name || '?').charAt(0).toUpperCase();
+  const photoHtml = author.photo_url
+    ? `<img src="${escapeHtml(author.photo_url)}" alt="${escapeHtml(author.canonical_name)}" class="author-card__photo" onerror="if(!this.dataset.retry){this.dataset.retry='1';this.src=this.src}else{this.outerHTML='<div class=\\'quote-headshot-placeholder\\'>${initial}</div>'}" loading="lazy">`
+    : `<div class="quote-headshot-placeholder">${initial}</div>`;
 
   return `
-    <div class="topic-card" data-track-type="topic" data-track-id="${topic.id}">
-      <div class="topic-section-header">
-        <hr class="topic-section-rule">
-        <h2 class="topic-card__name" onclick="navigateTo('/topic/${escapeHtml(topic.slug)}')">${escapeHtml(topic.name)}</h2>
-        <hr class="topic-section-rule">
+    <div class="author-card" data-track-type="person" data-track-id="${author.id}">
+      <div class="author-card__header" onclick="navigateTo('/author/${author.id}')">
+        ${photoHtml}
+        <div class="author-card__info">
+          <h2 class="author-card__name">${escapeHtml(author.canonical_name)}</h2>
+          ${author.category_context ? `<span class="author-card__role">${escapeHtml(author.category_context)}</span>` : ''}
+          <span class="author-card__stats">${author.quote_count} quotes</span>
+        </div>
       </div>
-      ${topic.context ? `<p class="topic-card__context">${escapeHtml(topic.context)}</p>` : ''}
-      <div class="card-quotes-container" id="card-quotes-topic-${topic.id}">
-        ${quotesHtml}
-      </div>
-      ${seeAllLink}
-      ${adminStatsHtml}
-      ${adminKeywordsHtml}
     </div>
   `;
 }
@@ -932,24 +994,43 @@ function sortCardQuotes(btn, cardId, sortBy) {
 
 // ======= Trending Sources Tab =======
 
+let _sourcesSortBy = 'date';
+
 async function renderTrendingSourcesTab(container) {
-  const data = await API.get('/analytics/trending-sources');
+  const searchParam = _sourcesSearch.length >= 2 ? `&search=${encodeURIComponent(_sourcesSearch)}` : '';
+  const sortParam = _sourcesSortBy === 'importance' ? '&sort=importance' : '';
+  const data = await API.get(`/analytics/trending-sources?page=1&limit=20${sortParam}${searchParam}`);
   const articles = data.articles || [];
+  const total = data.total || 0;
+
+  _sourcesPage = 1;
+  _sourcesHasMore = articles.length >= 20 && 20 < total;
 
   if (articles.length === 0) {
-    container.innerHTML = `<div class="empty-state"><h3>No trending sources yet</h3><p>Sources will appear as articles are processed.</p></div>`;
+    const msg = _sourcesSearch ? 'No sources match your search.' : 'No trending sources yet';
+    container.innerHTML = buildSearchSortBarHtml('trending-sources') + `<div class="empty-state"><h3>${msg}</h3><p>Sources will appear as articles are processed.</p></div>`;
     return;
   }
 
   await fetchImportantStatuses(articles.map(a => `article:${a.id}`));
 
-  let html = '';
+  let html = buildSearchSortBarHtml('trending-sources');
+  html += `<div id="tab-items-list">`;
   for (const article of articles) {
     const isImp = _importantStatuses[`article:${article.id}`] || false;
     html += buildSourceCardHtml(article, isImp);
   }
+  html += `</div>`;
+  html += `<div id="infinite-scroll-sentinel"></div>`;
 
   container.innerHTML = html;
+  setupInfiniteScroll();
+}
+
+function switchSourcesSort(sortBy) {
+  _sourcesSortBy = sortBy;
+  _sourcesPage = 1;
+  renderTabContent('trending-sources');
 }
 
 function buildSourceCardHtml(article, isImportant) {
@@ -958,7 +1039,7 @@ function buildSourceCardHtml(article, isImportant) {
 
   // First quote expanded, rest collapsed
   const firstQuoteHtml = quotes.length > 0
-    ? buildQuoteBlockHtml(quotes[0], quotes[0].topics || [], _importantStatuses[`quote:${quotes[0].id}`] || false)
+    ? buildQuoteBlockHtml(quotes[0], _importantStatuses[`quote:${quotes[0].id}`] || false)
     : '';
 
   const extraCount = quotes.length - 1;
@@ -978,7 +1059,7 @@ function buildSourceCardHtml(article, isImportant) {
       <div class="source-card__header">
         <h2 class="source-card__title" onclick="navigateTo('/article/${article.id}')">${escapeHtml(article.title || 'Untitled Source')}</h2>
         <div class="source-card__meta">
-          ${article.source_name || article.source_domain ? `<span class="source-card__domain">${escapeHtml(article.source_name || article.source_domain)}</span>` : ''}
+          ${article.source_author_image_url ? `<img class="source-card__source-img" src="${escapeHtml(article.source_author_image_url)}" alt="" onerror="this.style.display='none'">` : ''}${article.source_name || article.source_domain ? `<span class="source-card__domain">${escapeHtml(article.source_name || article.source_domain)}</span>` : ''}
           ${dateStr ? `<time class="source-card__date">${dateStr}</time>` : ''}
         </div>
       </div>
@@ -989,7 +1070,7 @@ function buildSourceCardHtml(article, isImportant) {
       <div class="source-card__extra-quotes" id="extra-quotes-source-${article.id}" style="display:none">
         ${quotes.slice(1).map(q => {
           const isQImp = _importantStatuses[`quote:${q.id}`] || false;
-          return buildQuoteBlockHtml(q, q.topics || [], isQImp, { showAvatar: false });
+          return buildQuoteBlockHtml(q, isQImp, { showAvatar: false });
         }).join('')}
       </div>
       ${adminStatsHtml}
@@ -1008,79 +1089,43 @@ function expandSourceQuotes(btn, articleId) {
 // ======= Trending Quotes Tab =======
 
 async function renderTrendingQuotesTab(container) {
-  const data = await API.get('/analytics/trending-quotes');
+  const searchParam = _quotesSearch.length >= 2 ? `&search=${encodeURIComponent(_quotesSearch)}` : '';
+  const sortParam = _quotesSortBy === 'importance' ? '&sort=importance' : '';
+  const data = await API.get(`/analytics/trending-quotes?page=1&limit=20${sortParam}${searchParam}`);
 
-  // Collect all quote IDs for important status batch fetch
+  // Collect recent quote IDs for important status batch fetch
   const allQuoteIds = [];
-  if (data.quote_of_day) allQuoteIds.push(`quote:${data.quote_of_day.id}`);
-  if (data.quote_of_week) allQuoteIds.push(`quote:${data.quote_of_week.id}`);
-  if (data.quote_of_month) allQuoteIds.push(`quote:${data.quote_of_month.id}`);
   (data.recent_quotes || []).forEach(q => allQuoteIds.push(`quote:${q.id}`));
   await fetchImportantStatuses(allQuoteIds);
 
-  let html = '';
-
-  // Quote of the Day
-  if (data.quote_of_day) {
-    html += `<div class="trending-section-header"><hr class="topic-section-rule"><h2 class="trending-section-heading">QUOTE OF THE DAY</h2><hr class="topic-section-rule"></div>`;
-    html += buildQuoteBlockHtml(data.quote_of_day, data.quote_of_day.topics || [], _importantStatuses[`quote:${data.quote_of_day.id}`] || false, { variant: 'hero' });
-  }
-
-  // Quote of the Week
-  if (data.quote_of_week) {
-    html += `<div class="trending-section-header"><hr class="topic-section-rule"><h2 class="trending-section-heading">QUOTE OF THE WEEK</h2><hr class="topic-section-rule"></div>`;
-    html += buildQuoteBlockHtml(data.quote_of_week, data.quote_of_week.topics || [], _importantStatuses[`quote:${data.quote_of_week.id}`] || false, { variant: 'featured' });
-  }
-
-  // Quote of the Month
-  if (data.quote_of_month) {
-    html += `<div class="trending-section-header"><hr class="topic-section-rule"><h2 class="trending-section-heading">QUOTE OF THE MONTH</h2><hr class="topic-section-rule"></div>`;
-    html += buildQuoteBlockHtml(data.quote_of_month, data.quote_of_month.topics || [], _importantStatuses[`quote:${data.quote_of_month.id}`] || false, { variant: 'featured' });
-  }
-
-  html += `<p class="trending-disclaimer"><em>*Trending quotes change over time as views and shares change</em></p>`;
-
-  // Recent Quotes
   const recentQuotes = data.recent_quotes || [];
+  const total = data.total || 0;
+
+  _quotesPage = 1;
+  _quotesHasMore = recentQuotes.length >= 20 && 20 < total;
+
+  let html = buildSearchSortBarHtml('trending-quotes');
+
   if (recentQuotes.length > 0) {
-    html += `<h2 class="trending-section-heading">Recent Quotes</h2>`;
-    html += `<div class="trending-quotes__sort">
-      Sort by: <button class="sort-btn active" data-sort="date" onclick="sortRecentQuotes('date')">Date</button>
-      <button class="sort-btn" data-sort="importance" onclick="sortRecentQuotes('importance')">Importance</button>
-    </div>`;
-    html += `<div id="recent-quotes-list" class="quotes-grid">`;
+    html += `<div id="tab-items-list">`;
     for (const q of recentQuotes) {
-      html += buildQuoteBlockHtml(q, q.topics || [], _importantStatuses[`quote:${q.id}`] || false);
+      html += buildQuoteBlockHtml(q, _importantStatuses[`quote:${q.id}`] || false);
     }
     html += `</div>`;
-  }
-
-  if (!data.quote_of_day && !data.quote_of_week && !data.quote_of_month && recentQuotes.length === 0) {
-    html = `<div class="empty-state"><h3>No quotes yet</h3><p>Quotes will appear here as they are extracted from news articles.</p></div>`;
+    html += `<div id="infinite-scroll-sentinel"></div>`;
+  } else {
+    const msg = _quotesSearch ? 'No quotes match your search.' : 'No quotes yet';
+    html += `<div class="empty-state"><h3>${msg}</h3><p>Quotes will appear here as they are extracted from news articles.</p></div>`;
   }
 
   container.innerHTML = html;
+  setupInfiniteScroll();
 }
 
-async function sortRecentQuotes(sortBy) {
-  // Update active sort button
-  document.querySelectorAll('.trending-quotes__sort .sort-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.sort === sortBy);
-  });
-
-  const sortParam = sortBy === 'importance' ? '&sort=importance' : '';
-  const data = await API.get('/analytics/trending-quotes?limit=20' + sortParam);
-  const recentQuotes = data.recent_quotes || [];
-  const listEl = document.getElementById('recent-quotes-list');
-  if (!listEl) return;
-
-  let html = '';
-  for (const q of recentQuotes) {
-    html += buildQuoteBlockHtml(q, q.topics || [], _importantStatuses[`quote:${q.id}`] || false);
-  }
-  listEl.innerHTML = html;
-  initViewTracking();
-  if (typeof isAdmin !== 'undefined' && isAdmin) initAdminQuoteBlocks();
+function switchQuotesSort(sortBy) {
+  _quotesSortBy = sortBy;
+  _quotesPage = 1;
+  renderTabContent('trending-quotes');
 }
 
 // ======= All Tab =======
@@ -1256,58 +1301,145 @@ function toggleQuoteText(event, quoteId) {
 /**
  * Build the noteworthy section HTML (horizontal scroll on mobile, grid on desktop).
  */
+function buildMiniQuotesHtml(topQuotes) {
+  if (!topQuotes || topQuotes.length === 0) return '';
+  return topQuotes.map(tq => {
+    _quoteMeta[tq.id] = {
+      text: tq.text || '',
+      personName: tq.person_name || '',
+      personCategoryContext: '',
+      context: tq.context || '',
+    };
+    const verdictHtml = (typeof buildVerdictBadgeHtml === 'function')
+      ? buildVerdictBadgeHtml(tq.id, tq.fact_check_verdict)
+      : '';
+    const avatarHtml = tq.photo_url
+      ? `<img class="noteworthy-quote__avatar" src="${escapeHtml(tq.photo_url)}" alt="" onerror="this.style.display='none'">`
+      : '';
+    return `<div class="noteworthy-quote" onclick="event.stopPropagation(); navigateTo('/quote/${tq.id}')">
+      <p class="noteworthy-quote__text"><span class="quote-mark quote-mark--open">\u201C</span>${escapeHtml(tq.text || '')}<span class="quote-mark quote-mark--close">\u201D</span></p>
+      <div class="noteworthy-quote__meta">
+        ${avatarHtml}
+        ${verdictHtml}
+        <span class="noteworthy-quote__author">${escapeHtml(tq.person_name || '')}</span>
+      </div>
+      ${tq.context ? `<p class="noteworthy-quote__context">${escapeHtml(tq.context)}</p>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function buildMiniArticlesHtml(topArticles) {
+  if (!topArticles || topArticles.length === 0) return '';
+  return topArticles.map(a =>
+    `<div class="noteworthy-quote" onclick="event.stopPropagation(); navigateTo('/article/${a.id}')">
+      <p class="noteworthy-quote__text" style="font-style:normal">${escapeHtml(a.title || '')}</p>
+    </div>`
+  ).join('');
+}
+
+function buildNoteworthyCardHeader(avatarHtml, name, desc) {
+  return `<div class="noteworthy-card__header">
+    ${avatarHtml}
+    <p class="noteworthy-card__name">${escapeHtml(name)}</p>
+    ${desc ? `<span class="noteworthy-card__desc">${escapeHtml(desc)}</span>` : ''}
+  </div>`;
+}
+
 function buildNoteworthySectionHtml(items) {
   let cardsHtml = '';
+  const singleClass = items.length === 1 ? ' noteworthy-section__scroll--single' : '';
+  const oddClass = items.length > 1 && items.length % 2 !== 0 ? ' noteworthy-section__scroll--odd' : '';
 
   for (const item of items) {
+    let headerHtml = '';
+    let contentHtml = '';
+    let clickTarget = '';
+
     if (item.entity_type === 'quote') {
-      // Quote card — use buildQuoteBlockHtml if available
-      if (typeof buildQuoteBlockHtml === 'function') {
-        const quoteData = {
-          id: item.entity_id,
-          text: item.entity_label || '',
-          context: '',
-          person_name: item.person_name || '',
-          person_id: '',
-          photo_url: item.photo_url || '',
-          importants_count: 0,
-          quote_datetime: '',
-          article_id: '',
-          article_title: '',
-          source_domain: '',
-          source_name: '',
-        };
-        cardsHtml += `<div class="noteworthy-card">${buildQuoteBlockHtml(quoteData, [], false, { variant: 'compact', showAvatar: true, showSummary: false })}</div>`;
-      } else {
-        cardsHtml += `<div class="noteworthy-card noteworthy-card--quote" onclick="navigateTo('/quote/${item.entity_id}')">
-          <p class="noteworthy-card__text">${escapeHtml((item.entity_label || '').substring(0, 120))}${(item.entity_label || '').length > 120 ? '...' : ''}</p>
-          ${item.person_name ? `<span class="noteworthy-card__author">${escapeHtml(item.person_name)}</span>` : ''}
-        </div>`;
-      }
-    } else if (item.entity_type === 'article') {
-      cardsHtml += `<div class="noteworthy-card noteworthy-card--article" onclick="navigateTo('/article/${item.entity_id}')">
-        <span class="noteworthy-card__type">Source</span>
-        <p class="noteworthy-card__title">${escapeHtml(item.entity_label || 'Untitled')}</p>
+      clickTarget = `/quote/${item.entity_id}`;
+      const avatarHtml = item.photo_url
+        ? `<img class="noteworthy-card__avatar" src="${escapeHtml(item.photo_url)}" alt="" onerror="this.style.display='none'">`
+        : `<div class="noteworthy-card__avatar-placeholder">${escapeHtml((item.person_name || '?')[0])}</div>`;
+      headerHtml = buildNoteworthyCardHeader(avatarHtml, item.person_name || '', item.person_category_context || '');
+      _quoteMeta[item.entity_id] = {
+        text: item.entity_label || '',
+        personName: item.person_name || '',
+        personCategoryContext: item.person_category_context || '',
+        context: item.context || '',
+      };
+      const verdictHtml = (typeof buildVerdictBadgeHtml === 'function')
+        ? buildVerdictBadgeHtml(item.entity_id, item.fact_check_verdict) : '';
+      contentHtml = `<div class="noteworthy-quote">
+        <p class="noteworthy-quote__text"><span class="quote-mark quote-mark--open">\u201C</span>${escapeHtml(item.entity_label || '')}<span class="quote-mark quote-mark--close">\u201D</span></p>
+        <div class="noteworthy-quote__meta">
+          ${verdictHtml}
+          <span class="noteworthy-quote__author">${escapeHtml(item.person_name || '')}</span>
+        </div>
+        ${item.context ? `<p class="noteworthy-quote__context">${escapeHtml(item.context)}</p>` : ''}
       </div>`;
-    } else if (item.entity_type === 'topic') {
-      cardsHtml += `<div class="noteworthy-card noteworthy-card--topic" onclick="navigateTo('/topic/${item.entity_id}')">
-        <span class="noteworthy-card__type">Topic</span>
-        <p class="noteworthy-card__title">${escapeHtml(item.entity_label || 'Unknown Topic')}</p>
-      </div>`;
+
     } else if (item.entity_type === 'person') {
-      cardsHtml += `<div class="noteworthy-card noteworthy-card--person" onclick="navigateTo('/author/${item.entity_id}')">
-        <span class="noteworthy-card__type">Author</span>
-        <p class="noteworthy-card__title">${escapeHtml(item.entity_label || 'Unknown Author')}</p>
-      </div>`;
+      clickTarget = `/author/${item.entity_id}`;
+      const avatarHtml = item.photo_url
+        ? `<img class="noteworthy-card__avatar" src="${escapeHtml(item.photo_url)}" alt="" onerror="this.style.display='none'">`
+        : `<div class="noteworthy-card__avatar-placeholder">${escapeHtml((item.entity_label || '?')[0])}</div>`;
+      const desc = [item.category, item.category_context].filter(Boolean).join(' — ');
+      headerHtml = buildNoteworthyCardHeader(avatarHtml, item.entity_label || 'Unknown Author', desc);
+      contentHtml = buildMiniQuotesHtml(item.top_quotes);
+
+    } else if (item.entity_type === 'topic') {
+      clickTarget = `/topic/${item.slug || item.entity_id}`;
+      const initial = (item.entity_label || '?')[0];
+      const avatarHtml = `<div class="noteworthy-card__avatar-placeholder">${escapeHtml(initial)}</div>`;
+      headerHtml = buildNoteworthyCardHeader(avatarHtml, item.entity_label || 'Unknown Topic', item.description || '');
+      contentHtml = buildMiniQuotesHtml(item.top_quotes);
+
+    } else if (item.entity_type === 'category') {
+      clickTarget = `/category/${item.slug || item.entity_id}`;
+      const avatarHtml = buildCategoryAvatarHtml(item.image_url, item.icon_name, item.entity_label);
+      headerHtml = buildNoteworthyCardHeader(avatarHtml, item.entity_label || 'Unknown Category', '');
+      contentHtml = buildMiniQuotesHtml(item.top_quotes);
+
+    } else if (item.entity_type === 'article') {
+      clickTarget = `/article/${item.entity_id}`;
+      const initial = (item.entity_label || '?')[0];
+      const avatarHtml = `<div class="noteworthy-card__avatar-placeholder">${escapeHtml(initial)}</div>`;
+      headerHtml = buildNoteworthyCardHeader(avatarHtml, item.entity_label || 'Untitled', item.source_name || '');
+      contentHtml = buildMiniArticlesHtml(item.top_articles);
     }
+
+    cardsHtml += `<div class="noteworthy-card noteworthy-card--${item.entity_type}${item.full_width ? ' noteworthy-card--full-width' : ''}" onclick="navigateTo('${clickTarget}')">
+      ${headerHtml}
+      <div class="noteworthy-card__content">${contentHtml}</div>
+    </div>`;
   }
 
   return `
     <div class="noteworthy-section">
-      <h2 class="noteworthy-section__heading">Noteworthy</h2>
-      <div class="noteworthy-section__scroll">
+      <h2 class="noteworthy-section__heading">Latest Claims</h2>
+      <div class="noteworthy-section__scroll${singleClass}${oddClass}">
         ${cardsHtml}
       </div>
+    </div>
+  `;
+}
+
+function buildTopAuthorsBarHtml(authors) {
+  if (!authors || authors.length === 0) return '';
+  const items = authors.map(a => {
+    const avatarHtml = a.photo_url
+      ? `<img class="top-author-bar__avatar" src="${escapeHtml(a.photo_url)}" alt="" onerror="this.style.display='none'">`
+      : `<div class="top-author-bar__avatar top-author-bar__avatar--placeholder">${escapeHtml((a.canonical_name || '?')[0])}</div>`;
+    return `<div class="top-author-bar__item" onclick="navigateTo('/author/${a.id}')">
+      ${avatarHtml}
+      <span class="top-author-bar__name">${escapeHtml(a.canonical_name || '')}</span>
+    </div>`;
+  }).join('');
+
+  return `
+    <div class="top-author-bar">
+      <div class="top-author-bar__list">${items}</div>
+      <a class="top-author-bar__see-more" href="/analytics" onclick="navigate(event, '/analytics')">See more</a>
     </div>
   `;
 }
@@ -1330,17 +1462,29 @@ async function renderHome() {
     return;
   }
 
-  // Fetch noteworthy items before rendering tabs
+  // Fetch noteworthy items + top authors in parallel
   let noteworthyHtml = '';
+  let topAuthorsHtml = '';
   try {
-    const nwData = await API.get('/search/noteworthy?limit=10');
+    const [nwData, taData] = await Promise.all([
+      API.get('/search/noteworthy?limit=10'),
+      API.get('/analytics/top-authors?limit=5').catch(() => ({ authors: [] })),
+    ]);
     if (nwData.items && nwData.items.length > 0) {
       noteworthyHtml = buildNoteworthySectionHtml(nwData.items);
     }
+    if (taData.authors && taData.authors.length > 0) {
+      topAuthorsHtml = buildTopAuthorsBarHtml(taData.authors);
+    }
   } catch { /* noteworthy section is optional */ }
 
-  // Render noteworthy + tab bar
-  content.innerHTML = noteworthyHtml + buildTabBarHtml(_activeTab);
+  // Update page metadata
+  if (typeof updatePageMeta === 'function') {
+    updatePageMeta(null, 'Track what public figures say with AI-powered quote extraction from news sources.', '/');
+  }
+
+  // Render noteworthy + top authors bar + tab bar with visually-hidden H1
+  content.innerHTML = '<h1 class="sr-only">TrueOrFalse.News - What they said - Fact Checked</h1>' + noteworthyHtml + topAuthorsHtml + buildTabBarHtml(_activeTab);
 
   // Render active tab content
   await renderTabContent(_activeTab);
@@ -1357,7 +1501,7 @@ async function renderHome() {
 /**
  * Render search results (preserves existing search functionality)
  */
-let _searchActiveTab = 'quotes';
+let _searchActiveTab = 'persons';
 
 async function renderSearchResults(content, searchQuery) {
   content.innerHTML = buildSkeletonHtml(6);
@@ -1370,9 +1514,9 @@ async function renderSearchResults(content, searchQuery) {
 
     const quotesCount = (data.quotes || []).length;
     const personsCount = (data.persons || []).length;
-    const topicsCount = (data.topics || []).length;
     const articlesCount = (data.articles || []).length;
-    const totalCount = quotesCount + personsCount + topicsCount + articlesCount;
+    const categoriesCount = (data.categories || []).length;
+    const totalCount = quotesCount + personsCount + articlesCount + categoriesCount;
 
     let html = `<div class="search-results-header">
       <h2>Search results for "${escapeHtml(searchQuery)}"</h2>
@@ -1382,24 +1526,26 @@ async function renderSearchResults(content, searchQuery) {
     if (totalCount === 0) {
       html += `<div class="empty-state"><h3>No results found</h3></div>`;
     } else {
+      // Category pills above tabs
+      if (categoriesCount > 0) {
+        html += `<div class="search-categories-section">`;
+        for (const cat of data.categories) {
+          const catIcon = cat.icon_name || getCategoryIcon(cat.name);
+          html += `<div class="search-category-pill" onclick="navigateTo('/category/${cat.slug || cat.id}')">
+            <span class="material-icons-outlined" style="font-size:16px;vertical-align:middle;margin-right:4px">${escapeHtml(catIcon)}</span>
+            <span class="search-category-pill__name">${escapeHtml(cat.name)}</span>
+            <span class="search-category-pill__count">${cat.quote_count || 0} quotes</span>
+          </div>`;
+        }
+        html += `</div>`;
+      }
+
       // Tab bar
       html += `<div class="search-results-tabs">
-        <button class="search-tab ${_searchActiveTab === 'quotes' ? 'active' : ''}" onclick="switchSearchTab('quotes')">Quotes <span class="tab-count">${quotesCount}</span></button>
         <button class="search-tab ${_searchActiveTab === 'persons' ? 'active' : ''}" onclick="switchSearchTab('persons')">Authors <span class="tab-count">${personsCount}</span></button>
-        <button class="search-tab ${_searchActiveTab === 'topics' ? 'active' : ''}" onclick="switchSearchTab('topics')">Topics <span class="tab-count">${topicsCount}</span></button>
+        <button class="search-tab ${_searchActiveTab === 'quotes' ? 'active' : ''}" onclick="switchSearchTab('quotes')">Quotes <span class="tab-count">${quotesCount}</span></button>
         <button class="search-tab ${_searchActiveTab === 'articles' ? 'active' : ''}" onclick="switchSearchTab('articles')">Sources <span class="tab-count">${articlesCount}</span></button>
       </div>`;
-
-      // Quotes tab content
-      html += `<div class="search-tab-content" id="search-tab-quotes" style="display:${_searchActiveTab === 'quotes' ? '' : 'none'}">`;
-      if (quotesCount === 0) {
-        html += `<p class="empty-message">No quotes match your search.</p>`;
-      } else {
-        for (const q of data.quotes) {
-          html += buildQuoteBlockHtml(q, q.topics || [], false);
-        }
-      }
-      html += `</div>`;
 
       // Authors tab content
       html += `<div class="search-tab-content" id="search-tab-persons" style="display:${_searchActiveTab === 'persons' ? '' : 'none'}">`;
@@ -1409,7 +1555,7 @@ async function renderSearchResults(content, searchQuery) {
         for (const p of data.persons) {
           const initial = (p.canonical_name || '?').charAt(0).toUpperCase();
           const photoHtml = p.photo_url
-            ? `<img src="${escapeHtml(p.photo_url)}" alt="${escapeHtml(p.canonical_name)}" class="search-author__photo" onerror="this.outerHTML='<div class=\\'quote-headshot-placeholder\\'>${initial}</div>'" loading="lazy">`
+            ? `<img src="${escapeHtml(p.photo_url)}" alt="${escapeHtml(p.canonical_name)}" class="search-author__photo" onerror="if(!this.dataset.retry){this.dataset.retry='1';this.src=this.src}else{this.outerHTML='<div class=\\'quote-headshot-placeholder\\'>${initial}</div>'}" loading="lazy">`
             : `<div class="quote-headshot-placeholder">${initial}</div>`;
           html += `<div class="search-author-row" onclick="navigateTo('/author/${p.id}')">
             ${photoHtml}
@@ -1423,16 +1569,13 @@ async function renderSearchResults(content, searchQuery) {
       }
       html += `</div>`;
 
-      // Topics tab content
-      html += `<div class="search-tab-content" id="search-tab-topics" style="display:${_searchActiveTab === 'topics' ? '' : 'none'}">`;
-      if (topicsCount === 0) {
-        html += `<p class="empty-message">No topics match your search.</p>`;
+      // Quotes tab content
+      html += `<div class="search-tab-content" id="search-tab-quotes" style="display:${_searchActiveTab === 'quotes' ? '' : 'none'}">`;
+      if (quotesCount === 0) {
+        html += `<p class="empty-message">No quotes match your search.</p>`;
       } else {
-        for (const t of data.topics) {
-          html += `<div class="search-topic-row" onclick="navigateTo('/topic/${escapeHtml(t.slug)}')">
-            <span class="search-topic__name">${escapeHtml(t.name)}</span>
-            ${t.description ? `<span class="search-topic__desc">${escapeHtml(t.description)}</span>` : ''}
-          </div>`;
+        for (const q of data.quotes) {
+          html += buildQuoteBlockHtml(q, false);
         }
       }
       html += `</div>`;
@@ -1453,7 +1596,6 @@ async function renderSearchResults(content, searchQuery) {
     }
 
     content.innerHTML = html;
-    if (typeof isAdmin !== 'undefined' && isAdmin) initAdminQuoteBlocks();
   } catch (err) {
     content.innerHTML = `<div class="empty-state"><h3>Error searching</h3><p>${escapeHtml(err.message)}</p></div>`;
   }
@@ -1479,130 +1621,25 @@ function clearSearch() {
 // ======= Socket.IO Handlers =======
 
 /**
- * Handle new quotes from Socket.IO
+ * Handle Socket.IO fact_check_complete event — update verdict badges sitewide
  */
-function handleNewQuotes(quotes) {
-  if (window.location.pathname === '/' || window.location.pathname === '') {
-    _pendingNewQuotes += (quotes ? quotes.length : 0);
-    showNewQuotesBanner();
-  }
-}
+function handleFactCheckComplete(data) {
+  const { quoteId, verdict } = data;
+  if (!quoteId) return;
 
-function showNewQuotesBanner() {
-  if (_pendingNewQuotes <= 0) return;
-
-  let banner = document.getElementById('new-quotes-banner');
-  if (!banner) {
-    banner = document.createElement('div');
-    banner.id = 'new-quotes-banner';
-    banner.className = 'new-quotes-snackbar';
-    const content = document.getElementById('content');
-    if (content && content.firstChild) {
-      content.insertBefore(banner, content.firstChild);
+  // Update all verdict badges for this quote on the page
+  document.querySelectorAll(`.quote-block[data-quote-id="${quoteId}"]`).forEach(block => {
+    const badge = block.querySelector('.wts-verdict-badge, .wts-verdict-badge--pending');
+    if (badge) {
+      const newHtml = buildVerdictBadgeHtml(quoteId, verdict);
+      const temp = document.createElement('div');
+      temp.innerHTML = newHtml;
+      badge.replaceWith(temp.firstElementChild);
     }
-  }
+  });
 
-  const label = _pendingNewQuotes === 1 ? '1 new quote' : `${_pendingNewQuotes} new quotes`;
-  banner.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> ${label}`;
-  banner.style.display = '';
-  banner.onclick = function() { loadNewQuotes(); };
-
-  // Auto-dismiss after 10 seconds
-  if (banner._autoDismiss) clearTimeout(banner._autoDismiss);
-  banner._autoDismiss = setTimeout(() => {
-    if (banner) banner.style.display = 'none';
-  }, 10000);
-}
-
-function loadNewQuotes() {
-  _pendingNewQuotes = 0;
-  const banner = document.getElementById('new-quotes-banner');
-  if (banner) banner.remove();
-  _importantStatuses = {}; // Clear cache on refresh
-  renderHome();
-}
-
-// ======= Topic Page =======
-
-/**
- * Render a full topic page at /topic/:slug
- */
-async function renderTopicPage(slug) {
-  const content = document.getElementById('content');
-  content.innerHTML = buildSkeletonHtml(4);
-
-  try {
-    const data = await API.get(`/topics/${slug}`);
-    if (!data.topic) {
-      content.innerHTML = '<div class="empty-state"><h3>Topic not found</h3><p><a href="/" onclick="navigate(event, \'/\')" style="color:var(--accent)">Back to home</a></p></div>';
-      return;
-    }
-
-    const topic = data.topic;
-    const quotes = data.quotes || [];
-
-    // Fetch important statuses
-    const entityKeys = [`topic:${topic.id}`, ...quotes.map(q => `quote:${q.id}`)];
-    await fetchImportantStatuses(entityKeys);
-
-    const isTopicImportant = _importantStatuses[`topic:${topic.id}`] || false;
-
-    let html = `
-      <div class="topic-page">
-        <p style="margin-bottom:1rem;font-family:var(--font-ui);font-size:0.85rem">
-          <a href="/" onclick="navigate(event, '/')" style="color:var(--accent);text-decoration:none">&larr; Back to home</a>
-        </p>
-        <h1>${escapeHtml(topic.name)}</h1>
-        ${topic.description ? `<p class="topic-page__description">${escapeHtml(topic.description)}</p>` : ''}
-        ${topic.context ? `<p class="topic-page__description">${escapeHtml(topic.context)}</p>` : ''}
-        <div class="topic-page__actions">
-          ${renderImportantButton('topic', topic.id, topic.importants_count || 0, isTopicImportant)}
-          ${buildShareButtonsHtml('topic', topic.id, topic.name, '')}
-        </div>
-    `;
-
-    if (quotes.length === 0) {
-      html += '<div class="empty-state"><h3>No quotes in this topic yet</h3></div>';
-    } else {
-      html += `<p class="quote-count">${data.total || quotes.length} quotes</p>`;
-      for (const q of quotes) {
-        const isQImp = _importantStatuses[`quote:${q.id}`] || false;
-        html += buildQuoteBlockHtml(q, q.topics || [], isQImp);
-      }
-
-      // Pagination
-      const total = data.total || quotes.length;
-      const limit = data.limit || 20;
-      const page = data.page || 1;
-      const totalPages = Math.ceil(total / limit);
-      if (totalPages > 1) {
-        html += '<div class="pagination">';
-        for (let i = 1; i <= Math.min(totalPages, 10); i++) {
-          html += `<button class="page-btn ${i === page ? 'active' : ''}" onclick="loadTopicPage('${escapeHtml(slug)}', ${i})">${i}</button>`;
-        }
-        html += '</div>';
-      }
-    }
-
-    html += '</div>';
-    content.innerHTML = html;
-    initViewTracking();
-    if (typeof isAdmin !== 'undefined' && isAdmin) initAdminQuoteBlocks();
-  } catch (err) {
-    content.innerHTML = `<div class="empty-state"><h3>Error</h3><p>${escapeHtml(err.message)}</p></div>`;
-  }
-}
-
-async function loadTopicPage(slug, page) {
-  const content = document.getElementById('content');
-  content.innerHTML = buildSkeletonHtml(4);
-  try {
-    const data = await API.get(`/topics/${slug}?page=${page}`);
-    // Re-render the full page
-    renderTopicPage(slug);
-  } catch (err) {
-    content.innerHTML = `<div class="empty-state"><h3>Error</h3><p>${escapeHtml(err.message)}</p></div>`;
-  }
+  // Clear sessionStorage fact-check cache for this quote
+  try { sessionStorage.removeItem(`fc:${quoteId}`); } catch {}
 }
 
 /**

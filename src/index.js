@@ -1,9 +1,11 @@
 import express from 'express';
 import { createServer } from 'http';
 import { Server as SocketServer } from 'socket.io';
+import compression from 'compression';
 import helmet from 'helmet';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
+import jwt from 'jsonwebtoken';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -15,6 +17,7 @@ import { errorHandler } from './middleware/errorHandler.js';
 import { createRateLimiter } from './middleware/rateLimiter.js';
 import { requestLogger } from './middleware/requestLogger.js';
 import { logContext } from './middleware/logContext.js';
+import { csrfProtection } from './middleware/csrfProtection.js';
 
 import authRouter from './routes/auth.js';
 import quotesRouter from './routes/quotes.js';
@@ -29,14 +32,50 @@ import articlesRouter from './routes/articles.js';
 // import votesRouter from './routes/votes.js';
 import importantsRouter from './routes/importants.js';
 import trackingRouter from './routes/tracking.js';
-import topicsRouter from './routes/topics.js';
 import analyticsRouter from './routes/analytics.js';
 import historicalSourcesRouter from './routes/historicalSources.js';
 import contextRouter from './routes/context.js';
 import factCheckRouter from './routes/factCheck.js';
 import searchRouter from './routes/search.js';
+import bugReportsRouter from './routes/bugReports.js';
+import categoriesRouter from './routes/categories.js';
+import topicsRouter from './routes/topics.js';
+import sourceAuthorsRouter from './routes/sourceAuthors.js';
+import { loadFonts } from './services/shareImage.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+function escapeXml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+}
+
+function escapeHtmlAttr(s) {
+  return s ? s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : '';
+}
+
+function injectMetaTags(htmlContent, meta, jsonLd) {
+  const esc = escapeHtmlAttr;
+  const imgTags = meta.image ? `
+    <meta property="og:image" content="${esc(meta.image)}">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:type" content="image/jpeg">
+    <meta name="twitter:image" content="${esc(meta.image)}">` : '';
+
+  const metaTags = `
+    <meta property="og:type" content="${meta.type || 'website'}">
+    <meta property="og:title" content="${esc(meta.title)}">
+    <meta property="og:description" content="${esc(meta.description)}">
+    <meta property="og:url" content="${esc(meta.url)}">${imgTags}
+    <meta name="twitter:card" content="${meta.image ? 'summary_large_image' : 'summary'}">
+    <meta name="twitter:title" content="${esc(meta.title)}">
+    <meta name="twitter:description" content="${esc(meta.description)}">
+    <link rel="canonical" href="${esc(meta.url)}">
+    <title>${esc(meta.title)}</title>${jsonLd ? `
+    <script type="application/ld+json">${jsonLd}</script>` : ''}`;
+
+  return htmlContent.replace('<title>TrueOrFalse.News</title>', metaTags);
+}
 
 export function createApp({ skipDbInit = false } = {}) {
   const app = express();
@@ -47,12 +86,31 @@ export function createApp({ skipDbInit = false } = {}) {
     verifyDatabaseState();
   }
 
+  // Trust first proxy (Railway, nginx, etc.) for correct req.hostname / req.protocol
+  app.set('trust proxy', 1);
+
+  // Compression (gzip/brotli) for all responses
+  app.use(compression());
+
   // Security middleware
+  const corsOptions = config.corsOrigins.includes('*')
+    ? { credentials: true }
+    : { origin: config.corsOrigins, credentials: true };
   app.use(helmet({
-    contentSecurityPolicy: false,
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'"],
+        scriptSrcAttr: ["'unsafe-inline'"],
+        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+        fontSrc: ["'self'", "https://fonts.gstatic.com"],
+        imgSrc: ["'self'", "data:", "https:"],
+        connectSrc: ["'self'", "wss:", "ws:"],
+      },
+    },
     crossOriginEmbedderPolicy: false,
   }));
-  app.use(cors());
+  app.use(cors(corsOptions));
 
   // Body parsing
   app.use(express.json({ limit: '50mb' }));
@@ -66,7 +124,13 @@ export function createApp({ skipDbInit = false } = {}) {
   app.use(logContext);
 
   // Rate limiting
-  app.use('/api/', createRateLimiter({ windowMs: 15 * 60 * 1000, max: 200 }));
+  app.use('/api/', createRateLimiter({ windowMs: 15 * 60 * 1000, max: 200, skipPaths: ['/auth/'] }));
+
+  // CSRF protection for state-changing API requests (skip login endpoint)
+  app.use('/api/', (req, res, next) => {
+    if (req.path === '/auth/login') return next();
+    csrfProtection(req, res, next);
+  });
 
   // Service worker — must never be cached by browser so updates are detected
   app.get('/sw.js', (req, res) => {
@@ -74,6 +138,122 @@ export function createApp({ skipDbInit = false } = {}) {
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
     res.sendFile(path.join(__dirname, '../public/sw.js'));
+  });
+
+  // robots.txt
+  app.get('/robots.txt', (req, res) => {
+    const proto = req.get('x-forwarded-proto') || req.protocol;
+    const host = req.get('host');
+    const sitemapUrl = `${proto}://${host}/sitemap.xml`;
+    const body = [
+      'User-agent: *',
+      'Allow: /',
+      'Allow: /quote/*',
+      'Allow: /author/*',
+      'Allow: /article/*',
+      'Allow: /analytics',
+      '',
+      'Allow: /api/quotes/*/share-image',
+      'Disallow: /api/',
+      'Disallow: /login',
+      'Disallow: /settings',
+      'Disallow: /review',
+      'Disallow: /admin',
+      'Disallow: /forgot-password',
+      'Disallow: /reset-password',
+      '',
+      `Sitemap: ${sitemapUrl}`,
+    ].join('\n');
+    res.set('Content-Type', 'text/plain');
+    res.set('Cache-Control', 'public, max-age=86400');
+    res.send(body);
+  });
+
+  // sitemap.xml
+  app.get('/sitemap.xml', (req, res) => {
+    const proto = req.get('x-forwarded-proto') || req.protocol;
+    const host = req.get('host');
+    const base = `${proto}://${host}`;
+    const today = new Date().toISOString().split('T')[0];
+
+    let urls = '';
+    const addUrl = (loc, priority, changefreq, lastmod) => {
+      urls += `  <url>\n    <loc>${escapeXml(loc)}</loc>\n    <lastmod>${lastmod || today}</lastmod>\n    <changefreq>${changefreq}</changefreq>\n    <priority>${priority}</priority>\n  </url>\n`;
+    };
+
+    // Static pages
+    addUrl(base + '/', '1.0', 'daily');
+    addUrl(base + '/analytics', '0.5', 'weekly');
+
+    if (isDbReady()) {
+      try {
+        const db = getDb();
+        // Recent visible quotes (last 90 days, limit 1000)
+        const quotes = db.prepare(`
+          SELECT id, created_at FROM quotes
+          WHERE is_visible = 1 AND canonical_quote_id IS NULL
+            AND created_at >= datetime('now', '-90 days')
+          ORDER BY created_at DESC LIMIT 1000
+        `).all();
+        for (const q of quotes) {
+          const lastmod = q.created_at ? q.created_at.split('T')[0] : today;
+          addUrl(`${base}/quote/${q.id}`, '0.8', 'weekly', lastmod);
+        }
+
+        // Authors with quotes
+        const authors = db.prepare(`
+          SELECT id, last_seen_at FROM persons WHERE quote_count > 0 ORDER BY last_seen_at DESC LIMIT 1000
+        `).all();
+        for (const a of authors) {
+          const lastmod = a.last_seen_at ? a.last_seen_at.split('T')[0] : today;
+          addUrl(`${base}/author/${a.id}`, '0.7', 'weekly', lastmod);
+        }
+
+        // Recent articles (last 90 days, limit 500)
+        const articles = db.prepare(`
+          SELECT id, published_at FROM articles
+          WHERE published_at >= datetime('now', '-90 days')
+          ORDER BY published_at DESC LIMIT 500
+        `).all();
+        for (const art of articles) {
+          const lastmod = art.published_at ? art.published_at.split('T')[0] : today;
+          addUrl(`${base}/article/${art.id}`, '0.6', 'monthly', lastmod);
+        }
+      } catch {
+        // DB not ready — serve static-only sitemap
+      }
+    }
+
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}</urlset>`;
+    res.set('Content-Type', 'application/xml');
+    res.set('Cache-Control', 'public, max-age=3600');
+    res.send(xml);
+  });
+
+  // Homepage — inject meta tags + JSON-LD before static middleware serves index.html
+  app.get('/', (req, res) => {
+    const proto = req.get('x-forwarded-proto') || req.protocol;
+    const host = req.get('host');
+    const baseUrl = `${proto}://${host}`;
+    let html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf-8');
+    const meta = {
+      title: 'TrueOrFalse.News - What they said - Fact Checked',
+      description: 'Track what public figures say with AI-powered quote extraction from news sources.',
+      url: baseUrl + '/',
+      type: 'website',
+    };
+    const jsonLd = JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'WebSite',
+      name: 'TrueOrFalse.News',
+      url: baseUrl + '/',
+      potentialAction: {
+        '@type': 'SearchAction',
+        target: baseUrl + '/?search={search_term_string}',
+        'query-input': 'required name=search_term_string',
+      },
+    });
+    res.send(injectMetaTags(html, meta, jsonLd));
   });
 
   // Static files
@@ -116,26 +296,63 @@ export function createApp({ skipDbInit = false } = {}) {
   // app.use('/api', votesRouter); // unmounted — replaced by importants
   app.use('/api/importants', importantsRouter);
   app.use('/api/tracking', trackingRouter);
-  app.use('/api/topics', topicsRouter);
   app.use('/api/analytics', analyticsRouter);
   app.use('/api/historical-sources', historicalSourcesRouter);
   app.use('/api/quotes', contextRouter);
   app.use('/api/fact-check', factCheckRouter);
   app.use('/api/search', searchRouter);
+  app.use('/api/bug-reports', bugReportsRouter);
+  app.use('/api/categories', categoriesRouter);
+  app.use('/api/topics', topicsRouter);
+  app.use('/api/source-authors', sourceAuthorsRouter);
 
   // SPA fallback - serve index.html for all non-API routes
-  // For /quote/:id, inject OG/Twitter meta tags for social sharing
+  // Inject OG/Twitter meta tags, canonical URL, and JSON-LD for public pages
   app.get('*', (req, res) => {
     if (req.path.startsWith('/api/')) {
       return res.status(404).json({ error: 'Not found' });
     }
 
+    const proto = req.get('x-forwarded-proto') || req.protocol;
+    const host = req.get('host');
+    const baseUrl = `${proto}://${host}`;
+
+    // Phase 5a: 301 redirect for name-based author URLs
+    const authorMatch = req.path.match(/^\/author\/(.+)$/);
+    if (authorMatch && !/^\d+$/.test(authorMatch[1]) && isDbReady()) {
+      try {
+        const db = getDb();
+        const person = db.prepare('SELECT id FROM persons WHERE canonical_name = ?')
+          .get(decodeURIComponent(authorMatch[1]));
+        if (person) {
+          return res.redirect(301, `/author/${person.id}`);
+        }
+      } catch {
+        // Fall through to default HTML
+      }
+    }
+
+    // Try to inject meta tags for known public routes
+    let meta = null;
+    let jsonLd = null;
+
+    // Analytics
+    if (req.path === '/analytics') {
+      meta = {
+        title: 'Quote Analytics & Trends | TrueOrFalse.News',
+        description: 'Explore trends in public statements, top quoted figures, and source analytics.',
+        url: baseUrl + '/analytics',
+        type: 'website',
+      };
+    }
+
+    // Quote page
     const quoteMatch = req.path.match(/^\/quote\/(\d+)$/);
     if (quoteMatch && isDbReady()) {
       try {
         const db = getDb();
         const quote = db.prepare(`
-          SELECT q.text, q.context, q.created_at, p.canonical_name, p.disambiguation, p.photo_url,
+          SELECT q.text, q.context, q.created_at, q.quote_datetime, p.canonical_name, p.disambiguation, p.photo_url,
                  a.title AS article_title, s.name AS source_name
           FROM quotes q
           JOIN persons p ON q.person_id = p.id
@@ -146,38 +363,156 @@ export function createApp({ skipDbInit = false } = {}) {
         `).get(quoteMatch[1]);
 
         if (quote) {
-          let html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf-8');
           const truncText = quote.text.length > 200 ? quote.text.substring(0, 200) + '...' : quote.text;
-          const esc = (s) => s ? s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : '';
-          const title = `"${esc(truncText)}" - ${esc(quote.canonical_name)}`;
           const description = [
             quote.disambiguation,
             quote.context,
             quote.article_title ? `From: ${quote.article_title}` : null,
             quote.source_name ? `Source: ${quote.source_name}` : null,
           ].filter(Boolean).join(' | ');
-          const proto = req.get('x-forwarded-proto') || req.protocol;
-          const url = `${proto}://${req.get('host')}/quote/${quoteMatch[1]}`;
-          const image = quote.photo_url || '';
-
-          const metaTags = `
-    <meta property="og:type" content="article">
-    <meta property="og:title" content="${title}">
-    <meta property="og:description" content="${esc(description)}">
-    <meta property="og:url" content="${esc(url)}">
-    ${image ? `<meta property="og:image" content="${esc(image)}">` : ''}
-    <meta name="twitter:card" content="summary">
-    <meta name="twitter:title" content="${title}">
-    <meta name="twitter:description" content="${esc(description)}">
-    ${image ? `<meta name="twitter:image" content="${esc(image)}">` : ''}
-    <title>${title} | WhatTheySaid.News</title>`;
-
-          html = html.replace('<title>WhatTheySaid.News</title>', metaTags);
-          return res.send(html);
+          meta = {
+            title: `"${escapeHtmlAttr(truncText)}" - ${escapeHtmlAttr(quote.canonical_name)}`,
+            description,
+            url: `${baseUrl}/quote/${quoteMatch[1]}`,
+            image: `${baseUrl}/api/quotes/${quoteMatch[1]}/share-image`,
+            type: 'article',
+          };
+          jsonLd = JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'Quotation',
+            text: quote.text,
+            creator: { '@type': 'Person', name: quote.canonical_name },
+            datePublished: quote.quote_datetime || quote.created_at || undefined,
+            isPartOf: quote.article_title ? {
+              '@type': 'Article',
+              headline: quote.article_title,
+              publisher: quote.source_name ? { '@type': 'Organization', name: quote.source_name } : undefined,
+            } : undefined,
+          });
         }
-      } catch (err) {
-        // Fall through to default index.html
+      } catch {
+        // Fall through to default HTML
       }
+    }
+
+    // Author page
+    const authorNumMatch = req.path.match(/^\/author\/(\d+)$/);
+    if (authorNumMatch && isDbReady()) {
+      try {
+        const db = getDb();
+        const person = db.prepare('SELECT id, canonical_name, disambiguation, category_context, photo_url, quote_count FROM persons WHERE id = ?')
+          .get(authorNumMatch[1]);
+        if (person) {
+          const descParts = [
+            person.disambiguation,
+            person.category_context,
+            `${person.quote_count} quote${person.quote_count !== 1 ? 's' : ''} tracked`,
+          ].filter(Boolean);
+          meta = {
+            title: `${escapeHtmlAttr(person.canonical_name)} - Quotes & Statements | TrueOrFalse.News`,
+            description: descParts.join(' | '),
+            url: `${baseUrl}/author/${person.id}`,
+            image: person.photo_url || null,
+            type: 'profile',
+          };
+          jsonLd = JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'Person',
+            name: person.canonical_name,
+            description: person.disambiguation || person.category_context || undefined,
+            image: person.photo_url || undefined,
+            url: `${baseUrl}/author/${person.id}`,
+          });
+        }
+      } catch {
+        // Fall through
+      }
+    }
+
+    // Article page
+    const articleMatch = req.path.match(/^\/article\/(\d+)$/);
+    if (articleMatch && isDbReady()) {
+      try {
+        const db = getDb();
+        const article = db.prepare(`
+          SELECT a.id, a.title, a.published_at, s.name AS source_name, s.domain AS source_domain
+          FROM articles a
+          LEFT JOIN sources s ON a.source_id = s.id
+          WHERE a.id = ?
+        `).get(articleMatch[1]);
+        if (article) {
+          const sourceName = article.source_name || article.source_domain || '';
+          const quoteCount = db.prepare('SELECT COUNT(*) as count FROM quote_articles WHERE article_id = ?').get(article.id).count;
+          const descParts = [
+            sourceName,
+            article.published_at ? article.published_at.split('T')[0] : null,
+            `${quoteCount} quote${quoteCount !== 1 ? 's' : ''} extracted`,
+          ].filter(Boolean);
+          meta = {
+            title: `${escapeHtmlAttr(article.title || 'Untitled')} | ${escapeHtmlAttr(sourceName)} - TrueOrFalse.News`,
+            description: descParts.join(' | '),
+            url: `${baseUrl}/article/${article.id}`,
+            type: 'article',
+          };
+          jsonLd = JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'Article',
+            headline: article.title,
+            datePublished: article.published_at || undefined,
+            publisher: sourceName ? { '@type': 'Organization', name: sourceName } : undefined,
+          });
+        }
+      } catch {
+        // Fall through
+      }
+    }
+
+    // Topic page
+    const topicMatch = req.path.match(/^\/topic\/(.+)$/);
+    if (topicMatch && isDbReady()) {
+      try {
+        const db = getDb();
+        const param = decodeURIComponent(topicMatch[1]);
+        const topic = /^\d+$/.test(param)
+          ? db.prepare('SELECT id, name, slug, description FROM topics WHERE id = ?').get(param)
+          : db.prepare('SELECT id, name, slug, description FROM topics WHERE slug = ?').get(param);
+        if (topic) {
+          const quoteCount = db.prepare('SELECT COUNT(DISTINCT qt.quote_id) as count FROM quote_topics qt JOIN quotes q ON q.id = qt.quote_id WHERE qt.topic_id = ? AND q.is_visible = 1 AND q.canonical_quote_id IS NULL').get(topic.id).count;
+          meta = {
+            title: `${escapeHtmlAttr(topic.name)} - Quotes | TrueOrFalse.News`,
+            description: [topic.description, `${quoteCount} quotes`].filter(Boolean).join(' | '),
+            url: `${baseUrl}/topic/${topic.slug || topic.id}`,
+            type: 'website',
+          };
+        }
+      } catch { /* Fall through */ }
+    }
+
+    // Category page
+    const categoryMatch = req.path.match(/^\/category\/(.+)$/);
+    if (categoryMatch && !meta && isDbReady()) {
+      try {
+        const db = getDb();
+        const param = decodeURIComponent(categoryMatch[1]);
+        const cat = /^\d+$/.test(param)
+          ? db.prepare('SELECT id, name, slug FROM categories WHERE id = ?').get(param)
+          : db.prepare('SELECT id, name, slug FROM categories WHERE slug = ?').get(param);
+        if (cat) {
+          const quoteCount = db.prepare('SELECT COUNT(DISTINCT qt.quote_id) as count FROM category_topics ct JOIN quote_topics qt ON qt.topic_id = ct.topic_id JOIN quotes q ON q.id = qt.quote_id WHERE ct.category_id = ? AND q.is_visible = 1 AND q.canonical_quote_id IS NULL').get(cat.id).count;
+          meta = {
+            title: `${escapeHtmlAttr(cat.name)} - Quotes | TrueOrFalse.News`,
+            description: `${quoteCount} quotes in the ${cat.name} category`,
+            url: `${baseUrl}/category/${cat.slug || cat.id}`,
+            type: 'website',
+          };
+        }
+      } catch { /* Fall through */ }
+    }
+
+    // Inject meta tags if we have them
+    if (meta) {
+      const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf-8');
+      return res.send(injectMetaTags(html, meta, jsonLd));
     }
 
     res.sendFile(path.join(__dirname, '../public/index.html'));
@@ -197,12 +532,38 @@ if (isMainModule || (!process.argv[1] && process.env.NODE_ENV !== 'test')) {
   // In production, skip synchronous DB init — use async retry for volume mount race condition
   const app = createApp({ skipDbInit: isProduction });
   const httpServer = createServer(app);
+  const socketCorsOptions = config.corsOrigins.includes('*')
+    ? { origin: true, credentials: true }
+    : { origin: config.corsOrigins, credentials: true };
   const io = new SocketServer(httpServer, {
-    cors: { origin: '*' },
+    cors: socketCorsOptions,
+  });
+
+  // Socket.IO authentication middleware — tag authenticated connections
+  io.use((socket, next) => {
+    const cookieHeader = socket.handshake.headers.cookie;
+    if (cookieHeader) {
+      const match = cookieHeader.match(/(?:^|;\s*)auth_token=([^;]*)/);
+      if (match) {
+        try {
+          const decoded = jwt.verify(match[1], config.jwtSecret);
+          socket.data.authenticated = true;
+          socket.data.admin = decoded;
+        } catch {
+          socket.data.authenticated = false;
+        }
+      } else {
+        socket.data.authenticated = false;
+      }
+    } else {
+      socket.data.authenticated = false;
+    }
+    // Allow all connections (public news app) but tag auth status
+    next();
   });
 
   io.on('connection', (socket) => {
-    logger.debug('system', 'socket_connected', { socketId: socket.id });
+    logger.debug('system', 'socket_connected', { socketId: socket.id, authenticated: socket.data.authenticated });
     socket.on('disconnect', () => {
       logger.debug('system', 'socket_disconnected', { socketId: socket.id });
     });
@@ -219,6 +580,11 @@ if (isMainModule || (!process.argv[1] && process.env.NODE_ENV !== 'test')) {
       port: config.port,
     });
     console.log(`Server running on port ${config.port}`);
+
+    // Pre-load fonts for share image generation (non-blocking)
+    loadFonts().catch(err => {
+      console.warn('[startup] Font loading failed (share images will retry on first request):', err.message);
+    });
 
     // In production, initialize DB asynchronously (with retries for volume mount)
     // then start the scheduler once DB is ready

@@ -17,8 +17,8 @@ let dbInitPromise = null;
 export function getDb() {
   if (db) return db;
 
-  // Synchronous attempt — works in dev or after volume is mounted
-  const dbPath = config.databasePath;
+  // Re-read DATABASE_PATH from env to support test-file isolation (ESM caches config at first import)
+  const dbPath = process.env.DATABASE_PATH ? path.resolve(process.env.DATABASE_PATH) : config.databasePath;
   const dbDir = path.dirname(dbPath);
 
   if (!fs.existsSync(dbDir)) {
@@ -49,7 +49,7 @@ export async function initDbAsync() {
   if (dbInitPromise) return dbInitPromise;
 
   dbInitPromise = (async () => {
-    const dbPath = config.databasePath;
+    const dbPath = process.env.DATABASE_PATH ? path.resolve(process.env.DATABASE_PATH) : config.databasePath;
     const dbDir = path.dirname(dbPath);
     const maxRetries = 60;
     const retryDelayMs = 2000;
@@ -308,11 +308,49 @@ function initializeTables(db) {
   if (!personCols.includes('category_context')) {
     db.exec(`ALTER TABLE persons ADD COLUMN category_context TEXT`);
   }
+  if (!personCols.includes('image_suggestions')) {
+    db.exec(`ALTER TABLE persons ADD COLUMN image_suggestions TEXT`);
+  }
+
+  // Source Authors — one per root domain (publisher/organization with branding)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS source_authors (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      domain TEXT NOT NULL UNIQUE,
+      image_url TEXT,
+      description TEXT,
+      image_suggestions TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_source_authors_domain ON source_authors(domain)`);
 
   // Migration: add is_top_story column to sources
   const sourceCols = db.prepare("PRAGMA table_info(sources)").all().map(c => c.name);
   if (!sourceCols.includes('is_top_story')) {
     db.exec(`ALTER TABLE sources ADD COLUMN is_top_story INTEGER NOT NULL DEFAULT 0`);
+  }
+
+  // Migration: add source_author_id FK column to sources
+  if (!sourceCols.includes('source_author_id')) {
+    db.exec(`ALTER TABLE sources ADD COLUMN source_author_id INTEGER REFERENCES source_authors(id)`);
+  }
+
+  // Auto-seed source_authors from distinct source domains and link existing sources
+  const sourceAuthorCount = db.prepare('SELECT COUNT(*) as count FROM source_authors').get().count;
+  const unlinkedSources = db.prepare('SELECT COUNT(*) as count FROM sources WHERE source_author_id IS NULL').get().count;
+  if (sourceAuthorCount === 0 || unlinkedSources > 0) {
+    const distinctDomains = db.prepare('SELECT DISTINCT domain FROM sources').all();
+    for (const { domain } of distinctDomains) {
+      const derivedName = domain.split('.')[0].charAt(0).toUpperCase() + domain.split('.')[0].slice(1);
+      db.prepare('INSERT OR IGNORE INTO source_authors (name, domain) VALUES (?, ?)').run(derivedName, domain);
+      const sa = db.prepare('SELECT id FROM source_authors WHERE domain = ?').get(domain);
+      if (sa) {
+        db.prepare('UPDATE sources SET source_author_id = ? WHERE domain = ? AND source_author_id IS NULL').run(sa.id, domain);
+      }
+    }
   }
 
   // Migration: add is_top_story column to articles
@@ -423,57 +461,91 @@ function initializeTables(db) {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_importants_entity ON importants(entity_type, entity_id)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_importants_voter ON importants(voter_hash)`);
 
-  // Topics - Broad subject categories (semi-closed vocabulary)
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS topics (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL UNIQUE,
-      slug TEXT NOT NULL UNIQUE,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )
-  `);
+  // --- Legacy table cleanup: drop old topic/keyword tables that had different schemas ---
+  // The old taxonomy tables (topics, keywords, quote_keywords, quote_topics, topic_keywords)
+  // have incompatible schemas. DROP them so CREATE TABLE IF NOT EXISTS creates the new versions.
+  // Check if old schema exists by looking for missing columns before dropping.
+  const oldTopicCols = db.prepare("PRAGMA table_info(topics)").all().map(c => c.name);
+  if (oldTopicCols.length > 0 && !oldTopicCols.includes('status')) {
+    // Old topics table exists without 'status' column — drop all old taxonomy tables
+    db.exec(`DROP TABLE IF EXISTS quote_topics`);
+    db.exec(`DROP TABLE IF EXISTS quote_keywords`);
+    db.exec(`DROP TABLE IF EXISTS topic_keywords`);
+    db.exec(`DROP TABLE IF EXISTS category_topics`);
+    db.exec(`DROP TABLE IF EXISTS topic_aliases`);
+    db.exec(`DROP TABLE IF EXISTS keyword_aliases`);
+    db.exec(`DROP TABLE IF EXISTS taxonomy_suggestions`);
+    db.exec(`DROP TABLE IF EXISTS categories`);
+    db.exec(`DROP TABLE IF EXISTS topics`);
+    db.exec(`DROP TABLE IF EXISTS keywords`);
+  }
+  db.exec(`DROP TABLE IF EXISTS topic_keyword_review`);
 
-  // Keywords - Specific entities, events, concepts (open vocabulary, multi-word aware)
+  // --- New Taxonomy Schema ---
+
+  // Keywords — canonical keyword entities
   db.exec(`
     CREATE TABLE IF NOT EXISTS keywords (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL UNIQUE,
       name_normalized TEXT NOT NULL,
-      keyword_type TEXT NOT NULL DEFAULT 'concept'
-        CHECK(keyword_type IN ('person', 'organization', 'event', 'legislation', 'location', 'concept')),
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
-  db.exec(`CREATE INDEX IF NOT EXISTS idx_keywords_normalized ON keywords(name_normalized)`);
-  db.exec(`CREATE INDEX IF NOT EXISTS idx_keywords_type ON keywords(keyword_type)`);
 
-  // Quote-to-topic mapping (many-to-many)
+  // Keyword aliases — alternate names for a keyword
   db.exec(`
-    CREATE TABLE IF NOT EXISTS quote_topics (
-      quote_id INTEGER NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,
-      topic_id INTEGER NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
-      PRIMARY KEY (quote_id, topic_id)
-    )
-  `);
-  db.exec(`CREATE INDEX IF NOT EXISTS idx_quote_topics_topic ON quote_topics(topic_id)`);
-
-  // Quote-to-keyword mapping (many-to-many)
-  // Migration: drop old quote_keywords table if it has wrong schema (keyword TEXT instead of keyword_id INTEGER)
-  const qkCols = db.prepare("PRAGMA table_info(quote_keywords)").all().map(c => c.name);
-  if (qkCols.length > 0 && !qkCols.includes('keyword_id')) {
-    db.exec(`DROP TABLE IF EXISTS quote_keywords`);
-  }
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS quote_keywords (
-      quote_id INTEGER NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,
+    CREATE TABLE IF NOT EXISTS keyword_aliases (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
       keyword_id INTEGER NOT NULL REFERENCES keywords(id) ON DELETE CASCADE,
-      relevance REAL NOT NULL DEFAULT 1.0,
-      PRIMARY KEY (quote_id, keyword_id)
+      alias TEXT NOT NULL,
+      alias_normalized TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(keyword_id, alias)
     )
   `);
-  db.exec(`CREATE INDEX IF NOT EXISTS idx_quote_keywords_keyword ON quote_keywords(keyword_id)`);
 
-  // Topic-to-keyword mapping (many-to-many) — defines which keywords belong to which topic
+  // Topics — curated topic entities with lifecycle
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS topics (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      slug TEXT UNIQUE,
+      status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','archived','draft')),
+      start_date TEXT,
+      end_date TEXT,
+      description TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Topic aliases — alternate names for a topic
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS topic_aliases (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      topic_id INTEGER NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
+      alias TEXT NOT NULL,
+      alias_normalized TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(topic_id, alias)
+    )
+  `);
+
+  // Categories — top-level groupings for topics
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS categories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      slug TEXT UNIQUE,
+      sort_order INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Topic-keyword association (many-to-many)
   db.exec(`
     CREATE TABLE IF NOT EXISTS topic_keywords (
       topic_id INTEGER NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
@@ -481,21 +553,66 @@ function initializeTables(db) {
       PRIMARY KEY (topic_id, keyword_id)
     )
   `);
-  db.exec(`CREATE INDEX IF NOT EXISTS idx_topic_keywords_keyword ON topic_keywords(keyword_id)`);
 
-  // Auto-seed topic_keywords: link topics to keywords with matching names (case-insensitive)
-  const tkCount = db.prepare('SELECT COUNT(*) as cnt FROM topic_keywords').get().cnt;
-  if (tkCount === 0) {
-    const seeded = db.prepare(`
-      INSERT OR IGNORE INTO topic_keywords (topic_id, keyword_id)
-      SELECT t.id, k.id
-      FROM topics t
-      JOIN keywords k ON LOWER(k.name) = LOWER(t.name)
-    `).run();
-    if (seeded.changes > 0) {
-      console.log(`[startup] Auto-seeded ${seeded.changes} topic_keywords links`);
-    }
-  }
+  // Category-topic association (many-to-many)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS category_topics (
+      category_id INTEGER NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+      topic_id INTEGER NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
+      PRIMARY KEY (category_id, topic_id)
+    )
+  `);
+
+  // Quote-keyword association with confidence
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS quote_keywords (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      quote_id INTEGER NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,
+      keyword_id INTEGER NOT NULL REFERENCES keywords(id) ON DELETE CASCADE,
+      confidence TEXT NOT NULL DEFAULT 'high' CHECK(confidence IN ('high','medium','low')),
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(quote_id, keyword_id)
+    )
+  `);
+
+  // Quote-topic association (materialized from quote_keywords + topic_keywords)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS quote_topics (
+      quote_id INTEGER NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,
+      topic_id INTEGER NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
+      PRIMARY KEY (quote_id, topic_id)
+    )
+  `);
+
+  // Taxonomy suggestions — review queue for AI-suggested taxonomy changes
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS taxonomy_suggestions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      suggestion_type TEXT NOT NULL CHECK(suggestion_type IN ('new_keyword','new_topic','keyword_alias','topic_keyword','topic_alias')),
+      suggested_data TEXT NOT NULL,
+      source TEXT NOT NULL CHECK(source IN ('ai_extraction','batch_evolution','confidence_review')),
+      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected','edited')),
+      reviewed_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // --- Taxonomy indexes ---
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_keyword_aliases_keyword_id ON keyword_aliases(keyword_id)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_keyword_aliases_normalized ON keyword_aliases(alias_normalized)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_topic_aliases_topic_id ON topic_aliases(topic_id)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_topic_aliases_normalized ON topic_aliases(alias_normalized)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_topics_status ON topics(status)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_topics_slug ON topics(slug)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_categories_slug ON categories(slug)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_categories_sort ON categories(sort_order)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quote_keywords_quote ON quote_keywords(quote_id)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quote_keywords_keyword ON quote_keywords(keyword_id)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quote_keywords_confidence ON quote_keywords(confidence)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quote_topics_quote ON quote_topics(quote_id)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quote_topics_topic ON quote_topics(topic_id)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_taxonomy_suggestions_status ON taxonomy_suggestions(status)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_taxonomy_suggestions_type ON taxonomy_suggestions(suggestion_type)`);
 
   // --- Site Topic Focus migrations: new columns for importants/share/view/trending ---
 
@@ -513,6 +630,43 @@ function initializeTables(db) {
   if (!quoteCols2.includes('trending_score')) {
     db.exec(`ALTER TABLE quotes ADD COLUMN trending_score REAL NOT NULL DEFAULT 0.0`);
   }
+  if (!quoteCols2.includes('fact_check_category')) {
+    db.exec(`ALTER TABLE quotes ADD COLUMN fact_check_category TEXT CHECK(fact_check_category IN ('A', 'B', 'C'))`);
+  }
+  if (!quoteCols2.includes('fact_check_confidence')) {
+    db.exec(`ALTER TABLE quotes ADD COLUMN fact_check_confidence REAL`);
+  }
+  if (!quoteCols2.includes('reviewed_at')) {
+    db.exec(`ALTER TABLE quotes ADD COLUMN reviewed_at TEXT`);
+  }
+  if (!quoteCols2.includes('fact_check_verdict')) {
+    db.exec(`ALTER TABLE quotes ADD COLUMN fact_check_verdict TEXT`);
+  }
+  if (!quoteCols2.includes('fact_check_claim')) {
+    db.exec(`ALTER TABLE quotes ADD COLUMN fact_check_claim TEXT`);
+  }
+  if (!quoteCols2.includes('fact_check_explanation')) {
+    db.exec(`ALTER TABLE quotes ADD COLUMN fact_check_explanation TEXT`);
+  }
+  if (!quoteCols2.includes('extracted_keywords')) {
+    db.exec(`ALTER TABLE quotes ADD COLUMN extracted_keywords TEXT`);
+  }
+  if (!quoteCols2.includes('extracted_topics')) {
+    db.exec(`ALTER TABLE quotes ADD COLUMN extracted_topics TEXT`);
+  }
+  if (!quoteCols2.includes('fact_check_html')) {
+    db.exec(`ALTER TABLE quotes ADD COLUMN fact_check_html TEXT`);
+  }
+  if (!quoteCols2.includes('fact_check_references_json')) {
+    db.exec(`ALTER TABLE quotes ADD COLUMN fact_check_references_json TEXT`);
+  }
+  if (!quoteCols2.includes('fact_check_agree_count')) {
+    db.exec(`ALTER TABLE quotes ADD COLUMN fact_check_agree_count INTEGER NOT NULL DEFAULT 0`);
+  }
+  if (!quoteCols2.includes('fact_check_disagree_count')) {
+    db.exec(`ALTER TABLE quotes ADD COLUMN fact_check_disagree_count INTEGER NOT NULL DEFAULT 0`);
+  }
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_quotes_fact_check ON quotes(fact_check_category) WHERE fact_check_category IS NOT NULL`);
 
   // articles: importants_count, share_count, view_count, trending_score
   const articleCols2 = db.prepare("PRAGMA table_info(articles)").all().map(c => c.name);
@@ -544,32 +698,12 @@ function initializeTables(db) {
     db.exec(`ALTER TABLE persons ADD COLUMN trending_score REAL NOT NULL DEFAULT 0.0`);
   }
 
-  // topics: description, context, importants_count, share_count, view_count, trending_score
-  const topicsCols = db.prepare("PRAGMA table_info(topics)").all().map(c => c.name);
-  if (!topicsCols.includes('description')) {
-    db.exec(`ALTER TABLE topics ADD COLUMN description TEXT`);
-  }
-  if (!topicsCols.includes('context')) {
-    db.exec(`ALTER TABLE topics ADD COLUMN context TEXT`);
-  }
-  if (!topicsCols.includes('importants_count')) {
-    db.exec(`ALTER TABLE topics ADD COLUMN importants_count INTEGER NOT NULL DEFAULT 0`);
-  }
-  if (!topicsCols.includes('share_count')) {
-    db.exec(`ALTER TABLE topics ADD COLUMN share_count INTEGER NOT NULL DEFAULT 0`);
-  }
-  if (!topicsCols.includes('view_count')) {
-    db.exec(`ALTER TABLE topics ADD COLUMN view_count INTEGER NOT NULL DEFAULT 0`);
-  }
-  if (!topicsCols.includes('trending_score')) {
-    db.exec(`ALTER TABLE topics ADD COLUMN trending_score REAL NOT NULL DEFAULT 0.0`);
-  }
 
   // --- Trending / importants indexes ---
   db.exec(`CREATE INDEX IF NOT EXISTS idx_quotes_trending ON quotes(trending_score DESC) WHERE is_visible = 1`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_articles_trending ON articles(trending_score DESC)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_articles_trending_date ON articles(created_at DESC) WHERE trending_score > 0`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_persons_trending ON persons(trending_score DESC)`);
-  db.exec(`CREATE INDEX IF NOT EXISTS idx_topics_trending ON topics(trending_score DESC)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_quotes_importants ON quotes(importants_count DESC) WHERE is_visible = 1`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_quotes_datetime ON quotes(quote_datetime DESC) WHERE is_visible = 1`);
 
@@ -592,8 +726,8 @@ function initializeTables(db) {
     CREATE TABLE IF NOT EXISTS quote_smart_related (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       quote_id INTEGER NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,
-      related_type TEXT NOT NULL CHECK(related_type IN ('contradiction', 'context', 'mention')),
-      related_quote_id INTEGER NOT NULL REFERENCES quotes(id),
+      related_type TEXT NOT NULL CHECK(related_type IN ('contradiction', 'context', 'mention', '_none')),
+      related_quote_id INTEGER NOT NULL,
       confidence REAL NOT NULL DEFAULT 0.0,
       explanation TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -601,6 +735,27 @@ function initializeTables(db) {
       UNIQUE(quote_id, related_quote_id, related_type)
     )
   `);
+
+  // Migration: update quote_smart_related CHECK constraint to allow '_none' sentinel
+  const qsrSchema = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='quote_smart_related'").get();
+  if (qsrSchema && !qsrSchema.sql.includes('_none')) {
+    db.exec(`
+      ALTER TABLE quote_smart_related RENAME TO quote_smart_related_old;
+      CREATE TABLE quote_smart_related (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        quote_id INTEGER NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,
+        related_type TEXT NOT NULL CHECK(related_type IN ('contradiction', 'context', 'mention', '_none')),
+        related_quote_id INTEGER NOT NULL,
+        confidence REAL NOT NULL DEFAULT 0.0,
+        explanation TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        expires_at TEXT NOT NULL DEFAULT (datetime('now', '+7 days')),
+        UNIQUE(quote_id, related_quote_id, related_type)
+      );
+      INSERT INTO quote_smart_related SELECT * FROM quote_smart_related_old;
+      DROP TABLE quote_smart_related_old;
+    `);
+  }
   db.exec(`CREATE INDEX IF NOT EXISTS idx_smart_related_quote ON quote_smart_related(quote_id)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_smart_related_type ON quote_smart_related(quote_id, related_type)`);
 
@@ -633,6 +788,22 @@ function initializeTables(db) {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_logs_level ON application_logs(level)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_logs_category ON application_logs(category)`);
 
+  // Bug reports
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS bug_reports (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      message TEXT NOT NULL CHECK(length(message) <= 280),
+      page_url TEXT NOT NULL,
+      quote_id INTEGER REFERENCES quotes(id) ON DELETE SET NULL,
+      user_agent TEXT,
+      ip_hash TEXT NOT NULL,
+      starred INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_bug_reports_created ON bug_reports(created_at DESC)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_bug_reports_starred ON bug_reports(starred DESC, created_at DESC)`);
+
   // Admin users
   db.exec(`
     CREATE TABLE IF NOT EXISTS admin_users (
@@ -656,11 +827,25 @@ function initializeTables(db) {
     )
   `);
 
-  // Seed admin user (upsert to ensure password hash is always current)
-  const adminHash = bcryptjs.hashSync('Ferret@00', 12);
-  db.prepare(`INSERT INTO admin_users (email, password_hash) VALUES (?, ?)
-    ON CONFLICT(email) DO UPDATE SET password_hash = excluded.password_hash, updated_at = datetime('now')`)
-    .run('jakob@karlsmark.com', adminHash);
+  // Migration: add password_changed_at column for session invalidation
+  const adminCols = db.prepare("PRAGMA table_info(admin_users)").all().map(c => c.name);
+  if (!adminCols.includes('password_changed_at')) {
+    db.exec(`ALTER TABLE admin_users ADD COLUMN password_changed_at TEXT`);
+  }
+
+  // Seed admin user only if no admin users exist yet
+  const adminCount = db.prepare('SELECT COUNT(*) as count FROM admin_users').get().count;
+  if (adminCount === 0) {
+    const adminEmail = config.adminEmail;
+    const adminPassword = config.initialAdminPassword;
+    if (adminEmail && adminPassword) {
+      const adminHash = bcryptjs.hashSync(adminPassword, 12);
+      db.prepare('INSERT INTO admin_users (email, password_hash) VALUES (?, ?)')
+        .run(adminEmail, adminHash);
+    } else {
+      console.warn('[WARN] No admin users exist and INITIAL_ADMIN_EMAIL/INITIAL_ADMIN_PASSWORD env vars not set. No admin user seeded.');
+    }
+  }
 
   // Insert default settings (seed from file if available, else use hardcoded defaults)
   const settingsSeedPath = [
@@ -680,8 +865,10 @@ function initializeTables(db) {
     historical_fetch_enabled: '1',
     historical_articles_per_source_per_cycle: '5',
     min_significance_score: '5',
-    backprop_enabled: '0',
+    backprop_enabled: '1',
     backprop_max_articles_per_cycle: '5',
+    fact_check_filter_mode: 'off',
+    fact_check_min_score: '0.5',
   };
 
   let seedSettings = defaultSettings;
@@ -701,34 +888,9 @@ function initializeTables(db) {
     insertSetting.run(key, value);
   }
 
-  // One-time cleanup: remove overly broad/vague topics
-  const topicsToRemove = [
-    'Family', 'Politics & Sports News', 'High-Profile Connections',
-    'Global Influence & Societal Futures', 'Energy',
-    'National Security', 'Public Safety & Societal Concerns',
-    'Public figures and current events', 'Economy',
-    'Leadership', 'Politics & Monarchy', 'Labor',
-    'Current Affairs & Personal Insights', 'Public Life & Performance',
-    'Military', 'Innovation',
-  ];
-  const deleteTopic = db.prepare('DELETE FROM topics WHERE name = ?');
-  for (const name of topicsToRemove) {
-    deleteTopic.run(name);
-  }
 
   // --- Phase 2 migrations: enabled columns, new tables, prompt seeds ---
 
-  // Migration: add enabled column to topics
-  const topicsCols2 = db.prepare("PRAGMA table_info(topics)").all().map(c => c.name);
-  if (!topicsCols2.includes('enabled')) {
-    db.exec(`ALTER TABLE topics ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1`);
-  }
-
-  // Migration: add enabled column to keywords
-  const keywordsCols2 = db.prepare("PRAGMA table_info(keywords)").all().map(c => c.name);
-  if (!keywordsCols2.includes('enabled')) {
-    db.exec(`ALTER TABLE keywords ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1`);
-  }
 
   // Gemini prompts table — stores editable AI prompt templates
   db.exec(`
@@ -745,27 +907,11 @@ function initializeTables(db) {
     )
   `);
 
-  // Topic/keyword review queue — tracks AI-generated entities for human review
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS topic_keyword_review (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      entity_type TEXT NOT NULL CHECK(entity_type IN ('topic', 'keyword')),
-      entity_id INTEGER NOT NULL,
-      original_name TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'rejected', 'edited')),
-      source TEXT NOT NULL DEFAULT 'ai' CHECK(source IN ('ai', 'migration')),
-      resolved_at TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )
-  `);
-  db.exec(`CREATE INDEX IF NOT EXISTS idx_tkr_status ON topic_keyword_review(status)`);
-  db.exec(`CREATE INDEX IF NOT EXISTS idx_tkr_entity ON topic_keyword_review(entity_type, entity_id)`);
-
   // Noteworthy items — curated homepage highlights
   db.exec(`
     CREATE TABLE IF NOT EXISTS noteworthy_items (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      entity_type TEXT NOT NULL CHECK(entity_type IN ('quote', 'article', 'topic')),
+      entity_type TEXT NOT NULL CHECK(entity_type IN ('quote', 'article', 'topic', 'category')),
       entity_id INTEGER NOT NULL,
       display_order INTEGER NOT NULL DEFAULT 0,
       active INTEGER NOT NULL DEFAULT 1,
@@ -774,6 +920,111 @@ function initializeTables(db) {
     )
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_noteworthy_active ON noteworthy_items(active, display_order)`);
+
+  // Migration: add 'category' to noteworthy_items entity_type CHECK constraint
+  const nwSchema = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='noteworthy_items'").get();
+  if (nwSchema && !nwSchema.sql.includes("'category'")) {
+    db.exec(`
+      ALTER TABLE noteworthy_items RENAME TO noteworthy_items_old;
+      CREATE TABLE noteworthy_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_type TEXT NOT NULL CHECK(entity_type IN ('quote', 'article', 'topic', 'category')),
+        entity_id INTEGER NOT NULL,
+        display_order INTEGER NOT NULL DEFAULT 0,
+        active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(entity_type, entity_id)
+      );
+      INSERT INTO noteworthy_items SELECT * FROM noteworthy_items_old;
+      DROP TABLE noteworthy_items_old;
+    `);
+    db.exec('CREATE INDEX IF NOT EXISTS idx_noteworthy_active ON noteworthy_items(active, display_order)');
+  }
+
+  // Migration: add 'person' to noteworthy_items entity_type CHECK constraint
+  const nwSchema2 = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='noteworthy_items'").get();
+  if (nwSchema2 && !nwSchema2.sql.includes("'person'")) {
+    db.exec(`
+      ALTER TABLE noteworthy_items RENAME TO noteworthy_items_old2;
+      CREATE TABLE noteworthy_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_type TEXT NOT NULL CHECK(entity_type IN ('quote', 'article', 'topic', 'category', 'person')),
+        entity_id INTEGER NOT NULL,
+        display_order INTEGER NOT NULL DEFAULT 0,
+        active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(entity_type, entity_id)
+      );
+      INSERT INTO noteworthy_items SELECT * FROM noteworthy_items_old2;
+      DROP TABLE noteworthy_items_old2;
+    `);
+    db.exec('CREATE INDEX IF NOT EXISTS idx_noteworthy_active ON noteworthy_items(active, display_order)');
+  }
+
+  // Migration: add full_width column to noteworthy_items
+  const nwCols = db.prepare("PRAGMA table_info(noteworthy_items)").all();
+  if (!nwCols.find(c => c.name === 'full_width')) {
+    db.exec("ALTER TABLE noteworthy_items ADD COLUMN full_width INTEGER NOT NULL DEFAULT 0");
+  }
+
+  // Migration: add 'category' to importants entity_type CHECK constraint
+  const impSchema = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='importants'").get();
+  if (impSchema && !impSchema.sql.includes("'category'")) {
+    db.exec(`
+      ALTER TABLE importants RENAME TO importants_old;
+      CREATE TABLE importants (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_type TEXT NOT NULL CHECK(entity_type IN ('quote', 'article', 'person', 'topic', 'category')),
+        entity_id INTEGER NOT NULL,
+        voter_hash TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(entity_type, entity_id, voter_hash)
+      );
+      INSERT INTO importants SELECT * FROM importants_old;
+      DROP TABLE importants_old;
+    `);
+    db.exec('CREATE INDEX IF NOT EXISTS idx_importants_entity ON importants(entity_type, entity_id)');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_importants_voter ON importants(voter_hash)');
+  }
+
+  // topics: engagement counters (importants_count, share_count, view_count, trending_score)
+  const topicCols2 = db.prepare("PRAGMA table_info(topics)").all().map(c => c.name);
+  if (!topicCols2.includes('importants_count')) {
+    db.exec(`ALTER TABLE topics ADD COLUMN importants_count INTEGER NOT NULL DEFAULT 0`);
+  }
+  if (!topicCols2.includes('share_count')) {
+    db.exec(`ALTER TABLE topics ADD COLUMN share_count INTEGER NOT NULL DEFAULT 0`);
+  }
+  if (!topicCols2.includes('view_count')) {
+    db.exec(`ALTER TABLE topics ADD COLUMN view_count INTEGER NOT NULL DEFAULT 0`);
+  }
+  if (!topicCols2.includes('trending_score')) {
+    db.exec(`ALTER TABLE topics ADD COLUMN trending_score REAL NOT NULL DEFAULT 0.0`);
+  }
+
+  // categories: engagement counters (importants_count, share_count, view_count, trending_score)
+  const catCols2 = db.prepare("PRAGMA table_info(categories)").all().map(c => c.name);
+  if (!catCols2.includes('importants_count')) {
+    db.exec(`ALTER TABLE categories ADD COLUMN importants_count INTEGER NOT NULL DEFAULT 0`);
+  }
+  if (!catCols2.includes('share_count')) {
+    db.exec(`ALTER TABLE categories ADD COLUMN share_count INTEGER NOT NULL DEFAULT 0`);
+  }
+  if (!catCols2.includes('view_count')) {
+    db.exec(`ALTER TABLE categories ADD COLUMN view_count INTEGER NOT NULL DEFAULT 0`);
+  }
+  if (!catCols2.includes('trending_score')) {
+    db.exec(`ALTER TABLE categories ADD COLUMN trending_score REAL NOT NULL DEFAULT 0.0`);
+  }
+  if (!catCols2.includes('image_url')) {
+    db.exec(`ALTER TABLE categories ADD COLUMN image_url TEXT`);
+  }
+  if (!catCols2.includes('icon_name')) {
+    db.exec(`ALTER TABLE categories ADD COLUMN icon_name TEXT`);
+  }
+
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_topics_trending ON topics(trending_score DESC) WHERE status = 'active'`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_categories_trending ON categories(trending_score DESC)`);
 
   // Back-propagation log — tracks historical quote extraction runs
   db.exec(`
@@ -866,10 +1117,18 @@ For each quote, return:
   3-4: Routine statement, standard commentary, generic encouragement
   1-2: Vague platitude, meaningless fragment, purely descriptive, no substance
 
-  HIGH: makes a specific claim, sets a goal, predicts, reveals information, accuses, is funny/memorable, provides genuine insight
-  LOW: "We need to do better" (platitude), "It was a nice event" (descriptive), "The meeting begins at noon" (procedural), fragments without assertion
+  HIGH (5+): makes a specific, checkable claim; sets a measurable goal; predicts a concrete outcome; reveals new information; makes a direct accusation; provides genuine analytical insight
+  LOW (1-4): "We need to do better" (platitude), "It was a nice event" (descriptive), "The meeting begins at noon" (procedural), fragments without assertion, pure rhetoric without a specific claim ("For 47 years, they've been talking and talking"), descriptions of routine actions ("Investigative actions are being carried out"), vague motivational statements
+
+- fact_check_category: Classify this quote's verifiability:
+  "A" - Contains SPECIFIC, VERIFIABLE factual claims (statistics, dates, quantities, named events, measurable outcomes)
+  "B" - Expresses opinion, value judgment, policy position, or prediction — substantive but not verifiable by data lookup
+  "C" - Vague platitude, procedural statement, meaningless fragment, or purely rhetorical with no substance
+  Examples: "Unemployment is at 3.5%" = A, "This policy is a disaster for working families" = B, "We need to do better" = C
+- fact_check_score: Float 0.0-1.0 confidence in the fact_check_category assignment (1.0 = certain, 0.5 = borderline)
 
 Rules:
+- Do NOT extract quotes that are purely rhetorical, procedural, or vague. A quote must contain at least one specific claim, assertion, opinion, accusation, or prediction to be worth extracting.
 - ONLY extract verbatim quotes that appear inside quotation marks.
 - Do NOT extract indirect/reported speech, paraphrases, or descriptions of what someone said.
 - Only extract quotes attributed to a specific named person. Skip unattributed quotes.
@@ -1106,7 +1365,7 @@ If the speaker is a media personality (TV host, comedian, podcaster) AND the quo
     'html_rendering',
     'HTML Rendering',
     'Generates custom HTML for complex fact-check display types (timeline, comparison)',
-    `You are an HTML renderer for a fact-check widget on WhatTheySaid.News. Generate clean, semantic HTML that uses the site's existing CSS variables.
+    `You are an HTML renderer for a fact-check widget on TrueOrFalse.News. Generate clean, semantic HTML that uses the site's existing CSS variables.
 
 ## Site Design System
 The site uses these CSS custom properties:
@@ -1150,34 +1409,47 @@ The output should be ONLY the HTML fragment, no explanation.`,
     'fact_check'
   );
 
-  // One-time migration: disable all existing topics/keywords and queue them for review
-  // Guard: only run if topic_keyword_review table is empty (first migration)
-  const tkrCount = db.prepare('SELECT COUNT(*) as cnt FROM topic_keyword_review').get().cnt;
-  if (tkrCount === 0) {
-    // Disable all existing topics and keywords
-    db.exec(`UPDATE topics SET enabled = 0`);
-    db.exec(`UPDATE keywords SET enabled = 0`);
-
-    // Queue all existing topics for review
-    const existingTopics = db.prepare('SELECT id, name FROM topics').all();
-    const insertTkr = db.prepare(`
-      INSERT OR IGNORE INTO topic_keyword_review (entity_type, entity_id, original_name, source)
-      VALUES (?, ?, ?, 'migration')
-    `);
-    for (const t of existingTopics) {
-      insertTkr.run('topic', t.id, t.name);
-    }
-
-    // Queue all existing keywords for review
-    const existingKeywords = db.prepare('SELECT id, name FROM keywords').all();
-    for (const k of existingKeywords) {
-      insertTkr.run('keyword', k.id, k.name);
-    }
-
-    if (existingTopics.length > 0 || existingKeywords.length > 0) {
-      console.log(`[startup] Migration: queued ${existingTopics.length} topics and ${existingKeywords.length} keywords for review`);
-    }
+  // --- Migration: normalize non-ISO quote_datetime values ---
+  const badDates = db.prepare(
+    `SELECT id, quote_datetime FROM quotes
+     WHERE quote_datetime IS NOT NULL
+       AND quote_datetime NOT GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]*'`
+  ).all();
+  if (badDates.length > 0) {
+    const update = db.prepare('UPDATE quotes SET quote_datetime = ? WHERE id = ?');
+    const fixBatch = db.transaction(() => {
+      for (const row of badDates) {
+        const d = new Date(row.quote_datetime);
+        if (!isNaN(d.getTime())) {
+          const yyyy = d.getFullYear();
+          const mm = String(d.getMonth() + 1).padStart(2, '0');
+          const dd = String(d.getDate()).padStart(2, '0');
+          update.run(`${yyyy}-${mm}-${dd}`, row.id);
+        } else {
+          update.run(null, row.id);
+        }
+      }
+    });
+    fixBatch();
+    console.log(`[migration] Normalized ${badDates.length} non-ISO quote_datetime values`);
   }
+
+  // --- Backfill OPINION/FRAGMENT verdicts for existing Category B/C quotes ---
+  const opinionBackfill = db.prepare(
+    `SELECT COUNT(*) as count FROM quotes WHERE fact_check_html LIKE '%fc-widget--opinion%' AND fact_check_verdict IS NULL`
+  ).get();
+  if (opinionBackfill.count > 0) {
+    db.exec(`UPDATE quotes SET fact_check_verdict = 'OPINION' WHERE fact_check_html LIKE '%fc-widget--opinion%' AND fact_check_verdict IS NULL`);
+    console.log(`[migration] Backfilled ${opinionBackfill.count} OPINION verdicts`);
+  }
+  const fragmentBackfill = db.prepare(
+    `SELECT COUNT(*) as count FROM quotes WHERE fact_check_html LIKE '%fc-widget--fragment%' AND fact_check_verdict IS NULL`
+  ).get();
+  if (fragmentBackfill.count > 0) {
+    db.exec(`UPDATE quotes SET fact_check_verdict = 'FRAGMENT' WHERE fact_check_html LIKE '%fc-widget--fragment%' AND fact_check_verdict IS NULL`);
+    console.log(`[migration] Backfilled ${fragmentBackfill.count} FRAGMENT verdicts`);
+  }
+
 }
 
 export function closeDb() {
@@ -1185,6 +1457,8 @@ export function closeDb() {
     db.close();
     db = null;
   }
+  dbReady = false;
+  dbInitPromise = null;
 }
 
 // Helper function to get a setting value
@@ -1236,6 +1510,21 @@ export function verifyDatabaseState() {
     if (seeded > 0) {
       console.log(`[startup] Seeded ${seeded} sources from sources-seed.json`);
     }
+  }
+
+  // Auto-link sources to source_authors (runs after seeding so freshly-seeded sources get linked)
+  const unlinkedSources = db.prepare('SELECT COUNT(*) as count FROM sources WHERE source_author_id IS NULL').get().count;
+  if (unlinkedSources > 0) {
+    const distinctDomains = db.prepare('SELECT DISTINCT domain FROM sources WHERE source_author_id IS NULL').all();
+    for (const { domain } of distinctDomains) {
+      const derivedName = domain.split('.')[0].charAt(0).toUpperCase() + domain.split('.')[0].slice(1);
+      db.prepare('INSERT OR IGNORE INTO source_authors (name, domain) VALUES (?, ?)').run(derivedName, domain);
+      const sa = db.prepare('SELECT id FROM source_authors WHERE domain = ?').get(domain);
+      if (sa) {
+        db.prepare('UPDATE sources SET source_author_id = ? WHERE domain = ? AND source_author_id IS NULL').run(sa.id, domain);
+      }
+    }
+    console.log(`[startup] Linked ${unlinkedSources} sources to source_authors`);
   }
 
   return counts;

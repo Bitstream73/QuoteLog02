@@ -23,6 +23,27 @@ window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e)
   }
 });
 
+// Update page metadata for SPA navigation
+function updatePageMeta(title, description, canonicalPath) {
+  document.title = title ? title + ' | TrueOrFalse.News' : 'TrueOrFalse.News';
+  const descMeta = document.querySelector('meta[name="description"]');
+  if (descMeta && description) descMeta.setAttribute('content', description);
+  let canonical = document.querySelector('link[rel="canonical"]');
+  if (canonicalPath) {
+    const href = window.location.origin + canonicalPath;
+    if (canonical) {
+      canonical.setAttribute('href', href);
+    } else {
+      canonical = document.createElement('link');
+      canonical.setAttribute('rel', 'canonical');
+      canonical.setAttribute('href', href);
+      document.head.appendChild(canonical);
+    }
+  } else if (canonical) {
+    canonical.setAttribute('href', window.location.origin + window.location.pathname);
+  }
+}
+
 // Auth state
 let isAdmin = false;
 
@@ -53,12 +74,28 @@ function initSocket() {
       }
     });
 
+    socket.on('taxonomy_suggestions_update', (data) => {
+      if (typeof updateTaxonomyTabBadge === 'function') {
+        updateTaxonomyTabBadge(data.pending);
+      }
+    });
+
     socket.on('fetch_cycle_complete', (data) => {
       console.log(`Fetch cycle complete: ${data.newArticles} articles, ${data.newQuotes} quotes`);
     });
 
     socket.on('source_disabled', (data) => {
       console.warn(`Source disabled: ${data.domain} - ${data.reason}`);
+    });
+
+    socket.on('fact_check_complete', (data) => {
+      if (typeof handleFactCheckComplete === 'function') handleFactCheckComplete(data);
+      if (typeof handleQuotePageFactCheckComplete === 'function') handleQuotePageFactCheckComplete(data);
+    });
+
+    socket.on('fact_check_error', (data) => {
+      if (typeof handleFactCheckError === 'function') handleFactCheckError(data);
+      if (typeof handleQuotePageFactCheckError === 'function') handleQuotePageFactCheckError(data);
     });
 
     socket.on('disconnect', () => {
@@ -147,21 +184,14 @@ function route() {
   } else if (path.startsWith('/author/')) {
     const id = path.split('/')[2];
     renderAuthor(id);
+  } else if (path.startsWith('/category/')) {
+    const id = path.split('/')[2];
+    renderCategory(id);
+  } else if (path.startsWith('/topic/')) {
+    const id = path.split('/')[2];
+    renderTopic(id);
   } else if (path === '/analytics') {
     renderAnalytics();
-  } else if (path.startsWith('/topic/')) {
-    const slug = path.split('/topic/')[1];
-    if (typeof renderTopicPage === 'function') {
-      renderTopicPage(slug);
-    } else if (typeof renderTopicDetail === 'function') {
-      renderTopicDetail(slug);
-    }
-  } else if (path.startsWith('/analytics/topic/')) {
-    const slug = path.split('/analytics/topic/')[1];
-    renderTopicDetail(slug);
-  } else if (path.startsWith('/analytics/keyword/')) {
-    const id = path.split('/analytics/keyword/')[1];
-    renderKeywordDetail(id);
   } else if (path === '/admin') {
     if (isAdmin) { navigate(null, '/settings'); return; }
     renderLogin();
@@ -194,13 +224,9 @@ function route() {
 async function updateReviewBadgeAsync() {
   if (!isAdmin) return;
   try {
-    const [stats, tkrStats] = await Promise.all([
-      API.get('/review/stats'),
-      API.get('/review/topics-keywords/stats').catch(() => ({ pending: 0 })),
-    ]);
-    const totalPending = (stats.pending || 0) + (tkrStats.pending || 0);
+    const stats = await API.get('/review/stats');
     if (typeof updateReviewBadge === 'function') {
-      updateReviewBadge(totalPending);
+      updateReviewBadge(stats.pending || 0);
     }
   } catch {
     // Ignore errors
@@ -216,7 +242,7 @@ function updateAdVisibility(path) {
   if (!adContainer) return;
 
   const isPublicPage = path === '/' || path === '' ||
-    path.startsWith('/quote/') || path.startsWith('/author/') || path.startsWith('/article/') || path.startsWith('/analytics') || path.startsWith('/topic/');
+    path.startsWith('/quote/') || path.startsWith('/author/') || path.startsWith('/article/') || path.startsWith('/category/') || path.startsWith('/analytics');
 
   if (isPublicPage && !isStandalone) {
     adContainer.style.display = '';
@@ -326,6 +352,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initSocket();
   updateHeaderHeight();
   route();
+  initDonateNag();
 });
 
 // Update header height on window resize
@@ -373,5 +400,6 @@ if (document.readyState !== 'loading') {
     initSocket();
     updateHeaderHeight();
     route();
+    initDonateNag();
   })();
 }

@@ -13,24 +13,37 @@ async function renderArticle(id) {
     const dateStr = formatDateTime(a.publishedAt);
     const sourceLabel = a.sourceName || a.sourceDomain || '';
 
+    // Update page metadata
+    if (typeof updatePageMeta === 'function') {
+      updatePageMeta(a.title || 'Untitled', `${sourceLabel}${dateStr ? ' | ' + dateStr : ''} | ${data.quotes.length} quotes`, `/article/${a.id}`);
+    }
+
+    const shareHtml = typeof buildShareButtonsHtml === 'function'
+      ? buildShareButtonsHtml('article', a.id, a.title, sourceLabel)
+      : '';
+    const importantHtml = typeof renderImportantButton === 'function'
+      ? renderImportantButton('article', a.id, a.importantsCount || a.importants_count || 0, false)
+      : '';
+
     let html = `
       <div class="article-sticky-header">
         <p style="margin-bottom:0.5rem;font-family:var(--font-ui);font-size:var(--text-sm)">
           <a href="/" onclick="navigateBackToQuotes(event)" style="color:var(--accent);text-decoration:none">&larr; Back to quotes</a>
         </p>
-        ${sourceLabel ? `<span class="article-page__source-label">${escapeHtml(sourceLabel)}</span>` : ''}
         <h1 class="page-title" style="font-size:1.8rem;margin-bottom:0.5rem">${escapeHtml(a.title || 'Untitled Source')}</h1>
-        <div style="font-family:var(--font-ui);font-size:var(--text-sm);color:var(--text-muted)">
-          ${dateStr ? `<span>${dateStr}</span>` : ''}
+        <div style="font-family:var(--font-ui);font-size:var(--text-sm);color:var(--text-muted);margin-bottom:0.5rem">
+          ${sourceLabel ? `<span>${escapeHtml(sourceLabel)}</span>` : ''}
+          ${dateStr ? `<span style="margin-left:0.5rem">&middot; ${dateStr}</span>` : ''}
           <span style="margin-left:0.5rem">&middot; ${data.quotes.length} quote${data.quotes.length !== 1 ? 's' : ''}</span>
         </div>
-        <div style="margin-top:0.5rem;display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap">
-          ${a.url ? `<a href="${escapeHtml(a.url)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-size:var(--text-sm);font-family:var(--font-ui)">View original article &rarr;</a>` : ''}
+        <div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap">
+          ${shareHtml}
+          ${importantHtml}
+          ${a.url ? `<a href="${escapeHtml(a.url)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-size:var(--text-sm);font-family:var(--font-ui)">View original &rarr;</a>` : ''}
           ${isAdmin ? `<label class="top-story-label" title="Mark as Top Story">
             <input type="checkbox" ${a.isTopStory ? 'checked' : ''} onchange="toggleArticleTopStory(${a.id}, this.checked)">
             <span class="top-story-label-text">Top Story</span>
           </label>` : ''}
-          ${typeof renderImportantButton === 'function' ? renderImportantButton('article', a.id, a.importantsCount || a.importants_count || 0, false) : ''}
         </div>
       </div>
     `;

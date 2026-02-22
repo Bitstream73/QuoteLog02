@@ -1,5 +1,5 @@
-const CACHE_NAME = 'quotelog-v23';
-const STATIC_ASSETS = ['/', '/css/styles.css', '/js/app.js', '/js/api.js', '/js/home.js', '/js/quote.js', '/js/article.js', '/js/author.js', '/js/settings.js', '/js/review.js', '/js/logs.js', '/js/login.js', '/js/resetPassword.js', '/js/analytics.js', '/js/important.js', '/js/charts.js', '/manifest.json'];
+const CACHE_NAME = 'quotelog-v29';
+const STATIC_ASSETS = ['/', '/css/styles.css', '/js/app.js', '/js/api.js', '/js/home.js', '/js/quote.js', '/js/article.js', '/js/author.js', '/js/settings.js', '/js/review.js', '/js/logs.js', '/js/login.js', '/js/resetPassword.js', '/js/analytics.js', '/js/important.js', '/js/charts.js', '/js/admin-actions.js', '/manifest.json'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS)));
@@ -14,25 +14,36 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  if (event.request.url.includes('/api/')) {
+  const url = event.request.url;
+  const isSameOrigin = url.startsWith(self.location.origin);
+
+  if (url.includes('/api/')) {
     // API: network-first with cache fallback
     event.respondWith(fetch(event.request).catch(() => caches.match(event.request)));
   } else if (event.request.mode === 'navigate') {
     // HTML navigation: network-first so new deploys are picked up immediately
     event.respondWith(
       fetch(event.request).then((response) => {
-        const clone = response.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+        if (response.ok) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+        }
         return response;
       }).catch(() => caches.match(event.request))
     );
+  } else if (!isSameOrigin) {
+    // External resources (e.g. Wikipedia images): network-only, never cache
+    // Prevents caching stale/error responses from third-party CDNs
+    return;
   } else {
-    // Static assets: stale-while-revalidate — serve cache immediately but update in background
+    // Same-origin static assets: stale-while-revalidate
     event.respondWith(
       caches.match(event.request).then((cached) => {
         const fetchPromise = fetch(event.request).then((response) => {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          }
           return response;
         }).catch(() => cached);
         return cached || fetchPromise;

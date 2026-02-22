@@ -1,6 +1,7 @@
 import { getDb, getSettingValue } from '../config/database.js';
 import logger from './logger.js';
-import { fetchArticlesFromSource, processArticle } from './articleFetcher.js';
+import { processArticle } from './articleFetcher.js';
+import { fetchArticlesForDate } from './backpropFetcher.js';
 
 /**
  * Back-propagation service: fills in quote gaps for past days.
@@ -26,9 +27,9 @@ export function findNextGapDate() {
   const cutoff = ninetyDaysAgo.toISOString().split('T')[0];
 
   const datesWithQuotes = db.prepare(`
-    SELECT DISTINCT DATE(created_at) as quote_date
+    SELECT DISTINCT DATE(COALESCE(quote_datetime, created_at)) as quote_date
     FROM quotes
-    WHERE is_visible = 1 AND DATE(created_at) >= ?
+    WHERE is_visible = 1 AND DATE(COALESCE(quote_datetime, created_at)) >= ?
     ORDER BY quote_date DESC
   `).all(cutoff).map(r => r.quote_date);
 
@@ -75,62 +76,60 @@ export async function runBackPropForDate(targetDate, io) {
   `).run(targetDate);
 
   try {
-    const sources = db.prepare('SELECT * FROM sources WHERE enabled = 1').all();
-
-    // For back-propagation, we look for articles published on the target date
-    // We'll use a 36-hour window centered on the target date
-    const targetStart = new Date(targetDate + 'T00:00:00Z');
-    const lookbackHours = 36;
-
     let totalArticlesFound = 0;
     let totalQuotesExtracted = 0;
 
-    for (const source of sources) {
+    // Use multi-strategy date-aware fetcher instead of per-source RSS
+    const { articles: fetchedArticles, attempts } = await fetchArticlesForDate(targetDate, maxArticles, db);
+
+    logger.info('backprop', 'fetcher_result', {
+      targetDate,
+      articlesFound: fetchedArticles.length,
+      attempts: attempts.map(a => ({ strategy: a.strategy, success: a.success, count: a.count })),
+    });
+
+    // Insert new articles (skip duplicates)
+    const insertStmt = db.prepare(`
+      INSERT OR IGNORE INTO articles (url, source_id, title, published_at, status)
+      VALUES (?, ?, ?, ?, 'pending')
+    `);
+
+    for (const article of fetchedArticles) {
       if (totalArticlesFound >= maxArticles) break;
 
+      // Try to match article URL to an existing source by domain
+      let sourceId = null;
       try {
-        const articles = await fetchArticlesFromSource(source, lookbackHours);
+        const urlObj = new URL(article.url);
+        const hostname = urlObj.hostname.toLowerCase().replace(/^www\./, '');
+        const matchedSource = db.prepare(
+          'SELECT id FROM sources WHERE enabled = 1 AND (? = domain OR ? LIKE \'%.\' || domain)'
+        ).get(hostname, hostname);
+        if (matchedSource) sourceId = matchedSource.id;
+      } catch {
+        // URL parse failed, leave source_id as NULL
+      }
 
-        // Filter to only articles from the target date
-        const targetArticles = articles.filter(a => {
-          const pubDate = new Date(a.published).toISOString().split('T')[0];
-          return pubDate === targetDate;
-        });
+      const result = insertStmt.run(article.url, sourceId, article.title, article.published);
+      if (result.changes > 0) {
+        totalArticlesFound++;
 
-        // Insert new articles (skip duplicates)
-        const insertStmt = db.prepare(`
-          INSERT OR IGNORE INTO articles (url, source_id, title, published_at, status)
-          VALUES (?, ?, ?, ?, 'pending')
-        `);
+        // Process the article — use LEFT JOIN so articles without source_id still work
+        const insertedArticle = db.prepare(
+          'SELECT a.*, s.domain FROM articles a LEFT JOIN sources s ON a.source_id = s.id WHERE a.url = ?'
+        ).get(article.url);
 
-        for (const article of targetArticles) {
-          if (totalArticlesFound >= maxArticles) break;
-
-          const result = insertStmt.run(article.url, source.id, article.title, article.published);
-          if (result.changes > 0) {
-            totalArticlesFound++;
-
-            // Process the article immediately
-            const insertedArticle = db.prepare('SELECT a.*, s.domain FROM articles a JOIN sources s ON a.source_id = s.id WHERE a.url = ?').get(article.url);
-            if (insertedArticle) {
-              try {
-                const quotes = await processArticle(insertedArticle, db, io);
-                totalQuotesExtracted += quotes.length;
-              } catch (err) {
-                logger.warn('backprop', 'article_process_error', {
-                  url: article.url,
-                  error: err.message,
-                });
-              }
-            }
+        if (insertedArticle) {
+          try {
+            const result = await processArticle(insertedArticle, db, io);
+            totalQuotesExtracted += result.quotes.length;
+          } catch (err) {
+            logger.warn('backprop', 'article_process_error', {
+              url: article.url,
+              error: err.message,
+            });
           }
         }
-      } catch (err) {
-        logger.warn('backprop', 'source_fetch_error', {
-          source: source.domain,
-          targetDate,
-          error: err.message,
-        });
       }
     }
 

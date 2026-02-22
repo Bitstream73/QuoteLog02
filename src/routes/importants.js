@@ -6,8 +6,47 @@ import { requireAdmin } from '../middleware/auth.js';
 
 const router = Router();
 
-const VALID_TYPES = ['quote', 'article', 'person', 'topic'];
-const TABLE_MAP = { quote: 'quotes', article: 'articles', person: 'persons', topic: 'topics' };
+const VALID_TYPES = ['quote', 'article', 'person', 'topic', 'category'];
+const TABLE_MAP = { quote: 'quotes', article: 'articles', person: 'persons', topic: 'topics', category: 'categories' };
+
+// Pre-built SQL queries per entity type — eliminates all dynamic table name interpolation
+const QUERIES = {
+  quote: {
+    exists: 'SELECT id FROM quotes WHERE id = ?',
+    decrement: 'UPDATE quotes SET importants_count = MAX(importants_count - 1, 0) WHERE id = ?',
+    increment: 'UPDATE quotes SET importants_count = importants_count + 1 WHERE id = ?',
+    getCount: 'SELECT importants_count FROM quotes WHERE id = ?',
+    superIncrement: 'UPDATE quotes SET importants_count = importants_count + 100 WHERE id = ?',
+  },
+  article: {
+    exists: 'SELECT id FROM articles WHERE id = ?',
+    decrement: 'UPDATE articles SET importants_count = MAX(importants_count - 1, 0) WHERE id = ?',
+    increment: 'UPDATE articles SET importants_count = importants_count + 1 WHERE id = ?',
+    getCount: 'SELECT importants_count FROM articles WHERE id = ?',
+    superIncrement: 'UPDATE articles SET importants_count = importants_count + 100 WHERE id = ?',
+  },
+  person: {
+    exists: 'SELECT id FROM persons WHERE id = ?',
+    decrement: 'UPDATE persons SET importants_count = MAX(importants_count - 1, 0) WHERE id = ?',
+    increment: 'UPDATE persons SET importants_count = importants_count + 1 WHERE id = ?',
+    getCount: 'SELECT importants_count FROM persons WHERE id = ?',
+    superIncrement: 'UPDATE persons SET importants_count = importants_count + 100 WHERE id = ?',
+  },
+  topic: {
+    exists: 'SELECT id FROM topics WHERE id = ?',
+    decrement: 'UPDATE topics SET importants_count = MAX(importants_count - 1, 0) WHERE id = ?',
+    increment: 'UPDATE topics SET importants_count = importants_count + 1 WHERE id = ?',
+    getCount: 'SELECT importants_count FROM topics WHERE id = ?',
+    superIncrement: 'UPDATE topics SET importants_count = importants_count + 100 WHERE id = ?',
+  },
+  category: {
+    exists: 'SELECT id FROM categories WHERE id = ?',
+    decrement: 'UPDATE categories SET importants_count = MAX(importants_count - 1, 0) WHERE id = ?',
+    increment: 'UPDATE categories SET importants_count = importants_count + 1 WHERE id = ?',
+    getCount: 'SELECT importants_count FROM categories WHERE id = ?',
+    superIncrement: 'UPDATE categories SET importants_count = importants_count + 100 WHERE id = ?',
+  },
+};
 
 function getVoterHash(req) {
   const ip = req.ip || req.connection.remoteAddress;
@@ -29,10 +68,10 @@ router.post('/toggle', (req, res) => {
       return res.status(400).json({ error: 'Missing entity_id' });
     }
 
-    const tableName = TABLE_MAP[entity_type];
+    const queries = QUERIES[entity_type];
 
     // Validate entity exists
-    const entity = db.prepare(`SELECT id FROM ${tableName} WHERE id = ?`).get(entity_id);
+    const entity = db.prepare(queries.exists).get(entity_id);
     if (!entity) {
       return res.status(404).json({ error: `${entity_type} not found` });
     }
@@ -49,19 +88,19 @@ router.post('/toggle', (req, res) => {
     if (existing) {
       // Toggle OFF: delete record and decrement count
       db.prepare('DELETE FROM importants WHERE id = ?').run(existing.id);
-      db.prepare(`UPDATE ${tableName} SET importants_count = MAX(importants_count - 1, 0) WHERE id = ?`).run(entity_id);
+      db.prepare(queries.decrement).run(entity_id);
       isImportant = false;
     } else {
       // Toggle ON: insert record and increment count
       db.prepare(
         'INSERT INTO importants (entity_type, entity_id, voter_hash) VALUES (?, ?, ?)'
       ).run(entity_type, entity_id, voterHash);
-      db.prepare(`UPDATE ${tableName} SET importants_count = importants_count + 1 WHERE id = ?`).run(entity_id);
+      db.prepare(queries.increment).run(entity_id);
       isImportant = true;
     }
 
     // Get updated count
-    const updated = db.prepare(`SELECT importants_count FROM ${tableName} WHERE id = ?`).get(entity_id);
+    const updated = db.prepare(queries.getCount).get(entity_id);
     const importants_count = updated.importants_count;
 
     // Trigger trending score recalculation
@@ -102,19 +141,19 @@ router.post('/super-toggle', requireAdmin, (req, res) => {
       return res.status(400).json({ error: 'Missing entity_id' });
     }
 
-    const tableName = TABLE_MAP[entity_type];
+    const queries = QUERIES[entity_type];
 
     // Validate entity exists
-    const entity = db.prepare(`SELECT id FROM ${tableName} WHERE id = ?`).get(entity_id);
+    const entity = db.prepare(queries.exists).get(entity_id);
     if (!entity) {
       return res.status(404).json({ error: `${entity_type} not found` });
     }
 
     // Increment importants_count by 100 (no voter_hash row)
-    db.prepare(`UPDATE ${tableName} SET importants_count = importants_count + 100 WHERE id = ?`).run(entity_id);
+    db.prepare(queries.superIncrement).run(entity_id);
 
     // Get updated count
-    const updated = db.prepare(`SELECT importants_count FROM ${tableName} WHERE id = ?`).get(entity_id);
+    const updated = db.prepare(queries.getCount).get(entity_id);
     const importants_count = updated.importants_count;
 
     // Recalculate trending score

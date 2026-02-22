@@ -9,9 +9,24 @@
  */
 
 import express from 'express';
+import jwt from 'jsonwebtoken';
 import { factCheckQuote, classifyAndVerify, extractAndEnrichReferences } from '../services/factCheck.js';
+import { generateShareImage, invalidateShareImageCache } from '../services/shareImage.js';
+import factCheckQueue from '../services/factCheckQueue.js';
+import { getDb } from '../config/database.js';
 import config from '../config/index.js';
 import logger from '../services/logger.js';
+
+function isAdminRequest(req) {
+  const token = req.cookies?.auth_token;
+  if (!token) return false;
+  try {
+    jwt.verify(token, config.jwtSecret);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 const router = express.Router();
 
@@ -36,20 +51,86 @@ router.post('/check', async (req, res) => {
       tags,
       skipFactCheck,
       skipReferences,
+      force,
     } = req.body;
 
     if (!quoteText) {
       return res.status(400).json({ error: 'quoteText is required' });
     }
 
-    // Check cache
+    // Cache key used throughout this handler (including background .then)
     const cacheKey = `check:${quoteId || quoteText.substring(0, 100)}`;
-    const cached = cache.get(cacheKey);
-    if (cached && (Date.now() - cached.timestamp < CACHE_TTL_MS)) {
-      return res.json({ ...cached.data, fromCache: true });
+
+    // Force rerun: admin-only — clear all caches and DB columns
+    if (force) {
+      if (!isAdminRequest(req)) {
+        return res.status(403).json({ error: 'Admin access required for force rerun' });
+      }
+
+      // Clear in-memory cache
+      cache.delete(cacheKey);
+
+      // Clear DB cached fact-check columns
+      if (quoteId) {
+        try {
+          const db = getDb();
+          db.prepare(
+            `UPDATE quotes SET
+              fact_check_html = NULL,
+              fact_check_references_json = NULL,
+              fact_check_verdict = NULL,
+              fact_check_claim = NULL,
+              fact_check_explanation = NULL,
+              fact_check_category = NULL,
+              fact_check_agree_count = 0,
+              fact_check_disagree_count = 0
+            WHERE id = ?`
+          ).run(quoteId);
+        } catch (err) {
+          logger.warn('factcheck', 'force_clear_db_failed', { quoteId, error: err.message });
+        }
+      }
+      // Skip cache checks below — fall through to enqueue
     }
 
-    const result = await factCheckQuote(
+    if (!force) {
+      // Check in-memory cache
+      const cached = cache.get(cacheKey);
+      if (cached && (Date.now() - cached.timestamp < CACHE_TTL_MS)) {
+        return res.json({ ...cached.data, fromCache: true });
+      }
+
+      // Check DB cache (survives server restarts)
+      if (quoteId) {
+        try {
+          const db = getDb();
+          const row = db.prepare(
+            `SELECT fact_check_html, fact_check_references_json, fact_check_verdict, fact_check_agree_count, fact_check_disagree_count FROM quotes WHERE id = ?`
+          ).get(quoteId);
+
+          if (row && row.fact_check_html) {
+            const dbCached = {
+              combinedHtml: row.fact_check_html,
+              html: row.fact_check_html,
+              references: row.fact_check_references_json ? JSON.parse(row.fact_check_references_json) : null,
+              verdict: row.fact_check_verdict || null,
+              agree_count: row.fact_check_agree_count || 0,
+              disagree_count: row.fact_check_disagree_count || 0,
+              fromCache: true,
+            };
+            cache.set(cacheKey, { data: dbCached, timestamp: Date.now() });
+            return res.json(dbCached);
+          }
+        } catch (err) {
+          logger.warn('factcheck', 'db_cache_lookup_failed', { quoteId, error: err.message });
+        }
+      }
+    }
+
+    const queueKey = quoteId ? `q:${quoteId}` : `t:${quoteText.substring(0, 100)}`;
+    const io = req.app.get('io');
+
+    const promise = factCheckQueue.enqueue(queueKey, () => factCheckQuote(
       {
         quoteText,
         authorName: authorName || 'Unknown',
@@ -62,20 +143,77 @@ router.post('/check', async (req, res) => {
       {
         skipFactCheck: skipFactCheck || false,
         skipReferences: skipReferences || false,
+        quoteId: quoteId || null,
       }
-    );
+    ));
 
-    cache.set(cacheKey, { data: result, timestamp: Date.now() });
+    // Background: when the queue task completes, cache + emit + pre-warm
+    promise.then(result => {
+      cache.set(cacheKey, { data: result, timestamp: Date.now() });
 
-    // Prune old cache entries periodically
-    if (cache.size > 1000) {
-      const now = Date.now();
-      for (const [key, val] of cache) {
-        if (now - val.timestamp > CACHE_TTL_MS) cache.delete(key);
+      // Broadcast fact-check completion via Socket.IO
+      if (quoteId && io) {
+        io.emit('fact_check_complete', { quoteId, verdict: result.verdict || null, category: result.category || null });
       }
-    }
 
-    return res.json(result);
+      // Pre-generate share images (fire-and-forget) so they're cached for later
+      if (quoteId) {
+        invalidateShareImageCache(quoteId);
+        try {
+          const db = getDb();
+          const row = db.prepare(
+            `SELECT q.id, q.text, q.context, q.fact_check_verdict, q.fact_check_claim, q.fact_check_explanation,
+                    q.fact_check_category,
+                    p.canonical_name, p.disambiguation, p.photo_url
+             FROM quotes q
+             LEFT JOIN persons p ON q.person_id = p.id
+             WHERE q.id = ?`
+          ).get(quoteId);
+
+          if (row) {
+            const imgData = {
+              quoteId: row.id,
+              quoteText: row.text,
+              authorName: row.canonical_name || 'Unknown',
+              disambiguation: row.disambiguation || '',
+              verdict: row.fact_check_verdict || null,
+              category: row.fact_check_category || null,
+              photoUrl: row.photo_url || null,
+              claim: row.fact_check_claim || '',
+              explanation: row.fact_check_explanation || '',
+            };
+            Promise.all([
+              generateShareImage(imgData, 'landscape'),
+              generateShareImage(imgData, 'portrait'),
+            ]).catch(err => logger.warn('factcheck', 'share_image_prewarm_failed', { quoteId, error: err.message }));
+          }
+        } catch (err) {
+          logger.warn('factcheck', 'share_image_prewarm_query_failed', { quoteId, error: err.message });
+        }
+      }
+
+      // Prune old cache entries periodically
+      if (cache.size > 1000) {
+        const now = Date.now();
+        for (const [key, val] of cache) {
+          if (now - val.timestamp > CACHE_TTL_MS) cache.delete(key);
+        }
+      }
+    }).catch(err => {
+      logger.error('factcheck', 'check_failed_background', { quoteId }, err);
+      if (quoteId && io) {
+        io.emit('fact_check_error', { quoteId, error: err.message || 'Fact-check failed' });
+      }
+    });
+
+    const position = factCheckQueue.positionOf(queueKey);
+    return res.status(202).json({
+      queued: true,
+      quoteId: quoteId || null,
+      position,
+      pending: factCheckQueue.pending,
+      active: factCheckQueue.active,
+    });
 
   } catch (err) {
     logger.error('factcheck', 'check_failed', {}, err);
@@ -179,6 +317,116 @@ router.get('/status', (req, res) => {
     cacheSize: cache.size,
     geminiConfigured: !!config.geminiApiKey,
   });
+});
+
+// ---------------------------------------------------------------------------
+// GET /check/:quoteId — Fetch cached fact-check result for a quote
+// ---------------------------------------------------------------------------
+
+router.get('/check/:quoteId', (req, res) => {
+  try {
+    const quoteId = parseInt(req.params.quoteId, 10);
+    if (!quoteId || isNaN(quoteId)) {
+      return res.status(400).json({ error: 'Invalid quoteId' });
+    }
+
+    const db = getDb();
+    const row = db.prepare(
+      `SELECT fact_check_html, fact_check_references_json, fact_check_verdict,
+              fact_check_agree_count, fact_check_disagree_count
+       FROM quotes WHERE id = ?`
+    ).get(quoteId);
+
+    if (!row || !row.fact_check_html) {
+      return res.status(404).json({ error: 'No fact-check result yet' });
+    }
+
+    return res.json({
+      combinedHtml: row.fact_check_html,
+      html: row.fact_check_html,
+      references: row.fact_check_references_json ? JSON.parse(row.fact_check_references_json) : null,
+      verdict: row.fact_check_verdict || null,
+      agree_count: row.fact_check_agree_count || 0,
+      disagree_count: row.fact_check_disagree_count || 0,
+      fromCache: true,
+    });
+  } catch (err) {
+    logger.error('factcheck', 'get_check_failed', { quoteId: req.params.quoteId }, err);
+    return res.status(500).json({ error: 'Failed to fetch fact-check result' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /:quoteId/feedback — Get current agree/disagree counts
+// ---------------------------------------------------------------------------
+
+router.get('/:quoteId/feedback', (req, res) => {
+  try {
+    const quoteId = parseInt(req.params.quoteId, 10);
+    if (!quoteId || isNaN(quoteId)) {
+      return res.status(400).json({ error: 'Invalid quoteId' });
+    }
+
+    const db = getDb();
+    const row = db.prepare(
+      `SELECT fact_check_agree_count, fact_check_disagree_count FROM quotes WHERE id = ?`
+    ).get(quoteId);
+
+    if (!row) {
+      return res.status(404).json({ error: 'Quote not found' });
+    }
+
+    return res.json({
+      agree_count: row.fact_check_agree_count || 0,
+      disagree_count: row.fact_check_disagree_count || 0,
+    });
+  } catch (err) {
+    logger.error('factcheck', 'get_feedback_failed', { quoteId: req.params.quoteId }, err);
+    return res.status(500).json({ error: 'Failed to get feedback counts' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /:quoteId/feedback — Submit agree/disagree feedback
+// ---------------------------------------------------------------------------
+
+router.post('/:quoteId/feedback', (req, res) => {
+  try {
+    const quoteId = parseInt(req.params.quoteId, 10);
+    if (!quoteId || isNaN(quoteId)) {
+      return res.status(400).json({ error: 'Invalid quoteId' });
+    }
+
+    const { value } = req.body;
+    if (!['agree', 'disagree'].includes(value)) {
+      return res.status(400).json({ error: 'value must be "agree" or "disagree"' });
+    }
+
+    const db = getDb();
+
+    // Verify quote exists
+    const exists = db.prepare(`SELECT id FROM quotes WHERE id = ?`).get(quoteId);
+    if (!exists) {
+      return res.status(404).json({ error: 'Quote not found' });
+    }
+
+    // Increment the appropriate counter
+    const column = value === 'agree' ? 'fact_check_agree_count' : 'fact_check_disagree_count';
+    db.prepare(`UPDATE quotes SET ${column} = ${column} + 1 WHERE id = ?`).run(quoteId);
+
+    // Return updated counts
+    const row = db.prepare(
+      `SELECT fact_check_agree_count, fact_check_disagree_count FROM quotes WHERE id = ?`
+    ).get(quoteId);
+
+    return res.json({
+      agree_count: row.fact_check_agree_count || 0,
+      disagree_count: row.fact_check_disagree_count || 0,
+    });
+  } catch (err) {
+    logger.error('factcheck', 'post_feedback_failed', { quoteId: req.params.quoteId }, err);
+    return res.status(500).json({ error: 'Failed to submit feedback' });
+  }
 });
 
 export default router;

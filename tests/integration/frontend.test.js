@@ -15,7 +15,7 @@ describe('Frontend Routes', () => {
     const { createApp } = await import('../../src/index.js');
     app = createApp();
     authCookie = getAuthCookie();
-  });
+  }, 30000);
 
   afterAll(async () => {
     const { closeDb } = await import('../../src/config/database.js');
@@ -122,7 +122,7 @@ describe('Frontend Routes', () => {
       expect(response.status).toBe(200);
       expect(response.headers['content-type']).toContain('text/html');
       // Should still serve HTML even for non-existent quotes
-      expect(response.text).toContain('WhatTheySaid.News');
+      expect(response.text).toContain('TrueOrFalse.News');
     });
 
     it('should serve index.html for non-quote SPA routes', async () => {

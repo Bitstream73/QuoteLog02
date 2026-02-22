@@ -6,6 +6,24 @@ import { resolvePersonId } from './nameDisambiguator.js';
 import { insertAndDeduplicateQuote } from './quoteDeduplicator.js';
 import { fetchAndStoreHeadshot } from './personPhoto.js';
 import { getPromptTemplate } from './promptManager.js';
+import { classifyQuote } from './classificationPipeline.js';
+
+/**
+ * Normalize a date string to ISO format (YYYY-MM-DD).
+ * Handles formats like "October 28, 1932", "10/28/1932", etc.
+ * Returns null if unparseable.
+ */
+export function normalizeToIsoDate(dateStr) {
+  if (!dateStr || dateStr === 'unknown') return null;
+  // Already ISO format (YYYY-MM-DD with optional time suffix)
+  if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) return dateStr.substring(0, 10);
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return null;
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
 
 // Quote detection patterns
 const QUOTE_CHARS = /["\u201C\u201D]/;
@@ -21,11 +39,11 @@ function isQuoteFragment(text) {
   const trimmed = text.trim();
   if (!trimmed) return true;
 
-  // Starts or ends with ellipsis → truncated excerpt
+  // Starts or ends with ellipsis \u2192 truncated excerpt
   if (/^\.{3}|^\u2026/.test(trimmed)) return true;
   if (/\.{3}$|\u2026$/.test(trimmed)) return true;
 
-  // Starts with lowercase letter → mid-sentence fragment
+  // Starts with lowercase letter \u2192 mid-sentence fragment
   // Only check when the very first non-whitespace character is a letter
   // (quotes starting with numbers, punctuation, etc. are fine)
   const firstChar = trimmed[0];
@@ -76,7 +94,7 @@ function verifySpeakerInArticle(speaker, articleText) {
 async function extractQuotesWithGemini(articleText, article) {
   if (!config.geminiApiKey) {
     logger.warn('extractor', 'no_gemini_key', {});
-    return [];
+    return { quotes: [] };
   }
 
   // Load prompt template from DB (falls back to hardcoded default)
@@ -91,7 +109,9 @@ async function extractQuotesWithGemini(articleText, article) {
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const parsed = await gemini.generateJSON(prompt);
-      return parsed.quotes || [];
+      return {
+        quotes: parsed.quotes || [],
+      };
     } catch (err) {
       lastError = err;
       // Check for rate limit (429) or server errors (5xx)
@@ -108,7 +128,7 @@ async function extractQuotesWithGemini(articleText, article) {
   }
 
   logger.error('extractor', 'gemini_extraction_failed', { error: lastError?.message });
-  return [];
+  return { quotes: [] };
 }
 
 /**
@@ -135,14 +155,15 @@ export async function extractQuotesFromArticle(articleText, article, db, io) {
   // Step 1: Pre-filter - does article likely have quotes?
   if (!likelyHasQuotes(articleText)) {
     logger.debug('extractor', 'no_quotes_detected', { url: article.url });
-    return [];
+    return { quotes: [], extracted_entities: [] };
   }
 
   // Step 2: Extract quotes with Gemini
-  const rawQuotes = await extractQuotesWithGemini(articleText, article);
+  const extractionResult = await extractQuotesWithGemini(articleText, article);
+  const rawQuotes = extractionResult.quotes;
 
   if (rawQuotes.length === 0) {
-    return [];
+    return { quotes: [], extracted_entities: [] };
   }
 
   // Step 3: Verify and filter quotes (direct only)
@@ -172,6 +193,19 @@ export async function extractQuotesFromArticle(articleText, article, db, io) {
       return false;
     }
 
+    // Reject quotes lacking factual assertions/claims/predictions
+    if (q.contains_claim === false) {
+      logger.debug('extractor', 'no_claim_skipped', { quote: q.quote_text?.substring(0, 50), speaker: q.speaker });
+      return false;
+    }
+
+    // Reject vague/rhetorical quotes (Category C)
+    const factCheckCat = (q.fact_check_category || '').toUpperCase();
+    if (factCheckCat === 'C') {
+      logger.debug('extractor', 'rhetorical_skipped', { quote: q.quote_text?.substring(0, 50) });
+      return false;
+    }
+
     return true;
   });
 
@@ -198,6 +232,25 @@ export async function extractQuotesFromArticle(articleText, article, db, io) {
         }
       }
 
+      // Check ingest filter — skip quotes from excluded categories
+      const excludedCategories = JSON.parse(getSettingValue('ingest_filter_excluded_categories', '[]'));
+      if (excludedCategories.length > 0) {
+        // Use extraction-provided category first; fall back to DB
+        let personCategory = q.speaker_category;
+        if (!personCategory) {
+          const personRow = db.prepare('SELECT category FROM persons WHERE id = ?').get(personId);
+          personCategory = personRow?.category || 'Other';
+        }
+        if (excludedCategories.includes(personCategory)) {
+          logger.info('extractor', 'quote_filtered_by_category', {
+            speaker: q.speaker,
+            category: personCategory,
+            quote: q.quote_text.substring(0, 50),
+          });
+          continue;
+        }
+      }
+
       // Fire-and-forget headshot fetch
       fetchAndStoreHeadshot(personId, q.speaker).catch(() => {});
 
@@ -210,10 +263,12 @@ export async function extractQuotesFromArticle(articleText, article, db, io) {
         domain: article.domain || null,
       };
 
-      // Determine quote date
-      const quoteDate = q.quote_date && q.quote_date !== 'unknown' ? q.quote_date : (article.published_at || null);
+      // Determine quote date \u2014 normalize to ISO format (YYYY-MM-DD)
+      const rawDate = q.quote_date === 'unknown' ? null : (q.quote_date || article.published_at || null);
+      const quoteDate = normalizeToIsoDate(rawDate);
 
       // Determine visibility based on significance score and fragment detection
+      // (Category C quotes are already hard-filtered above)
       const significance = parseInt(q.significance, 10) || 5;
       const fragment = isQuoteFragment(q.quote_text);
       const isVisible = (!fragment && significance >= minSignificance) ? 1 : 0;
@@ -226,10 +281,10 @@ export async function extractQuotesFromArticle(articleText, article, db, io) {
           context: q.context || articleSummary || null,
           sourceUrl: article.url,
           rssMetadata: JSON.stringify(rssMetadata),
-          topics: q.topics || [],
-          keywords: q.keywords || [],
           quoteDate,
           isVisible,
+          extractedKeywords: JSON.stringify(q.keywords || []),
+          extractedTopics: JSON.stringify(q.topics || []),
         },
         personId,
         article,
@@ -238,17 +293,40 @@ export async function extractQuotesFromArticle(articleText, article, db, io) {
 
       if (quoteResult) {
         insertedQuotes.push(quoteResult);
+
+        // Classify new (non-duplicate) quotes using per-quote keywords from Gemini
+        if (!quoteResult.isDuplicate) {
+          const quoteEntities = (q.keywords || []).map(k => ({ name: k, type: 'keyword' }));
+          const quoteTopics = q.topics || [];
+          if (quoteEntities.length > 0 || quoteTopics.length > 0) {
+            try {
+              const classification = classifyQuote(quoteResult.id, quoteDate, quoteEntities, quoteTopics);
+              logger.debug('extractor', 'quote_classified', {
+                quoteId: quoteResult.id,
+                matched: classification.matched.length,
+                unmatched: classification.unmatched.length,
+                flagged: classification.flagged.length,
+              });
+            } catch (classifyErr) {
+              logger.error('extractor', 'quote_classification_failed', {
+                quoteId: quoteResult.id,
+                error: classifyErr.message,
+              });
+            }
+          }
+        }
+
         logger.info('extractor', 'quote_extracted', {
           quoteId: quoteResult.id,
           speaker: q.speaker,
           category: q.speaker_category || null,
           quote: q.quote_text.substring(0, 200),
           context: (q.context || articleSummary || '').substring(0, 200),
-          topics: q.topics || [],
-          keywords: q.keywords || [],
           significance,
           isVisible,
           isFragment: fragment,
+          containsClaim: q.contains_claim,
+          factCheckCategory: (q.fact_check_category || '').toUpperCase() || null,
           articleUrl: article.url,
         });
       }
@@ -265,14 +343,26 @@ export async function extractQuotesFromArticle(articleText, article, db, io) {
     io.emit('new_quotes', { quotes: insertedQuotes });
   }
 
-  return insertedQuotes;
+  // Aggregate per-quote keywords into extracted_entities for backward compatibility
+  const seenKeywords = new Set();
+  const allEntities = [];
+  for (const q of verifiedQuotes) {
+    for (const k of (q.keywords || [])) {
+      if (!seenKeywords.has(k)) {
+        seenKeywords.add(k);
+        allEntities.push({ name: k, type: 'keyword' });
+      }
+    }
+  }
+
+  return { quotes: insertedQuotes, extracted_entities: allEntities };
 }
 
 // Legacy export for compatibility
 const quoteExtractor = {
   async extractFromArticle(articleText, sourceName, sourceUrl) {
-    const rawQuotes = await extractQuotesWithGemini(articleText, { published_at: null, title: null });
-    return rawQuotes.map(q => ({
+    const result = await extractQuotesWithGemini(articleText, { published_at: null, title: null });
+    return result.quotes.map(q => ({
       text: q.quote_text,
       author: q.speaker,
       sourceName,

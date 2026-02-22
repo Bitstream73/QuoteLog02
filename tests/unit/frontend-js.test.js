@@ -165,26 +165,21 @@ describe('Frontend JS files', () => {
     });
   });
 
-  describe('home.js 4-tab system tabs', () => {
+  describe('home.js tab system tabs', () => {
     const homeJs = fs.readFileSync(path.join(process.cwd(), 'public/js/home.js'), 'utf-8');
 
-    it('should default active tab to all', () => {
-      expect(homeJs).toContain("let _activeTab = 'all'");
+    it('should default active tab to trending-authors', () => {
+      expect(homeJs).toContain("let _activeTab = 'trending-authors'");
     });
 
-    it('should include all 4 tab keys', () => {
-      expect(homeJs).toContain("'trending-topics'");
+    it('should include tab keys', () => {
       expect(homeJs).toContain("'trending-sources'");
       expect(homeJs).toContain("'trending-quotes'");
-      expect(homeJs).toContain("key: 'all'");
+      expect(homeJs).toContain("key: 'trending-authors'");
     });
 
-    it('should have renderTrendingTopicsTab function', () => {
-      expect(homeJs).toContain('async function renderTrendingTopicsTab');
-    });
-
-    it('should have renderAllTab function', () => {
-      expect(homeJs).toContain('async function renderAllTab');
+    it('should have renderTrendingAuthorsTab function', () => {
+      expect(homeJs).toContain('async function renderTrendingAuthorsTab');
     });
   });
 
@@ -279,10 +274,10 @@ describe('Frontend JS files', () => {
   });
 
   describe('Google Image search for missing author photos', () => {
-    it('should have admin-headshot-search link in home.js for missing photos', () => {
+    it('should open headshot modal for missing photos in home.js', () => {
       const homeJs = fs.readFileSync(path.join(process.cwd(), 'public/js/home.js'), 'utf-8');
-      expect(homeJs).toContain('admin-headshot-search');
-      expect(homeJs).toContain('google.com/search?tbm=isch');
+      expect(homeJs).toContain('admin-headshot-clickable');
+      expect(homeJs).toContain('adminChangeHeadshot');
     });
 
     it('should make existing headshot clickable for admin to change photo on home.js', () => {
@@ -303,13 +298,11 @@ describe('Frontend JS files', () => {
       expect(authorJs).toContain('google.com/search?tbm=isch');
     });
 
-    it('should use encodeURIComponent for Google Image search URL', () => {
-      const homeJs = fs.readFileSync(path.join(process.cwd(), 'public/js/home.js'), 'utf-8');
-      expect(homeJs).toContain('encodeURIComponent(');
-      // Verify the search includes person name
-      const searchPattern = homeJs.match(/google\.com\/search\?tbm=isch&q=\$\{encodeURIComponent\(([^)]+)\)/);
-      expect(searchPattern).not.toBeNull();
-      expect(searchPattern[1]).toContain('personName');
+    it('should have AI image search in admin-actions.js', () => {
+      const adminActionsJs = fs.readFileSync(path.join(process.cwd(), 'public/js/admin-actions.js'), 'utf-8');
+      expect(adminActionsJs).toContain('searchAuthorImages');
+      expect(adminActionsJs).toContain('headshot-suggestions-grid');
+      expect(adminActionsJs).toContain('image-search');
     });
 
     it('should have admin-headshot-search styles in CSS', () => {
@@ -472,10 +465,6 @@ describe('Frontend JS files', () => {
       expect(homeJs).toContain('homepage-tabs');
     });
 
-    it('should have trending-topics tab', () => {
-      expect(homeJs).toContain('trending-topics');
-    });
-
     it('should have trending-sources tab', () => {
       expect(homeJs).toContain('trending-sources');
     });
@@ -484,8 +473,8 @@ describe('Frontend JS files', () => {
       expect(homeJs).toContain('trending-quotes');
     });
 
-    it('should have all tab key defined', () => {
-      expect(homeJs).toContain("key: 'all'");
+    it('should have trending-authors tab key defined', () => {
+      expect(homeJs).toContain("key: 'trending-authors'");
     });
 
     it('should define buildQuoteBlockHtml function', () => {
@@ -506,10 +495,6 @@ describe('Frontend JS files', () => {
 
     it('should use IntersectionObserver for view tracking', () => {
       expect(homeJs).toContain('IntersectionObserver');
-    });
-
-    it('should have topic-card class for topic tab', () => {
-      expect(homeJs).toContain('topic-card');
     });
 
     it('should have quote-block class in buildQuoteBlockHtml', () => {
@@ -547,9 +532,6 @@ describe('Frontend JS files', () => {
       expect(appJs).not.toContain('initVoteSocket');
     });
 
-    it('should have /topic/:slug route', () => {
-      expect(appJs).toContain('/topic/');
-    });
   });
 
   // Phase 6: CSS for important button, tabs, quote block
@@ -576,98 +558,8 @@ describe('Frontend JS files', () => {
       expect(css).toContain('.quote-block');
     });
 
-    it('should have topic-card styles', () => {
-      expect(css).toContain('.topic-card');
-    });
-
     it('should have share-buttons styles', () => {
       expect(css).toContain('.share-buttons');
-    });
-  });
-
-  // Admin autocomplete for topics/keywords
-  describe('home.js admin autocomplete', () => {
-    const homeJs = fs.readFileSync(path.join(process.cwd(), 'public/js/home.js'), 'utf-8');
-
-    it('should define openAdminAutocomplete function', () => {
-      expect(homeJs).toContain('function openAdminAutocomplete');
-    });
-
-    it('should define closeAdminAutocomplete function', () => {
-      expect(homeJs).toContain('function closeAdminAutocomplete');
-    });
-
-    it('should define _ensureTopicsCache function', () => {
-      expect(homeJs).toContain('async function _ensureTopicsCache');
-    });
-
-    it('should define _ensureKeywordsCache function', () => {
-      expect(homeJs).toContain('async function _ensureKeywordsCache');
-    });
-
-    it('should define selectAutocompleteOption function', () => {
-      expect(homeJs).toContain('async function selectAutocompleteOption');
-    });
-
-    it('should define selectAutocompleteCreate function', () => {
-      expect(homeJs).toContain('async function selectAutocompleteCreate');
-    });
-
-    it('should use "Add Topic" label instead of "Create Topic"', () => {
-      expect(homeJs).toContain('>Add Topic</button>');
-      expect(homeJs).not.toContain('>Create Topic</button>');
-    });
-
-    it('should use "Add Keyword" label in admin quote block', () => {
-      expect(homeJs).toContain('>Add Keyword</button>');
-      // The admin-keywords-section in quote blocks should use autocomplete
-      const quoteBlockSection = homeJs.substring(
-        homeJs.indexOf('admin-keywords-section'),
-        homeJs.indexOf('admin-topics-section')
-      );
-      expect(quoteBlockSection).toContain('Add Keyword');
-      expect(quoteBlockSection).toContain('openAdminAutocomplete');
-    });
-
-    it('should have _topicsCacheAll variable', () => {
-      expect(homeJs).toContain('let _topicsCacheAll');
-    });
-
-    it('should have _keywordsCacheAll variable', () => {
-      expect(homeJs).toContain('let _keywordsCacheAll');
-    });
-  });
-
-  describe('styles.css admin autocomplete styles', () => {
-    const css = fs.readFileSync(path.join(process.cwd(), 'public/css/styles.css'), 'utf-8');
-
-    it('should have admin-autocomplete styles', () => {
-      expect(css).toContain('.admin-autocomplete');
-    });
-
-    it('should have admin-ac-input styles', () => {
-      expect(css).toContain('.admin-ac-input');
-    });
-
-    it('should have admin-ac-dropdown styles', () => {
-      expect(css).toContain('.admin-ac-dropdown');
-    });
-
-    it('should have admin-ac-option styles', () => {
-      expect(css).toContain('.admin-ac-option');
-    });
-
-    it('should have admin-ac-create styles', () => {
-      expect(css).toContain('.admin-ac-create');
-    });
-  });
-
-  // Phase 7: Topic page rendering
-  describe('home.js topic page rendering', () => {
-    const homeJs = fs.readFileSync(path.join(process.cwd(), 'public/js/home.js'), 'utf-8');
-
-    it('should define renderTopicPage function', () => {
-      expect(homeJs).toContain('async function renderTopicPage');
     });
   });
 
@@ -699,9 +591,59 @@ describe('Frontend JS files', () => {
   describe('author.js Important? integration', () => {
     const authorJs = fs.readFileSync(path.join(process.cwd(), 'public/js/author.js'), 'utf-8');
 
-    it('should use renderImportantButton instead of renderVoteControls', () => {
-      expect(authorJs).toContain('renderImportantButton');
+    it('should use buildQuoteBlockHtml (which includes Important?) instead of renderVoteControls', () => {
+      expect(authorJs).toContain('buildQuoteBlockHtml');
       expect(authorJs).not.toContain('renderVoteControls');
+    });
+  });
+
+  // Share image pre-warming: fact-check progress flag and share blocking
+  describe('quote.js _factCheckInProgress flag', () => {
+    const quoteJs = fs.readFileSync(path.join(process.cwd(), 'public/js/quote.js'), 'utf-8');
+
+    it('should declare _factCheckInProgress flag', () => {
+      expect(quoteJs).toContain('let _factCheckInProgress = false');
+    });
+
+    it('should set _factCheckInProgress to true before API call', () => {
+      // Flag should be set after loading animation starts, before the API call
+      const flagSetIdx = quoteJs.indexOf('_factCheckInProgress = true');
+      const apiCallIdx = quoteJs.indexOf("API.post('/fact-check/check'");
+      expect(flagSetIdx).toBeGreaterThan(-1);
+      expect(apiCallIdx).toBeGreaterThan(flagSetIdx);
+    });
+
+    it('should clear _factCheckInProgress after success', () => {
+      // After renderFactCheckResult and annotateQuoteText
+      const renderIdx = quoteJs.indexOf('renderFactCheckResult(container, result, quoteId)');
+      const clearIdx = quoteJs.indexOf('_factCheckInProgress = false', renderIdx);
+      expect(clearIdx).toBeGreaterThan(renderIdx);
+    });
+
+    it('should clear _factCheckInProgress in catch block', () => {
+      const catchIdx = quoteJs.indexOf('} catch (err) {', quoteJs.indexOf("API.post('/fact-check/check'"));
+      const clearInCatch = quoteJs.indexOf('_factCheckInProgress = false', catchIdx);
+      expect(clearInCatch).toBeGreaterThan(catchIdx);
+    });
+  });
+
+  describe('home.js share blocking during fact-check', () => {
+    const homeJs = fs.readFileSync(path.join(process.cwd(), 'public/js/home.js'), 'utf-8');
+
+    it('should check _factCheckInProgress in shareEntity', () => {
+      const shareEntityIdx = homeJs.indexOf('async function shareEntity');
+      const flagCheckIdx = homeJs.indexOf('_factCheckInProgress', shareEntityIdx);
+      expect(flagCheckIdx).toBeGreaterThan(shareEntityIdx);
+    });
+
+    it('should check _factCheckInProgress in downloadShareImage', () => {
+      const downloadIdx = homeJs.indexOf('async function downloadShareImage');
+      const flagCheckIdx = homeJs.indexOf('_factCheckInProgress', downloadIdx);
+      expect(flagCheckIdx).toBeGreaterThan(downloadIdx);
+    });
+
+    it('should show toast message about fact-checking', () => {
+      expect(homeJs).toContain("It'll just be a sec. We're fact checking this quote for the first time...");
     });
   });
 });

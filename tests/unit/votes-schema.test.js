@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-describe('Votes & Keywords Schema', () => {
+describe('Votes Schema', () => {
   let db;
   const testDbPath = path.join(__dirname, '../votes-schema-test.db');
 
@@ -38,7 +38,7 @@ describe('Votes & Keywords Schema', () => {
       )
     `);
 
-    // Create the votes and quote_keywords tables (matches database.js schema)
+    // Create the votes table (matches database.js schema)
     db.exec(`
       CREATE TABLE IF NOT EXISTS votes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -51,20 +51,9 @@ describe('Votes & Keywords Schema', () => {
       )
     `);
 
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS quote_keywords (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        quote_id INTEGER NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,
-        keyword TEXT NOT NULL,
-        created_at TEXT DEFAULT (datetime('now'))
-      )
-    `);
-
     // Create indexes
     db.exec(`CREATE INDEX IF NOT EXISTS idx_votes_quote_id ON votes(quote_id)`);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_votes_voter_hash ON votes(voter_hash)`);
-    db.exec(`CREATE INDEX IF NOT EXISTS idx_quote_keywords_keyword ON quote_keywords(keyword)`);
-    db.exec(`CREATE INDEX IF NOT EXISTS idx_quote_keywords_quote_id ON quote_keywords(quote_id)`);
 
     // Seed test data
     db.prepare('INSERT INTO persons (canonical_name) VALUES (?)').run('Test Author');
@@ -138,45 +127,6 @@ describe('Votes & Keywords Schema', () => {
     expect(after.count).toBe(0);
   });
 
-  // --- quote_keywords table ---
-
-  it('quote_keywords table exists', () => {
-    const table = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='quote_keywords'").get();
-    expect(table).toBeDefined();
-    expect(table.name).toBe('quote_keywords');
-  });
-
-  it('quote_keywords table has correct columns', () => {
-    const cols = db.prepare('PRAGMA table_info(quote_keywords)').all().map(c => c.name);
-    expect(cols).toContain('id');
-    expect(cols).toContain('quote_id');
-    expect(cols).toContain('keyword');
-    expect(cols).toContain('created_at');
-  });
-
-  it('can insert keywords and retrieve them', () => {
-    db.prepare('INSERT INTO quote_keywords (quote_id, keyword) VALUES (?, ?)').run(1, 'economy');
-    db.prepare('INSERT INTO quote_keywords (quote_id, keyword) VALUES (?, ?)').run(1, 'policy');
-
-    const keywords = db.prepare('SELECT keyword FROM quote_keywords WHERE quote_id = ?').all(1);
-    expect(keywords.map(k => k.keyword)).toContain('economy');
-    expect(keywords.map(k => k.keyword)).toContain('policy');
-  });
-
-  it('deleting a quote cascades to delete its keywords', () => {
-    // Insert a new quote and keywords
-    db.prepare('INSERT INTO quotes (person_id, text) VALUES (?, ?)').run(1, 'Keyword cascade test');
-    const quoteId = db.prepare('SELECT last_insert_rowid() as id').get().id;
-    db.prepare('INSERT INTO quote_keywords (quote_id, keyword) VALUES (?, ?)').run(quoteId, 'test');
-
-    // Delete the quote
-    db.prepare('DELETE FROM quotes WHERE id = ?').run(quoteId);
-
-    // Keywords should be cascade deleted
-    const after = db.prepare('SELECT COUNT(*) as count FROM quote_keywords WHERE quote_id = ?').get(quoteId);
-    expect(after.count).toBe(0);
-  });
-
   // --- Indexes ---
 
   it('all required indexes exist', () => {
@@ -184,8 +134,6 @@ describe('Votes & Keywords Schema', () => {
 
     expect(indexes).toContain('idx_votes_quote_id');
     expect(indexes).toContain('idx_votes_voter_hash');
-    expect(indexes).toContain('idx_quote_keywords_keyword');
-    expect(indexes).toContain('idx_quote_keywords_quote_id');
   });
 
   // --- Aggregate query patterns ---

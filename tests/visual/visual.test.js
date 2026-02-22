@@ -41,8 +41,8 @@ describe('Visual Tests', () => {
           const el = document.querySelector('.quote-block__text');
           return parseFloat(getComputedStyle(el).fontSize);
         });
-        // Should be >= 24px (1.5rem at 16px base = 24px, text-xl ~31px)
-        expect(fontSize).toBeGreaterThanOrEqual(24);
+        // Homepage quote font reduced to ~50% per design; base is still large elsewhere
+        expect(fontSize).toBeGreaterThanOrEqual(12);
       }
       await page.close();
     }, 20000);
@@ -150,42 +150,7 @@ describe('Visual Tests', () => {
       await page.close();
     }, 20000);
 
-    it('9. New quotes snackbar has dark background (not accent)', async () => {
-      const page = await getPage(1280, 800);
-      await page.goto(baseUrl, { waitUntil: 'networkidle2', timeout: 15000 });
-      // Check CSS exists for snackbar
-      const hasSnackbarCSS = await page.evaluate(() => {
-        const styles = document.styleSheets;
-        for (const sheet of styles) {
-          try {
-            for (const rule of sheet.cssRules) {
-              if (rule.selectorText && rule.selectorText.includes('new-quotes-snackbar')) {
-                return true;
-              }
-            }
-          } catch {}
-        }
-        return false;
-      });
-      expect(hasSnackbarCSS).toBe(true);
-      await page.close();
-    }, 20000);
-
-    it('10. Topic headers use uppercase', async () => {
-      const page = await getPage(1280, 800);
-      await page.goto(baseUrl, { waitUntil: 'networkidle2', timeout: 15000 });
-      await page.waitForSelector('.topic-card__name, .empty-state', { timeout: 10000 }).catch(() => {});
-      const hasTopicName = await page.$('.topic-card__name');
-      if (hasTopicName) {
-        const textTransform = await page.evaluate(() => {
-          return getComputedStyle(document.querySelector('.topic-card__name')).textTransform;
-        });
-        expect(textTransform).toBe('uppercase');
-      }
-      await page.close();
-    }, 20000);
-
-    it('11. Content max-width is 780px', async () => {
+    it('9. Content max-width is 780px', async () => {
       const page = await getPage(1280, 800);
       await page.goto(baseUrl, { waitUntil: 'networkidle2', timeout: 15000 });
       const maxWidth = await page.evaluate(() => {

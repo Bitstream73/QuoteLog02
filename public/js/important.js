@@ -22,7 +22,7 @@ function renderImportantButton(entityType, entityId, importantsCount, isImportan
             data-entity-type="${entityType}" data-entity-id="${entityId}"
             onclick="handleImportantToggle(event, '${entityType}', ${entityId})">
       <span class="important-label">${label}</span>${countDisplay}
-    </button><span class="important-tooltip" title="Mark this as important to boost its visibility and help surface the most noteworthy quotes">?</span>${superBtn}
+    </button><span class="important-tooltip">?</span>${superBtn}
   `;
 }
 

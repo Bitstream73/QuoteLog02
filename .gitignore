@@ -6,7 +6,11 @@ data/*
 !data/settings-seed.json
 uploads/
 coverage/
+tests/share-images/
+tests/e2e/screenshots/
 .DS_Store
 .claude/
 GitIgnored/
 NUL
+test-results-all.json
+timing-results.txt

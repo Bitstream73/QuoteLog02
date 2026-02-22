@@ -33,9 +33,10 @@ function destroyAllCharts() {
 
 function initChartDefaults() {
   if (typeof Chart === 'undefined') return;
+  var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
   Chart.defaults.font.family = "'DM Sans', sans-serif";
   Chart.defaults.font.size = 12;
-  Chart.defaults.color = '#4a4a4a';
+  Chart.defaults.color = isDark ? '#B8B8C8' : '#4a4a4a';
   Chart.defaults.plugins.tooltip.backgroundColor = '#1a1a1a';
   Chart.defaults.plugins.tooltip.cornerRadius = 4;
   Chart.defaults.plugins.tooltip.padding = 8;
@@ -47,6 +48,7 @@ function createTimelineChart(canvasId, labels, datasets, options) {
   if (typeof Chart === 'undefined') return null;
   var canvas = document.getElementById(canvasId);
   if (!canvas) return null;
+  var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
 
   var defaultDatasets = datasets.map(function(ds, i) {
     return Object.assign({
@@ -69,7 +71,7 @@ function createTimelineChart(canvasId, labels, datasets, options) {
       interaction: { mode: 'index', intersect: false },
       scales: {
         x: { grid: { display: false } },
-        y: { beginAtZero: true, ticks: { precision: 0 } },
+        y: { beginAtZero: true, ticks: { precision: 0 }, grid: { color: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' } },
       },
       plugins: { legend: { display: datasets.length > 1 } },
     }, options || {}),
@@ -119,6 +121,7 @@ function createDoughnutChart(canvasId, labels, data, options) {
   if (typeof Chart === 'undefined') return null;
   var canvas = document.getElementById(canvasId);
   if (!canvas) return null;
+  var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
 
   var colors = labels.map(function(_, i) { return CHART_COLORS[i % CHART_COLORS.length]; });
 
@@ -130,7 +133,7 @@ function createDoughnutChart(canvasId, labels, data, options) {
         data: data,
         backgroundColor: colors,
         borderWidth: 2,
-        borderColor: '#ffffff',
+        borderColor: isDark ? '#141420' : '#ffffff',
       }],
     },
     options: Object.assign({
@@ -176,6 +179,58 @@ function createStackedBarChart(canvasId, labels, datasets, options) {
       },
       plugins: { legend: { display: true } },
     }, options || {}),
+  };
+
+  var chart = new Chart(canvas, cfg);
+  registerChart(canvasId, chart);
+  return chart;
+}
+
+function createVerticalBarChart(canvasId, labels, data, colors, options) {
+  if (typeof Chart === 'undefined') return null;
+  var canvas = document.getElementById(canvasId);
+  if (!canvas) return null;
+  var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+
+  var cfg = {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        data: data,
+        backgroundColor: colors,
+        borderWidth: 0,
+        borderRadius: 3,
+      }],
+    },
+    options: Object.assign({
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: { grid: { display: false } },
+        y: { beginAtZero: true, max: 100, ticks: { callback: function(v) { return v + '%'; }, precision: 0 } },
+      },
+      plugins: { legend: { display: false } },
+    }, options || {}),
+    plugins: [{
+      id: 'barLabels',
+      afterDatasetsDraw: function(chart) {
+        var ctx = chart.ctx;
+        var meta = chart.getDatasetMeta(0);
+        ctx.save();
+        ctx.font = '11px "DM Sans", sans-serif';
+        ctx.fillStyle = isDark ? '#B8B8C8' : '#4a4a4a';
+        ctx.textAlign = 'center';
+        for (var i = 0; i < meta.data.length; i++) {
+          var bar = meta.data[i];
+          var value = chart.data.datasets[0].data[i];
+          if (value > 0) {
+            ctx.fillText(value + '%', bar.x, bar.y - 5);
+          }
+        }
+        ctx.restore();
+      },
+    }],
   };
 
   var chart = new Chart(canvas, cfg);

@@ -12,7 +12,6 @@ describe('Importants API', () => {
   let testQuoteId;
   let testArticleId;
   let testPersonId;
-  let testTopicId;
 
   beforeAll(async () => {
     const { createApp } = await import('../../src/index.js');
@@ -30,9 +29,6 @@ describe('Importants API', () => {
 
     const articleResult = db.prepare("INSERT INTO articles (url, title, status) VALUES (?, ?, 'completed')").run(`https://example.com/importants-test-${Date.now()}`, 'Test Article');
     testArticleId = Number(articleResult.lastInsertRowid);
-
-    const topicResult = db.prepare("INSERT INTO topics (name, slug) VALUES (?, ?)").run(`Importants Test Topic ${Date.now()}`, `importants-test-topic-${Date.now()}`);
-    testTopicId = Number(topicResult.lastInsertRowid);
   }, 30000);
 
   afterAll(async () => {
@@ -130,17 +126,6 @@ describe('Importants API', () => {
         .post('/api/importants/toggle')
         .send({ entity_type: 'person', entity_id: testPersonId })
         .set('User-Agent', 'TestAgent-Persons');
-
-      expect(res.status).toBe(200);
-      expect(res.body.is_important).toBe(true);
-      expect(res.body.importants_count).toBe(1);
-    });
-
-    it('works for topic entity type', async () => {
-      const res = await request(app)
-        .post('/api/importants/toggle')
-        .send({ entity_type: 'topic', entity_id: testTopicId })
-        .set('User-Agent', 'TestAgent-Topics');
 
       expect(res.status).toBe(200);
       expect(res.body.is_important).toBe(true);
@@ -252,7 +237,6 @@ describe('Importants API', () => {
       db.prepare('UPDATE quotes SET importants_count = 0 WHERE id = ?').run(testQuoteId);
       db.prepare('UPDATE articles SET importants_count = 0 WHERE id = ?').run(testArticleId);
       db.prepare('UPDATE persons SET importants_count = 0 WHERE id = ?').run(testPersonId);
-      db.prepare('UPDATE topics SET importants_count = 0 WHERE id = ?').run(testTopicId);
     });
 
     it('returns 401 without auth cookie', async () => {
@@ -371,19 +355,19 @@ describe('Importants API', () => {
       const { getDb } = await import('../../src/config/database.js');
       const db = getDb();
 
-      // Reset topic count and clear any importants rows for it
-      db.prepare('UPDATE topics SET importants_count = 0 WHERE id = ?').run(testTopicId);
-      db.prepare('DELETE FROM importants WHERE entity_type = ? AND entity_id = ?').run('topic', testTopicId);
+      // Reset person count and clear any importants rows for it
+      db.prepare('UPDATE persons SET importants_count = 0 WHERE id = ?').run(testPersonId);
+      db.prepare('DELETE FROM importants WHERE entity_type = ? AND entity_id = ?').run('person', testPersonId);
 
       await request(app)
         .post('/api/importants/super-toggle')
         .set('Cookie', authCookie)
-        .send({ entity_type: 'topic', entity_id: testTopicId });
+        .send({ entity_type: 'person', entity_id: testPersonId });
 
       // Verify no importants row was created
       const row = db.prepare(
         'SELECT id FROM importants WHERE entity_type = ? AND entity_id = ?'
-      ).get('topic', testTopicId);
+      ).get('person', testPersonId);
       expect(row).toBeUndefined();
     });
   });
