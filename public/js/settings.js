@@ -5,11 +5,12 @@ async function renderSettings() {
   content.innerHTML = '<div class="loading">Loading settings...</div>';
 
   try {
-    const [settings, sourcesData, promptsData, noteworthyData, keywordsData, topicsData, categoriesData, sourceAuthorsData] = await Promise.all([
+    const [settings, sourcesData, promptsData, noteworthyData, cardConfigsData, keywordsData, topicsData, categoriesData, sourceAuthorsData] = await Promise.all([
       API.get('/settings'),
       API.get('/sources'),
       API.get('/settings/prompts').catch(() => ({ prompts: [] })),
       API.get('/admin/noteworthy').catch(() => ({ items: [] })),
+      API.get('/admin/noteworthy-configs').catch(() => ({ configs: [], collections: [] })),
       API.get('/admin/keywords').catch(() => ({ keywords: [] })),
       API.get('/admin/topics').catch(() => ({ topics: [] })),
       API.get('/admin/categories').catch(() => ({ categories: [] })),
@@ -19,6 +20,8 @@ async function renderSettings() {
     const sources = sourcesData.sources || [];
     const prompts = promptsData.prompts || [];
     const noteworthyItems = noteworthyData.items || [];
+    const cardConfigs = cardConfigsData.configs || [];
+    const cardCollections = cardConfigsData.collections || [];
     const sourceAuthors = sourceAuthorsData.sourceAuthors || [];
     const keywords = keywordsData.keywords || [];
     const topics = topicsData.topics || [];
@@ -31,99 +34,18 @@ async function renderSettings() {
       <h1 class="page-title">Settings</h1>
       <p class="page-subtitle">Manage news sources and application configuration</p>
 
-      <!-- Fetch Settings Section -->
-      <div class="settings-section">
-        <h2>Fetch Settings</h2>
-
-        <div class="setting-row" style="align-items:center">
-          <label>
-            <span class="setting-label">Next Fetch</span>
-            <span class="setting-description" id="scheduler-status">Loading...</span>
-          </label>
-          <button class="btn btn-primary" id="fetch-now-btn" onclick="fetchNow()">Fetch Now</button>
-        </div>
-
-        <div class="setting-row">
-          <label>
-            <span class="setting-label">Fetch Interval (minutes)</span>
-            <span class="setting-description">How often to check for new articles</span>
-          </label>
-          <input type="number" id="fetch-interval" value="${settings.fetch_interval_minutes || 5}"
-                 min="5" max="1440" class="input-number" onchange="updateSetting('fetch_interval_minutes', this.value)">
-        </div>
-
-        <div class="setting-row">
-          <label>
-            <span class="setting-label">Article Lookback (hours)</span>
-            <span class="setting-description">Only fetch articles published within this time window</span>
-          </label>
-          <input type="number" id="article-lookback" value="${settings.article_lookback_hours || 24}"
-                 min="1" max="168" class="input-number" onchange="updateSetting('article_lookback_hours', this.value)">
-        </div>
-
-        <div class="setting-row">
-          <label>
-            <span class="setting-label">Max Articles per News Source per Cycle</span>
-            <span class="setting-description">Maximum articles to process per news source in each fetch cycle</span>
-          </label>
-          <input type="number" id="max-articles" value="${settings.max_articles_per_source_per_cycle || 10}"
-                 min="1" max="1000" class="input-number" onchange="updateSetting('max_articles_per_source_per_cycle', this.value)">
-        </div>
+      <div class="settings-tab-bar">
+        <button class="settings-tab active" onclick="switchSettingsTab('general')" data-tab="general">General</button>
+        <button class="settings-tab" onclick="switchSettingsTab('data-sources')" data-tab="data-sources">Data Sources</button>
+        <button class="settings-tab" onclick="switchSettingsTab('ingest')" data-tab="ingest">Ingest</button>
+        <button class="settings-tab" onclick="switchSettingsTab('backfilling')" data-tab="backfilling">Backfilling</button>
+        <button class="settings-tab" onclick="switchSettingsTab('noteworthy')" data-tab="noteworthy">Noteworthy Cards</button>
+        <button class="settings-tab" onclick="switchSettingsTab('metadata')" data-tab="metadata">Metadata</button>
+        <button class="settings-tab" onclick="switchSettingsTab('logs')" data-tab="logs">Logs</button>
       </div>
 
-      <!-- Disambiguation Settings Section -->
-      <div class="settings-section">
-        <h2>Disambiguation Settings</h2>
-
-        <div class="setting-row">
-          <label>
-            <span class="setting-label">Auto-Merge Confidence Threshold</span>
-            <span class="setting-description">Automatically merge names above this confidence (0-1)</span>
-          </label>
-          <input type="number" id="auto-merge-threshold" value="${settings.auto_merge_confidence_threshold || 0.9}"
-                 min="0" max="1" step="0.05" class="input-number" onchange="updateSetting('auto_merge_confidence_threshold', this.value)">
-        </div>
-
-        <div class="setting-row">
-          <label>
-            <span class="setting-label">Review Confidence Threshold</span>
-            <span class="setting-description">Add to review queue above this confidence (0-1)</span>
-          </label>
-          <input type="number" id="review-threshold" value="${settings.review_confidence_threshold || 0.7}"
-                 min="0" max="1" step="0.05" class="input-number" onchange="updateSetting('review_confidence_threshold', this.value)">
-        </div>
-
-        <div class="setting-row">
-          <label>
-            <span class="setting-label">Minimum Quote Words</span>
-            <span class="setting-description">Discard quotes shorter than this</span>
-          </label>
-          <input type="number" id="min-quote-words" value="${settings.min_quote_words || 5}"
-                 min="1" max="50" class="input-number" onchange="updateSetting('min_quote_words', this.value)">
-        </div>
-      </div>
-
-      <!-- Ingest Filters Section -->
-      <div class="settings-section">
-        <h2>Ingest Filters</h2>
-        <p class="section-description">Toggle author categories on/off. Quotes from authors in disabled categories will be silently discarded during ingestion.</p>
-        ${(() => {
-          const allCategories = ['Politician','Government Official','Business Leader','Entertainer','Athlete','Pundit','Journalist','Scientist/Academic','Legal/Judicial','Military/Defense','Activist/Advocate','Religious Leader','Other'];
-          const excluded = (() => { try { return JSON.parse(settings.ingest_filter_excluded_categories || '[]'); } catch { return []; } })();
-          return allCategories.map(cat => `
-            <div class="setting-row" style="align-items:center">
-              <label>
-                <span class="setting-label">${cat}</span>
-              </label>
-              <label class="toggle">
-                <input type="checkbox" ${!excluded.includes(cat) ? 'checked' : ''}
-                       onchange="toggleIngestCategory('${cat}', this.checked)">
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-          `).join('');
-        })()}
-      </div>
+      <!-- GENERAL TAB -->
+      <div class="settings-tab-content active" id="settings-tab-general">
 
       <!-- Appearance Section -->
       <div class="settings-section">
@@ -139,49 +61,10 @@ async function renderSettings() {
         </div>
       </div>
 
-      <!-- Prompts Section -->
-      <div class="settings-section" id="settings-section-prompts">
-        <h2>AI Prompts</h2>
-        <p class="section-description">Manage Gemini prompt templates used for quote extraction and fact-checking. Edit the template text to customize AI behavior.</p>
-        <div id="settings-prompts-list">
-          ${prompts.length === 0 ? '<p class="empty-message">No prompts configured.</p>' : prompts.map(p => renderSettingsPromptCard(p)).join('')}
-        </div>
-      </div>
+      </div><!-- /general tab -->
 
-      <!-- Historical Sources Section -->
-      <div class="settings-section" id="settings-section-historical">
-        <h2>Historical Sources</h2>
-        <p class="section-description">
-          Configure historical quote sources for backfilling quotes from the past.
-          Each provider fetches articles from a different archive.
-        </p>
-
-        <div class="setting-row" style="align-items:center">
-          <label>
-            <span class="setting-label">Historical Backfill</span>
-            <span class="setting-description">Enable/disable historical fetching during each cycle</span>
-          </label>
-          <label class="toggle">
-            <input type="checkbox" ${settings.historical_fetch_enabled === '1' ? 'checked' : ''}
-                   onchange="updateSetting('historical_fetch_enabled', this.checked ? '1' : '0')">
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
-
-        <div class="setting-row">
-          <label>
-            <span class="setting-label">Articles per Source per Cycle</span>
-            <span class="setting-description">Max historical articles to fetch from each provider per cycle</span>
-          </label>
-          <input type="number" value="${settings.historical_articles_per_source_per_cycle || 5}"
-                 min="1" max="100" class="input-number"
-                 onchange="updateSetting('historical_articles_per_source_per_cycle', this.value)">
-        </div>
-
-        <div id="historical-sources-list" class="sources-list">
-          <p class="empty-message">Loading historical sources...</p>
-        </div>
-      </div>
+      <!-- DATA SOURCES TAB -->
+      <div class="settings-tab-content" id="settings-tab-data-sources">
 
       <!-- Data Management Section -->
       <div class="settings-section">
@@ -202,9 +85,7 @@ async function renderSettings() {
           <details class="sources-details">
             <summary>Sources (${sources.length})</summary>
             <div id="sources-list" class="sources-list">
-              ${sources.length === 0 ? `
-                <p class="empty-message">No sources configured. Add a news source to start extracting quotes.</p>
-              ` : sources.map(s => renderSourceRow(s)).join('')}
+              ${sources.length === 0 ? '<p class="empty-message">No sources configured. Add a news source to start extracting quotes.</p>' : sources.map(s => renderSourceRow(s)).join('')}
             </div>
           </details>
         </div>
@@ -306,6 +187,159 @@ async function renderSettings() {
         </div>
       </div>
 
+      </div><!-- /data-sources tab -->
+
+      <!-- INGEST TAB -->
+      <div class="settings-tab-content" id="settings-tab-ingest">
+
+      <!-- Fetch Settings Section -->
+      <div class="settings-section">
+        <h2>Fetch Settings</h2>
+
+        <div class="setting-row" style="align-items:center">
+          <label>
+            <span class="setting-label">Next Fetch</span>
+            <span class="setting-description" id="scheduler-status">Loading...</span>
+          </label>
+          <button class="btn btn-primary" id="fetch-now-btn" onclick="fetchNow()">Fetch Now</button>
+        </div>
+
+        <div class="setting-row">
+          <label>
+            <span class="setting-label">Fetch Interval (minutes)</span>
+            <span class="setting-description">How often to check for new articles</span>
+          </label>
+          <input type="number" id="fetch-interval" value="${settings.fetch_interval_minutes || 5}"
+                 min="5" max="1440" class="input-number" onchange="updateSetting('fetch_interval_minutes', this.value)">
+        </div>
+
+        <div class="setting-row">
+          <label>
+            <span class="setting-label">Article Lookback (hours)</span>
+            <span class="setting-description">Only fetch articles published within this time window</span>
+          </label>
+          <input type="number" id="article-lookback" value="${settings.article_lookback_hours || 24}"
+                 min="1" max="168" class="input-number" onchange="updateSetting('article_lookback_hours', this.value)">
+        </div>
+
+        <div class="setting-row">
+          <label>
+            <span class="setting-label">Max Articles per News Source per Cycle</span>
+            <span class="setting-description">Maximum articles to process per news source in each fetch cycle</span>
+          </label>
+          <input type="number" id="max-articles" value="${settings.max_articles_per_source_per_cycle || 10}"
+                 min="1" max="1000" class="input-number" onchange="updateSetting('max_articles_per_source_per_cycle', this.value)">
+        </div>
+      </div>
+
+      <!-- Disambiguation Settings Section -->
+      <div class="settings-section">
+        <h2>Disambiguation Settings</h2>
+
+        <div class="setting-row">
+          <label>
+            <span class="setting-label">Auto-Merge Confidence Threshold</span>
+            <span class="setting-description">Automatically merge names above this confidence (0-1)</span>
+          </label>
+          <input type="number" id="auto-merge-threshold" value="${settings.auto_merge_confidence_threshold || 0.9}"
+                 min="0" max="1" step="0.05" class="input-number" onchange="updateSetting('auto_merge_confidence_threshold', this.value)">
+        </div>
+
+        <div class="setting-row">
+          <label>
+            <span class="setting-label">Review Confidence Threshold</span>
+            <span class="setting-description">Add to review queue above this confidence (0-1)</span>
+          </label>
+          <input type="number" id="review-threshold" value="${settings.review_confidence_threshold || 0.7}"
+                 min="0" max="1" step="0.05" class="input-number" onchange="updateSetting('review_confidence_threshold', this.value)">
+        </div>
+
+        <div class="setting-row">
+          <label>
+            <span class="setting-label">Minimum Quote Words</span>
+            <span class="setting-description">Discard quotes shorter than this</span>
+          </label>
+          <input type="number" id="min-quote-words" value="${settings.min_quote_words || 5}"
+                 min="1" max="50" class="input-number" onchange="updateSetting('min_quote_words', this.value)">
+        </div>
+      </div>
+
+      <!-- Ingest Filters Section -->
+      <div class="settings-section">
+        <h2>Ingest Filters</h2>
+        <p class="section-description">Toggle author categories on/off. Quotes from authors in disabled categories will be silently discarded during ingestion.</p>
+        ${(() => {
+          const allCategories = ['Politician','Government Official','Business Leader','Entertainer','Athlete','Pundit','Journalist','Scientist/Academic','Legal/Judicial','Military/Defense','Activist/Advocate','Religious Leader','Other'];
+          const excluded = (() => { try { return JSON.parse(settings.ingest_filter_excluded_categories || '[]'); } catch { return []; } })();
+          return allCategories.map(cat => `
+            <div class="setting-row" style="align-items:center">
+              <label>
+                <span class="setting-label">${cat}</span>
+              </label>
+              <label class="toggle">
+                <input type="checkbox" ${!excluded.includes(cat) ? 'checked' : ''}
+                       onchange="toggleIngestCategory('${cat}', this.checked)">
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          `).join('');
+        })()}
+      </div>
+
+      <!-- AI Prompts Section -->
+      <div class="settings-section" id="settings-section-prompts">
+        <h2>AI Prompts</h2>
+        <p class="section-description">Manage Gemini prompt templates used for quote extraction and fact-checking. Edit the template text to customize AI behavior.</p>
+        <div id="settings-prompts-list">
+          ${prompts.length === 0 ? '<p class="empty-message">No prompts configured.</p>' : prompts.map(p => renderSettingsPromptCard(p)).join('')}
+        </div>
+      </div>
+
+      </div><!-- /ingest tab -->
+
+      <!-- BACKFILLING TAB -->
+      <div class="settings-tab-content" id="settings-tab-backfilling">
+
+      <!-- Historical Sources Section -->
+      <div class="settings-section" id="settings-section-historical">
+        <h2>Historical Sources</h2>
+        <p class="section-description">
+          Configure historical quote sources for backfilling quotes from the past.
+          Each provider fetches articles from a different archive.
+        </p>
+
+        <div class="setting-row" style="align-items:center">
+          <label>
+            <span class="setting-label">Historical Backfill</span>
+            <span class="setting-description">Enable/disable historical fetching during each cycle</span>
+          </label>
+          <label class="toggle">
+            <input type="checkbox" ${settings.historical_fetch_enabled === '1' ? 'checked' : ''}
+                   onchange="updateSetting('historical_fetch_enabled', this.checked ? '1' : '0')">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+
+        <div class="setting-row">
+          <label>
+            <span class="setting-label">Articles per Source per Cycle</span>
+            <span class="setting-description">Max historical articles to fetch from each provider per cycle</span>
+          </label>
+          <input type="number" value="${settings.historical_articles_per_source_per_cycle || 5}"
+                 min="1" max="100" class="input-number"
+                 onchange="updateSetting('historical_articles_per_source_per_cycle', this.value)">
+        </div>
+
+        <div id="historical-sources-list" class="sources-list">
+          <p class="empty-message">Loading historical sources...</p>
+        </div>
+      </div>
+
+      </div><!-- /backfilling tab -->
+
+      <!-- NOTEWORTHY CARDS TAB -->
+      <div class="settings-tab-content" id="settings-tab-noteworthy">
+
       <!-- Noteworthy Section -->
       <div class="settings-section" id="settings-section-noteworthy">
         <h2>Noteworthy</h2>
@@ -338,6 +372,62 @@ async function renderSettings() {
           </div>
         </div>
       </div>
+
+      <!-- Peppered Card Configs Section -->
+      <div class="settings-section" id="settings-section-card-configs">
+        <h2>Peppered Card Configs</h2>
+        <p class="section-description">Configure cards that appear inline with quotes in the homepage scroll.</p>
+
+        <div class="settings-subsection">
+          <div class="subsection-header">
+            <h3 class="subsection-title">Pepper Settings</h3>
+          </div>
+          <div class="setting-row">
+            <label><span class="setting-label">Quote Frequency</span>
+              <span class="setting-description">Quotes between card insertion chances</span></label>
+            <input type="number" value="${settings.noteworthy_pepper_frequency || 5}"
+                   min="1" max="50" class="input-number"
+                   onchange="updateSetting('noteworthy_pepper_frequency', this.value)">
+          </div>
+          <div class="setting-row">
+            <label><span class="setting-label">Insertion Chance (%)</span>
+              <span class="setting-description">Probability of inserting a card at each chance</span></label>
+            <input type="range" min="0" max="100" value="${settings.noteworthy_pepper_chance || 50}"
+                   oninput="this.nextElementSibling.textContent=this.value+'%'; updateSetting('noteworthy_pepper_chance', this.value)">
+            <span>${settings.noteworthy_pepper_chance || 50}%</span>
+          </div>
+          <div class="setting-row">
+            <label><span class="setting-label">Pick Mode</span></label>
+            <select onchange="updateSetting('noteworthy_pick_mode', this.value)" class="input-select">
+              <option value="sequential" ${settings.noteworthy_pick_mode === 'sequential' ? 'selected' : ''}>Sequential</option>
+              <option value="random" ${settings.noteworthy_pick_mode === 'random' ? 'selected' : ''}>Random</option>
+            </select>
+          </div>
+          <div class="setting-row">
+            <label><span class="setting-label">Re-use Cards</span>
+              <span class="setting-description">Cycle through cards again after all have been shown</span></label>
+            <label class="toggle">
+              <input type="checkbox" ${settings.noteworthy_reuse_cards === '1' ? 'checked' : ''}
+                     onchange="updateSetting('noteworthy_reuse_cards', this.checked ? '1' : '0')">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="settings-subsection">
+          <div class="subsection-header">
+            <h3 class="subsection-title">Card Configs (${cardConfigs.length})</h3>
+          </div>
+          <div id="card-configs-list" class="topics-keywords-list">
+            ${cardConfigs.length === 0 ? '<p class="empty-message">No card configs found.</p>' : cardConfigs.map(c => renderCardConfigRow(c, cardCollections)).join('')}
+          </div>
+        </div>
+      </div>
+
+      </div><!-- /noteworthy tab -->
+
+      <!-- METADATA TAB -->
+      <div class="settings-tab-content" id="settings-tab-metadata">
 
       <!-- Keywords Section -->
       <div class="settings-section" id="settings-section-keywords">
@@ -443,6 +533,11 @@ async function renderSettings() {
         </div>
       </div>
 
+      </div><!-- /metadata tab -->
+
+      <!-- LOGS TAB -->
+      <div class="settings-tab-content" id="settings-tab-logs">
+
       <!-- Logs Section -->
       <div id="logs-section" class="settings-section">
         <div class="section-header">
@@ -454,6 +549,8 @@ async function renderSettings() {
         <div id="logs-table"></div>
         <div id="logs-pagination"></div>
       </div>
+
+      </div><!-- /logs tab -->
     `;
 
     content.innerHTML = html;
@@ -471,6 +568,13 @@ async function renderSettings() {
   } catch (err) {
     content.innerHTML = `<div class="empty-state"><h3>Error</h3><p>${escapeHtml(err.message)}</p></div>`;
   }
+}
+
+function switchSettingsTab(tabId) {
+  document.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.settings-tab-content').forEach(c => c.classList.remove('active'));
+  document.querySelector(`.settings-tab[data-tab="${tabId}"]`)?.classList.add('active');
+  document.getElementById(`settings-tab-${tabId}`)?.classList.add('active');
 }
 
 function renderSourceRow(source) {
@@ -1198,6 +1302,81 @@ function updateNoteworthyCount() {
   if (header && list) {
     const count = list.querySelectorAll('.tk-row').length;
     header.textContent = `Current Items (${count})`;
+  }
+}
+
+// ======= Card Configs Section =======
+
+function formatCardType(cardType) {
+  return cardType
+    .replace(/_/g, ' ')
+    .replace(/\bof\b/g, 'of')
+    .replace(/\b\w/g, c => c.toUpperCase())
+    .replace(/\bOf\b/g, 'of');
+}
+
+function renderCardConfigRow(config, collections) {
+  return `
+    <div class="noteworthy-config-row" data-config-id="${config.id}">
+      <label class="toggle">
+        <input type="checkbox" ${config.enabled ? 'checked' : ''}
+               onchange="toggleCardConfig(${config.id}, this.checked)">
+        <span class="toggle-slider"></span>
+      </label>
+      <span class="config-type-badge">${formatCardType(config.card_type)}</span>
+      <input type="text" value="${escapeHtml(config.custom_title || '')}"
+             placeholder="Custom title..."
+             class="input-text input-sm"
+             onchange="updateCardConfigTitle(${config.id}, this.value)">
+      <select onchange="updateCardConfigCollection(${config.id}, this.value)" class="input-select input-sm">
+        <option value="">Standalone</option>
+        ${collections.map(c => `<option value="${c.id}" ${config.collection_id === c.id ? 'selected' : ''}>${escapeHtml(c.name)}</option>`).join('')}
+      </select>
+    </div>
+  `;
+}
+
+async function toggleCardConfig(id, enabled) {
+  try {
+    await API.patch(`/admin/noteworthy-configs/${id}`, { enabled });
+  } catch (err) {
+    showToast('Error toggling config: ' + err.message, 'error');
+  }
+}
+
+async function updateCardConfigTitle(id, title) {
+  try {
+    await API.patch(`/admin/noteworthy-configs/${id}`, { custom_title: title });
+  } catch (err) {
+    showToast('Error updating title: ' + err.message, 'error');
+  }
+}
+
+async function updateCardConfigCollection(id, collectionId) {
+  try {
+    await API.patch(`/admin/noteworthy-configs/${id}`, { collection_id: collectionId || null });
+  } catch (err) {
+    showToast('Error updating collection: ' + err.message, 'error');
+  }
+}
+
+async function refreshCardConfigs() {
+  try {
+    const data = await API.get('/admin/noteworthy-configs');
+    const configs = data.configs || [];
+    const collections = data.collections || [];
+    const list = document.getElementById('card-configs-list');
+    if (list) {
+      list.innerHTML = configs.length === 0
+        ? '<p class="empty-message">No card configs found.</p>'
+        : configs.map(c => renderCardConfigRow(c, collections)).join('');
+    }
+    const header = list ? list.closest('.settings-subsection')?.querySelector('.subsection-title') : null;
+    if (header) {
+      header.textContent = `Card Configs (${configs.length})`;
+    }
+  } catch (err) {
+    console.error('Failed to refresh card configs:', err);
   }
 }
 

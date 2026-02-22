@@ -80,8 +80,14 @@ function initSocket() {
       }
     });
 
-    socket.on('fetch_cycle_complete', (data) => {
+    socket.on('fetch_cycle_complete', async (data) => {
       console.log(`Fetch cycle complete: ${data.newArticles} articles, ${data.newQuotes} quotes`);
+      try {
+        const cardsData = await API.get('/noteworthy/evaluated');
+        _evaluatedCards = cardsData.cards || [];
+      } catch (e) {
+        console.warn('Failed to re-evaluate noteworthy cards:', e);
+      }
     });
 
     socket.on('source_disabled', (data) => {

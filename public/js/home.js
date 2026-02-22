@@ -6,26 +6,18 @@ const _quoteTexts = {};
 // Store quote metadata for sharing
 const _quoteMeta = {};
 
-// Current active tab
-let _activeTab = 'trending-authors';
-
-// Per-tab state: sort, page, search, hasMore
+// Quotes scroll state
 let _quotesSortBy = 'date';
 let _quotesPage = 1;
-let _quotesSearch = '';
 let _quotesHasMore = true;
-
-let _authorsPage = 1;
-let _authorsSearch = '';
-let _authorsHasMore = true;
-
-let _sourcesPage = 1;
-let _sourcesSearch = '';
-let _sourcesHasMore = true;
-
 let _isLoadingMore = false;
 let _infiniteScrollObserver = null;
-let _tabSearchDebounceTimer = null;
+
+// Peppering state
+let _evaluatedCards = [];
+let _pepperSettings = {};
+let _cardPickIndex = 0;
+let _usedCardIds = new Set();
 
 // ======= Category Icon Mapping =======
 
@@ -597,104 +589,6 @@ function navigateTo(path) {
   }
 }
 
-// ======= Tab Search + Sort Bar =======
-
-function getTabSearchState(tabKey) {
-  if (tabKey === 'trending-quotes') return { search: _quotesSearch, sort: _quotesSortBy };
-  if (tabKey === 'trending-authors') return { search: _authorsSearch, sort: _authorsSortBy };
-  if (tabKey === 'trending-sources') return { search: _sourcesSearch, sort: _sourcesSortBy };
-  return { search: '', sort: 'date' };
-}
-
-function buildSearchSortBarHtml(tabKey) {
-  const state = getTabSearchState(tabKey);
-  const isExpanded = state.search.length > 0;
-  const sortFn = tabKey === 'trending-quotes' ? 'switchQuotesSort'
-    : tabKey === 'trending-authors' ? 'switchAuthorsSort' : 'switchSourcesSort';
-
-  const searchIcon = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>`;
-
-  if (isExpanded) {
-    return `<div class="tab-search-sort-bar">
-      <div class="tab-search-input-wrap">
-        <input type="search" class="tab-search-input" id="tab-search-input" placeholder="Search..." value="${escapeHtml(state.search)}" onkeydown="onTabSearchKeydown(event)" oninput="onTabSearchInput()">
-        <button class="tab-search-close" onclick="clearTabSearch()">&times;</button>
-      </div>
-    </div>`;
-  }
-
-  return `<div class="tab-search-sort-bar">
-    <button class="tab-search-toggle" onclick="toggleTabSearch()" title="Search">${searchIcon}</button>
-    <div class="tab-sort-buttons">
-      Sort by:
-      <button class="sort-btn ${state.sort === 'date' ? 'active' : ''}" onclick="${sortFn}('date')">Date</button>
-      <button class="sort-btn ${state.sort === 'importance' ? 'active' : ''}" onclick="${sortFn}('importance')">Importance</button>
-    </div>
-  </div>`;
-}
-
-function toggleTabSearch() {
-  // Store current sort/search state and show search input
-  const tabKey = _activeTab;
-  // Set a temporary flag so buildSearchSortBarHtml shows expanded mode
-  if (tabKey === 'trending-quotes') _quotesSearch = ' ';
-  else if (tabKey === 'trending-authors') _authorsSearch = ' ';
-  else if (tabKey === 'trending-sources') _sourcesSearch = ' ';
-
-  // Re-render just the search bar
-  const bar = document.querySelector('.tab-search-sort-bar');
-  if (bar) {
-    const temp = document.createElement('div');
-    temp.innerHTML = buildSearchSortBarHtml(tabKey);
-    bar.replaceWith(temp.firstElementChild);
-    const input = document.getElementById('tab-search-input');
-    if (input) {
-      input.value = '';
-      input.focus();
-    }
-    // Reset the search state back to empty (we just want the UI expanded)
-    if (tabKey === 'trending-quotes') _quotesSearch = '';
-    else if (tabKey === 'trending-authors') _authorsSearch = '';
-    else if (tabKey === 'trending-sources') _sourcesSearch = '';
-  }
-}
-
-function onTabSearchKeydown(event) {
-  if (event.key === 'Enter') {
-    event.preventDefault();
-    clearTimeout(_tabSearchDebounceTimer);
-    executeTabSearch();
-  } else if (event.key === 'Escape') {
-    clearTabSearch();
-  }
-}
-
-function onTabSearchInput() {
-  clearTimeout(_tabSearchDebounceTimer);
-  _tabSearchDebounceTimer = setTimeout(() => executeTabSearch(), 300);
-}
-
-function executeTabSearch() {
-  const input = document.getElementById('tab-search-input');
-  const val = input ? input.value.trim() : '';
-  const tabKey = _activeTab;
-
-  if (tabKey === 'trending-quotes') { _quotesSearch = val; _quotesPage = 1; }
-  else if (tabKey === 'trending-authors') { _authorsSearch = val; _authorsPage = 1; }
-  else if (tabKey === 'trending-sources') { _sourcesSearch = val; _sourcesPage = 1; }
-
-  renderTabContent(tabKey);
-}
-
-function clearTabSearch() {
-  const tabKey = _activeTab;
-  if (tabKey === 'trending-quotes') { _quotesSearch = ''; _quotesPage = 1; }
-  else if (tabKey === 'trending-authors') { _authorsSearch = ''; _authorsPage = 1; }
-  else if (tabKey === 'trending-sources') { _sourcesSearch = ''; _sourcesPage = 1; }
-
-  renderTabContent(tabKey);
-}
-
 // ======= Infinite Scroll =======
 
 function setupInfiniteScroll() {
@@ -706,14 +600,7 @@ function setupInfiniteScroll() {
   const sentinel = document.getElementById('infinite-scroll-sentinel');
   if (!sentinel) return;
 
-  // Check if current tab has more items
-  const tabKey = _activeTab;
-  let hasMore = false;
-  if (tabKey === 'trending-quotes') hasMore = _quotesHasMore;
-  else if (tabKey === 'trending-authors') hasMore = _authorsHasMore;
-  else if (tabKey === 'trending-sources') hasMore = _sourcesHasMore;
-
-  if (!hasMore) {
+  if (!_quotesHasMore) {
     sentinel.innerHTML = '';
     return;
   }
@@ -737,10 +624,7 @@ async function loadMoreItems() {
   if (sentinel) sentinel.innerHTML = '<div class="infinite-scroll-loading">Loading more...</div>';
 
   try {
-    const tabKey = _activeTab;
-    if (tabKey === 'trending-quotes') await loadMoreQuotes();
-    else if (tabKey === 'trending-authors') await loadMoreAuthors();
-    else if (tabKey === 'trending-sources') await loadMoreSources();
+    await loadMoreQuotes();
   } finally {
     _isLoadingMore = false;
   }
@@ -748,11 +632,8 @@ async function loadMoreItems() {
 
 async function loadMoreQuotes() {
   _quotesPage++;
-  const searchParam = _quotesSearch.length >= 2 ? `&search=${encodeURIComponent(_quotesSearch)}` : '';
   const sortParam = _quotesSortBy === 'importance' ? '&sort=importance' : '';
-  const data = await API.get(`/analytics/trending-quotes?page=${_quotesPage}&limit=20${sortParam}${searchParam}`);
-
-  if (_activeTab !== 'trending-quotes') return; // Tab changed during fetch
+  const data = await API.get(`/analytics/trending-quotes?page=${_quotesPage}&limit=20${sortParam}`);
 
   const recentQuotes = data.recent_quotes || [];
   _quotesHasMore = recentQuotes.length >= 20 && (_quotesPage * 20) < data.total;
@@ -765,61 +646,7 @@ async function loadMoreQuotes() {
     for (const q of recentQuotes) {
       html += buildQuoteBlockHtml(q, _importantStatuses[`quote:${q.id}`] || false);
     }
-    const list = document.getElementById('tab-items-list');
-    if (list) list.insertAdjacentHTML('beforeend', html);
-    initViewTracking();
-  }
-
-  updateSentinel();
-}
-
-async function loadMoreAuthors() {
-  _authorsPage++;
-  const searchParam = _authorsSearch.length >= 2 ? `&search=${encodeURIComponent(_authorsSearch)}` : '';
-  const sortParam = _authorsSortBy === 'importance' ? '&sort=importance' : '';
-  const data = await API.get(`/analytics/trending-authors?page=${_authorsPage}&limit=20${sortParam}${searchParam}`);
-
-  if (_activeTab !== 'trending-authors') return;
-
-  const authors = data.authors || [];
-  _authorsHasMore = authors.length >= 20 && (_authorsPage * 20) < data.total;
-
-  if (authors.length > 0) {
-    const entityKeys = authors.map(a => `person:${a.id}`);
-    await fetchImportantStatuses(entityKeys);
-
-    let html = '';
-    for (const author of authors) {
-      html += buildAuthorCardHtml(author);
-    }
-    const list = document.getElementById('tab-items-list');
-    if (list) list.insertAdjacentHTML('beforeend', html);
-    initViewTracking();
-  }
-
-  updateSentinel();
-}
-
-async function loadMoreSources() {
-  _sourcesPage++;
-  const searchParam = _sourcesSearch.length >= 2 ? `&search=${encodeURIComponent(_sourcesSearch)}` : '';
-  const sortParam = _sourcesSortBy === 'importance' ? '&sort=importance' : '';
-  const data = await API.get(`/analytics/trending-sources?page=${_sourcesPage}&limit=20${sortParam}${searchParam}`);
-
-  if (_activeTab !== 'trending-sources') return;
-
-  const articles = data.articles || [];
-  _sourcesHasMore = articles.length >= 20 && (_sourcesPage * 20) < data.total;
-
-  if (articles.length > 0) {
-    await fetchImportantStatuses(articles.map(a => `article:${a.id}`));
-
-    let html = '';
-    for (const article of articles) {
-      const isImp = _importantStatuses[`article:${article.id}`] || false;
-      html += buildSourceCardHtml(article, isImp);
-    }
-    const list = document.getElementById('tab-items-list');
+    const list = document.getElementById('quotes-list');
     if (list) list.insertAdjacentHTML('beforeend', html);
     initViewTracking();
   }
@@ -828,14 +655,8 @@ async function loadMoreSources() {
 }
 
 function updateSentinel() {
-  const tabKey = _activeTab;
-  let hasMore = false;
-  if (tabKey === 'trending-quotes') hasMore = _quotesHasMore;
-  else if (tabKey === 'trending-authors') hasMore = _authorsHasMore;
-  else if (tabKey === 'trending-sources') hasMore = _sourcesHasMore;
-
   const sentinel = document.getElementById('infinite-scroll-sentinel');
-  if (!hasMore && sentinel) {
+  if (!_quotesHasMore && sentinel) {
     sentinel.innerHTML = '';
     if (_infiniteScrollObserver) {
       _infiniteScrollObserver.disconnect();
@@ -844,107 +665,7 @@ function updateSentinel() {
   }
 }
 
-// ======= Tab System =======
-
-/**
- * Build the 3-tab bar HTML
- */
-function buildTabBarHtml(activeTab) {
-  const tabs = [
-    { key: 'trending-quotes', label: 'Quotes' },
-    { key: 'trending-authors', label: 'Authors' },
-    { key: 'trending-sources', label: 'Sources' },
-  ];
-
-  return `
-    <div class="homepage-tabs">
-      ${tabs.map(t => `<button class="homepage-tab ${t.key === activeTab ? 'active' : ''}" data-tab="${t.key}" onclick="switchHomepageTab('${t.key}')">${t.label}<span class="tab-badge" id="tab-count-${t.key}"></span></button>`).join('')}
-    </div>
-    <div id="homepage-tab-content"></div>
-  `;
-}
-
-/**
- * Switch homepage tab
- */
-function switchHomepageTab(tabKey) {
-  _activeTab = tabKey;
-  // Update active tab styling
-  document.querySelectorAll('.homepage-tab').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.tab === tabKey);
-  });
-  // Render tab content
-  renderTabContent(tabKey);
-}
-
-/**
- * Render the content for the selected tab
- */
-async function renderTabContent(tabKey) {
-  const container = document.getElementById('homepage-tab-content');
-  if (!container) return;
-  container.innerHTML = buildSkeletonHtml(4);
-
-  try {
-    switch (tabKey) {
-      case 'trending-quotes':
-        await renderTrendingQuotesTab(container);
-        break;
-      case 'trending-authors':
-        await renderTrendingAuthorsTab(container);
-        break;
-      case 'trending-sources':
-        await renderTrendingSourcesTab(container);
-        break;
-    }
-    // Initialize view tracking for newly rendered content
-    initViewTracking();
-  } catch (err) {
-    container.innerHTML = `<div class="empty-state"><h3>Error loading content</h3><p>${escapeHtml(err.message)}</p></div>`;
-  }
-}
-
-// ======= Trending Authors Tab =======
-
-let _authorsSortBy = 'importance';
-
-async function renderTrendingAuthorsTab(container) {
-  const searchParam = _authorsSearch.length >= 2 ? `&search=${encodeURIComponent(_authorsSearch)}` : '';
-  const sortParam = _authorsSortBy === 'importance' ? '&sort=importance' : '';
-  const data = await API.get(`/analytics/trending-authors?page=1&limit=20${sortParam}${searchParam}`);
-  const authors = data.authors || [];
-  const total = data.total || 0;
-
-  _authorsPage = 1;
-  _authorsHasMore = authors.length >= 20 && 20 < total;
-
-  if (authors.length === 0) {
-    const msg = _authorsSearch ? 'No authors match your search.' : 'No trending authors yet';
-    container.innerHTML = buildSearchSortBarHtml('trending-authors') + `<div class="empty-state"><h3>${msg}</h3><p>Authors will appear as quotes are extracted.</p></div>`;
-    return;
-  }
-
-  // Collect person IDs for importance status
-  const entityKeys = authors.map(a => `person:${a.id}`);
-  await fetchImportantStatuses(entityKeys);
-
-  let html = buildSearchSortBarHtml('trending-authors');
-  html += `<div id="tab-items-list">`;
-  for (const author of authors) {
-    html += buildAuthorCardHtml(author);
-  }
-  html += `</div>`;
-  html += `<div id="infinite-scroll-sentinel"></div>`;
-
-  container.innerHTML = html;
-  setupInfiniteScroll();
-}
-
-function switchAuthorsSort(sortBy) {
-  _authorsSortBy = sortBy;
-  _authorsPage = 1;
-  renderTabContent('trending-authors');
-}
+// ======= Author & Source Card Builders =======
 
 function buildAuthorCardHtml(author) {
   const initial = (author.canonical_name || '?').charAt(0).toUpperCase();
@@ -990,47 +711,6 @@ function sortCardQuotes(btn, cardId, sortBy) {
   });
 
   quotes.forEach(q => container.appendChild(q));
-}
-
-// ======= Trending Sources Tab =======
-
-let _sourcesSortBy = 'date';
-
-async function renderTrendingSourcesTab(container) {
-  const searchParam = _sourcesSearch.length >= 2 ? `&search=${encodeURIComponent(_sourcesSearch)}` : '';
-  const sortParam = _sourcesSortBy === 'importance' ? '&sort=importance' : '';
-  const data = await API.get(`/analytics/trending-sources?page=1&limit=20${sortParam}${searchParam}`);
-  const articles = data.articles || [];
-  const total = data.total || 0;
-
-  _sourcesPage = 1;
-  _sourcesHasMore = articles.length >= 20 && 20 < total;
-
-  if (articles.length === 0) {
-    const msg = _sourcesSearch ? 'No sources match your search.' : 'No trending sources yet';
-    container.innerHTML = buildSearchSortBarHtml('trending-sources') + `<div class="empty-state"><h3>${msg}</h3><p>Sources will appear as articles are processed.</p></div>`;
-    return;
-  }
-
-  await fetchImportantStatuses(articles.map(a => `article:${a.id}`));
-
-  let html = buildSearchSortBarHtml('trending-sources');
-  html += `<div id="tab-items-list">`;
-  for (const article of articles) {
-    const isImp = _importantStatuses[`article:${article.id}`] || false;
-    html += buildSourceCardHtml(article, isImp);
-  }
-  html += `</div>`;
-  html += `<div id="infinite-scroll-sentinel"></div>`;
-
-  container.innerHTML = html;
-  setupInfiniteScroll();
-}
-
-function switchSourcesSort(sortBy) {
-  _sourcesSortBy = sortBy;
-  _sourcesPage = 1;
-  renderTabContent('trending-sources');
 }
 
 function buildSourceCardHtml(article, isImportant) {
@@ -1084,48 +764,6 @@ function expandSourceQuotes(btn, articleId) {
     container.style.display = '';
     btn.style.display = 'none';
   }
-}
-
-// ======= Trending Quotes Tab =======
-
-async function renderTrendingQuotesTab(container) {
-  const searchParam = _quotesSearch.length >= 2 ? `&search=${encodeURIComponent(_quotesSearch)}` : '';
-  const sortParam = _quotesSortBy === 'importance' ? '&sort=importance' : '';
-  const data = await API.get(`/analytics/trending-quotes?page=1&limit=20${sortParam}${searchParam}`);
-
-  // Collect recent quote IDs for important status batch fetch
-  const allQuoteIds = [];
-  (data.recent_quotes || []).forEach(q => allQuoteIds.push(`quote:${q.id}`));
-  await fetchImportantStatuses(allQuoteIds);
-
-  const recentQuotes = data.recent_quotes || [];
-  const total = data.total || 0;
-
-  _quotesPage = 1;
-  _quotesHasMore = recentQuotes.length >= 20 && 20 < total;
-
-  let html = buildSearchSortBarHtml('trending-quotes');
-
-  if (recentQuotes.length > 0) {
-    html += `<div id="tab-items-list">`;
-    for (const q of recentQuotes) {
-      html += buildQuoteBlockHtml(q, _importantStatuses[`quote:${q.id}`] || false);
-    }
-    html += `</div>`;
-    html += `<div id="infinite-scroll-sentinel"></div>`;
-  } else {
-    const msg = _quotesSearch ? 'No quotes match your search.' : 'No quotes yet';
-    html += `<div class="empty-state"><h3>${msg}</h3><p>Quotes will appear here as they are extracted from news articles.</p></div>`;
-  }
-
-  container.innerHTML = html;
-  setupInfiniteScroll();
-}
-
-function switchQuotesSort(sortBy) {
-  _quotesSortBy = sortBy;
-  _quotesPage = 1;
-  renderTabContent('trending-quotes');
 }
 
 // ======= All Tab =======
@@ -1424,6 +1062,267 @@ function buildNoteworthySectionHtml(items) {
   `;
 }
 
+// ======= Peppered Card Renderers =======
+
+function buildTimedQuoteCardHtml(card) {
+  const q = card.data;
+  if (!q) return '';
+  const verdictHtml = (typeof buildVerdictBadgeHtml === 'function')
+    ? buildVerdictBadgeHtml(q.id, q.fact_check_verdict) : '';
+  return `
+    <div class="noteworthy-card noteworthy-card--timed-quote" data-href="/quote/${q.id}" onclick="slideToDetail('/quote/${q.id}')">
+      <div class="noteworthy-card__header">
+        <div class="noteworthy-card__badge">${escapeHtml(card.custom_title || '')}</div>
+      </div>
+      <div class="noteworthy-card__content">
+        <div class="noteworthy-quote__text">\u201C${escapeHtml((q.text || '').substring(0, 200))}\u201D</div>
+        <div class="noteworthy-quote__byline">
+          ${q.photo_url ? `<img class="noteworthy-quote__avatar" src="${escapeHtml(q.photo_url)}" alt="" onerror="this.style.display='none'">` : ''}
+          ${verdictHtml}
+          \u2014 ${escapeHtml(q.person_name || '')}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function buildTimedAuthorCardHtml(card) {
+  const entity = card.data?.entity;
+  if (!entity) return '';
+  const avatarHtml = entity.photo_url
+    ? `<img class="noteworthy-card__avatar" src="${escapeHtml(entity.photo_url)}" alt="" onerror="this.style.display='none'">`
+    : `<div class="noteworthy-card__avatar-placeholder">${escapeHtml((entity.canonical_name || '?')[0])}</div>`;
+  const desc = [entity.category, entity.category_context].filter(Boolean).join(' \u2014 ');
+  return `
+    <div class="noteworthy-card noteworthy-card--timed-author" data-href="/author/${entity.id}" onclick="slideToDetail('/author/${entity.id}')">
+      <div class="noteworthy-card__header">
+        <div class="noteworthy-card__badge">${escapeHtml(card.custom_title || '')}</div>
+      </div>
+      ${buildNoteworthyCardHeader(avatarHtml, entity.canonical_name || '', desc)}
+      <div class="noteworthy-card__content">${buildMiniQuotesHtml(card.data.top_quotes)}</div>
+    </div>
+  `;
+}
+
+function buildTimedSourceCardHtml(card) {
+  const entity = card.data?.entity;
+  if (!entity) return '';
+  const avatarHtml = entity.image_url
+    ? `<img class="noteworthy-card__avatar" src="${escapeHtml(entity.image_url)}" alt="" onerror="this.style.display='none'">`
+    : `<div class="noteworthy-card__avatar-placeholder">${escapeHtml((entity.name || '?')[0])}</div>`;
+  return `
+    <div class="noteworthy-card noteworthy-card--timed-source" onclick="event.stopPropagation()">
+      <div class="noteworthy-card__header">
+        <div class="noteworthy-card__badge">${escapeHtml(card.custom_title || '')}</div>
+      </div>
+      ${buildNoteworthyCardHeader(avatarHtml, entity.name || '', entity.domain || '')}
+      <div class="noteworthy-card__content">${buildMiniQuotesHtml(card.data.top_quotes)}</div>
+    </div>
+  `;
+}
+
+function buildTimedTopicCardHtml(card) {
+  const entity = card.data?.entity;
+  if (!entity) return '';
+  const initial = (entity.name || '?')[0];
+  const avatarHtml = `<div class="noteworthy-card__avatar-placeholder">${escapeHtml(initial)}</div>`;
+  return `
+    <div class="noteworthy-card noteworthy-card--timed-topic" data-href="/topic/${entity.slug || entity.id}" onclick="slideToDetail('/topic/${entity.slug || entity.id}')">
+      <div class="noteworthy-card__header">
+        <div class="noteworthy-card__badge">${escapeHtml(card.custom_title || '')}</div>
+      </div>
+      ${buildNoteworthyCardHeader(avatarHtml, entity.name || '', entity.description || '')}
+      <div class="noteworthy-card__content">${buildMiniQuotesHtml(card.data.top_quotes)}</div>
+    </div>
+  `;
+}
+
+function buildTimedCategoryCardHtml(card) {
+  const entity = card.data?.entity;
+  if (!entity) return '';
+  const avatarHtml = buildCategoryAvatarHtml(entity.image_url, entity.icon_name, entity.name);
+  return `
+    <div class="noteworthy-card noteworthy-card--timed-category" data-href="/category/${entity.slug || entity.id}" onclick="slideToDetail('/category/${entity.slug || entity.id}')">
+      <div class="noteworthy-card__header">
+        <div class="noteworthy-card__badge">${escapeHtml(card.custom_title || '')}</div>
+      </div>
+      ${buildNoteworthyCardHeader(avatarHtml, entity.name || '', '')}
+      <div class="noteworthy-card__content">${buildMiniQuotesHtml(card.data.top_quotes)}</div>
+    </div>
+  `;
+}
+
+function buildSearchCardHtml(card) {
+  const st = card.data?.search_type || '';
+  const labels = {
+    topic: 'Search by news topic',
+    quote_text: 'Search by quote text',
+    source_author: 'Search by quote author',
+    source: 'Search by news source'
+  };
+  return `
+    <div class="noteworthy-card noteworthy-card--search noteworthy-card--full-width">
+      <div class="noteworthy-card__header">
+        <div class="noteworthy-card__badge">${escapeHtml(card.custom_title || '')}</div>
+      </div>
+      <p class="search-card__subhead">${escapeHtml(labels[st] || 'Search')}</p>
+      <div class="search-card__input-wrap">
+        <input type="search" class="search-card__input" placeholder="Type to search..."
+               oninput="searchCardAutocomplete(this, '${escapeHtml(st)}')"
+               onkeydown="searchCardKeydown(event, this, '${escapeHtml(st)}')">
+        <div class="search-card__results"></div>
+      </div>
+    </div>
+  `;
+}
+
+let _searchCardDebounce = null;
+
+async function searchCardAutocomplete(inputEl, searchType) {
+  clearTimeout(_searchCardDebounce);
+  const query = inputEl.value.trim();
+  const resultsEl = inputEl.parentElement.querySelector('.search-card__results');
+  if (query.length < 2) {
+    resultsEl.innerHTML = '';
+    resultsEl.style.display = 'none';
+    return;
+  }
+  _searchCardDebounce = setTimeout(async () => {
+    try {
+      const typeParam = searchType === 'quote_text' ? '' : `&type=${searchType}`;
+      const data = await API.get('/search/autocomplete?q=' + encodeURIComponent(query) + typeParam + '&limit=6');
+      const suggestions = data.suggestions || [];
+      if (suggestions.length === 0) {
+        resultsEl.innerHTML = '';
+        resultsEl.style.display = 'none';
+        return;
+      }
+      resultsEl.innerHTML = suggestions.map(s => {
+        let onclick = '';
+        if (s.type === 'person') onclick = `navigateTo('/author/${s.id}')`;
+        else if (s.type === 'topic') onclick = `navigateTo('/topic/${s.id}')`;
+        else onclick = `navigateTo('/?search=${encodeURIComponent(s.label)}')`;
+        return `<div class="search-card__result-item" onclick="${onclick}">${escapeHtml(s.label)}</div>`;
+      }).join('');
+      resultsEl.style.display = 'block';
+    } catch (err) {
+      // Silent fail
+    }
+  }, 200);
+}
+
+function searchCardKeydown(event, inputEl, searchType) {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    const query = inputEl.value.trim();
+    if (query.length >= 2) {
+      navigateTo('/?search=' + encodeURIComponent(query));
+    }
+  } else if (event.key === 'Escape') {
+    inputEl.value = '';
+    const resultsEl = inputEl.parentElement.querySelector('.search-card__results');
+    resultsEl.innerHTML = '';
+    resultsEl.style.display = 'none';
+  }
+}
+
+function buildInfoCardHtml(card) {
+  const infoType = card.data?.info_type || '';
+  const content = {
+    importance: {
+      title: 'What does IMPORTANT? do?',
+      body: 'Tap the IMPORTANT? button on any quote to mark it as noteworthy. This helps surface the most significant quotes and influences trending rankings.',
+      icon: 'star'
+    },
+    fact_check: {
+      title: 'What does RUN FACT CHECK do?',
+      body: 'Tap RUN FACT CHECK to have AI verify factual claims in a quote using real-time web search. Results include a verdict (TRUE, FALSE, MISLEADING, etc.) with cited sources.',
+      icon: 'search'
+    },
+    bug: {
+      title: 'Found a bug?',
+      body: 'Tap the bug icon on any page to report an issue. Include what you expected vs what happened. Bug reports help us improve the app.',
+      icon: 'bug_report'
+    },
+    donate: {
+      title: 'Support QuoteLog',
+      body: 'QuoteLog is free and open source. If you find it valuable, consider supporting development.',
+      icon: 'favorite'
+    }
+  };
+  const c = content[infoType] || { title: '', body: '', icon: 'info' };
+  return `
+    <div class="noteworthy-card noteworthy-card--info">
+      <div class="noteworthy-card__header">
+        <span class="info-card__icon material-icons-outlined">${escapeHtml(c.icon)}</span>
+        <div class="noteworthy-card__badge">${escapeHtml(c.title)}</div>
+      </div>
+      <div class="noteworthy-card__content">
+        <p class="info-card__body">${escapeHtml(c.body)}</p>
+      </div>
+    </div>
+  `;
+}
+
+function determinePepperPositions(quoteCount, frequency, chance) {
+  const positions = [];
+  for (let i = frequency; i < quoteCount; i += frequency) {
+    if (Math.random() * 100 < chance) {
+      positions.push(i);
+    }
+  }
+  return positions;
+}
+
+function pickNextCard(evaluatedCards, mode, reuseEnabled) {
+  const available = reuseEnabled
+    ? evaluatedCards
+    : evaluatedCards.filter(c => !_usedCardIds.has(c.id));
+
+  if (available.length === 0) {
+    if (reuseEnabled) return null;
+    _usedCardIds.clear();
+    return pickNextCard(evaluatedCards, mode, true);
+  }
+
+  let card;
+  if (mode === 'random') {
+    card = available[Math.floor(Math.random() * available.length)];
+  } else {
+    card = available[_cardPickIndex % available.length];
+    _cardPickIndex++;
+  }
+
+  _usedCardIds.add(card.id);
+  return card;
+}
+
+function renderCardByType(card) {
+  if (!card || !card.type) return '';
+  switch (card.type) {
+    case 'quote': return buildTimedQuoteCardHtml(card);
+    case 'author': return buildTimedAuthorCardHtml(card);
+    case 'source': return buildTimedSourceCardHtml(card);
+    case 'topic': return buildTimedTopicCardHtml(card);
+    case 'category': return buildTimedCategoryCardHtml(card);
+    case 'search': return buildSearchCardHtml(card);
+    case 'info': return buildInfoCardHtml(card);
+    default: return '';
+  }
+}
+
+function buildPepperedCardHtml(card, allCards) {
+  if (!card || !card.type) return '';
+  if (card.collection_id && allCards) {
+    const siblings = allCards.filter(c => c.collection_id === card.collection_id);
+    if (siblings.length > 1 && siblings[0].id !== card.id) return '';
+    if (siblings.length > 1) {
+      return `<div class="noteworthy-section__scroll">${siblings.map(c => renderCardByType(c)).join('')}</div>`;
+    }
+  }
+  return renderCardByType(card);
+}
+
 function buildTopAuthorsBarHtml(authors) {
   if (!authors || authors.length === 0) return '';
   const items = authors.map(a => {
@@ -1447,7 +1346,71 @@ function buildTopAuthorsBarHtml(authors) {
 // ======= Main Render Function =======
 
 /**
- * Render the homepage with the 4-tab system
+ * Load a page of quotes into the quotes list
+ */
+async function loadQuotesPage(page) {
+  _quotesPage = page;
+  const sortParam = _quotesSortBy === 'importance' ? '&sort=importance' : '';
+
+  const [data, cardsData] = await Promise.all([
+    API.get(`/analytics/trending-quotes?page=${page}&limit=20${sortParam}`),
+    page === 1 ? API.get('/noteworthy/evaluated') : Promise.resolve(null)
+  ]);
+
+  if (cardsData) {
+    _evaluatedCards = cardsData.cards || [];
+    _pepperSettings = cardsData.pepper_settings || {};
+    _cardPickIndex = 0;
+    _usedCardIds.clear();
+  }
+
+  const recentQuotes = data.recent_quotes || [];
+  const total = data.total || 0;
+  _quotesHasMore = recentQuotes.length >= 20 && (page * 20) < total;
+
+  if (recentQuotes.length > 0) {
+    const entityKeys = recentQuotes.map(q => `quote:${q.id}`);
+    await fetchImportantStatuses(entityKeys);
+
+    const frequency = parseInt(_pepperSettings.noteworthy_pepper_frequency || '5', 10);
+    const chance = parseInt(_pepperSettings.noteworthy_pepper_chance || '50', 10);
+    const positions = determinePepperPositions(recentQuotes.length, frequency, chance);
+
+    let html = '';
+    recentQuotes.forEach((q, i) => {
+      html += buildQuoteBlockHtml(q, _importantStatuses[`quote:${q.id}`] || false);
+
+      if (positions.includes(i) && _evaluatedCards.length > 0) {
+        const card = pickNextCard(
+          _evaluatedCards,
+          _pepperSettings.noteworthy_pick_mode || 'sequential',
+          _pepperSettings.noteworthy_reuse_cards === '1'
+        );
+        if (card) {
+          html += buildPepperedCardHtml(card, _evaluatedCards);
+        }
+      }
+    });
+
+    const list = document.getElementById('quotes-list');
+    if (list) {
+      if (page === 1) {
+        list.innerHTML = html;
+      } else {
+        list.insertAdjacentHTML('beforeend', html);
+      }
+    }
+    initViewTracking();
+  } else if (page === 1) {
+    const list = document.getElementById('quotes-list');
+    if (list) {
+      list.innerHTML = '<div class="empty-state"><h3>No quotes yet</h3><p>Quotes will appear here as they are extracted from news articles.</p></div>';
+    }
+  }
+}
+
+/**
+ * Render the homepage with quotes scroll
  */
 async function renderHome() {
   const content = document.getElementById('content');
@@ -1457,37 +1420,48 @@ async function renderHome() {
   const searchQuery = params.get('search') || '';
 
   if (searchQuery) {
-    // If there's a search query, render search results instead of tabs
     await renderSearchResults(content, searchQuery);
     return;
   }
-
-  // Fetch noteworthy items + top authors in parallel
-  let noteworthyHtml = '';
-  let topAuthorsHtml = '';
-  try {
-    const [nwData, taData] = await Promise.all([
-      API.get('/search/noteworthy?limit=10'),
-      API.get('/analytics/top-authors?limit=5').catch(() => ({ authors: [] })),
-    ]);
-    if (nwData.items && nwData.items.length > 0) {
-      noteworthyHtml = buildNoteworthySectionHtml(nwData.items);
-    }
-    if (taData.authors && taData.authors.length > 0) {
-      topAuthorsHtml = buildTopAuthorsBarHtml(taData.authors);
-    }
-  } catch { /* noteworthy section is optional */ }
 
   // Update page metadata
   if (typeof updatePageMeta === 'function') {
     updatePageMeta(null, 'Track what public figures say with AI-powered quote extraction from news sources.', '/');
   }
 
-  // Render noteworthy + top authors bar + tab bar with visually-hidden H1
-  content.innerHTML = '<h1 class="sr-only">TrueOrFalse.News - What they said - Fact Checked</h1>' + noteworthyHtml + topAuthorsHtml + buildTabBarHtml(_activeTab);
+  // Simplified: just quotes scroll, no tabs, no standalone noteworthy
+  content.innerHTML = `
+    <h1 class="sr-only">TrueOrFalse.News - What they said - Fact Checked</h1>
+    <div id="home-quotes-scroll" class="slide-container">
+      <div class="slide-panel slide-panel--main" id="slide-main">
+        <div id="quotes-list"></div>
+        <div id="infinite-scroll-sentinel" class="infinite-scroll-sentinel"></div>
+      </div>
+      <div class="slide-panel slide-panel--detail" id="slide-detail"></div>
+    </div>
+  `;
 
-  // Render active tab content
-  await renderTabContent(_activeTab);
+  // Load first page of quotes
+  await loadQuotesPage(1);
+  setupInfiniteScroll();
+
+  // Wire up swipe gestures
+  const slideContainer = document.getElementById('home-quotes-scroll');
+  if (slideContainer && typeof initSwipeHandlers === 'function') {
+    initSwipeHandlers(slideContainer, {
+      onSwipeLeft: (e) => {
+        const quoteBlock = e.target.closest('.quote-block');
+        const card = e.target.closest('.noteworthy-card');
+        if (quoteBlock) {
+          const quoteId = quoteBlock.dataset.quoteId;
+          if (quoteId) slideToDetail(`/quote/${quoteId}`);
+        } else if (card && card.dataset.href) {
+          slideToDetail(card.dataset.href);
+        }
+      },
+      onSwipeRight: () => slideBack()
+    });
+  }
 
   // Restore scroll position if returning
   if (_pendingScrollRestore) {
@@ -1496,6 +1470,34 @@ async function renderHome() {
       window.scrollTo(0, _homeScrollY);
     });
   }
+}
+
+/**
+ * Slide to a detail page (quote, author, etc.)
+ */
+function slideToDetail(path) {
+  _homeScrollY = window.scrollY;
+  const container = document.getElementById('home-quotes-scroll');
+  if (container) {
+    container.classList.add('slide-active');
+  }
+  // Navigate to the detail page using existing router
+  if (typeof navigate === 'function') {
+    navigate(null, path);
+  } else {
+    window.location.href = path;
+  }
+}
+
+/**
+ * Slide back to the quotes scroll
+ */
+function slideBack() {
+  const container = document.getElementById('home-quotes-scroll');
+  if (container) {
+    container.classList.remove('slide-active');
+  }
+  requestAnimationFrame(() => window.scrollTo(0, _homeScrollY));
 }
 
 /**

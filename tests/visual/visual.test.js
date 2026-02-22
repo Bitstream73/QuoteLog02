@@ -323,14 +323,14 @@ describe('Visual Tests', () => {
       await page.close();
     }, 20000);
 
-    it('20. Tab bar is visible on mobile', async () => {
+    it('20. Quotes scroll is visible on mobile', async () => {
       const page = await getPage(375, 812);
       await page.goto(baseUrl, { waitUntil: 'networkidle2', timeout: 15000 });
-      await page.waitForSelector('.homepage-tabs, .empty-state', { timeout: 10000 }).catch(() => {});
-      const hasTabs = await page.$('.homepage-tabs');
-      if (hasTabs) {
+      await page.waitForSelector('#quotes-list, .empty-state', { timeout: 10000 }).catch(() => {});
+      const hasQuotesList = await page.$('#quotes-list');
+      if (hasQuotesList) {
         const isVisible = await page.evaluate(() => {
-          const el = document.querySelector('.homepage-tabs');
+          const el = document.querySelector('#quotes-list');
           const style = getComputedStyle(el);
           return style.display !== 'none' && style.visibility !== 'hidden';
         });
@@ -339,24 +339,18 @@ describe('Visual Tests', () => {
       await page.close();
     }, 20000);
 
-    it('21. Sort controls accessible on mobile', async () => {
+    it('21. Slide container present on mobile', async () => {
       const page = await getPage(375, 812);
-      // Navigate to All tab
       await page.goto(baseUrl, { waitUntil: 'networkidle2', timeout: 15000 });
-      await page.waitForSelector('.homepage-tab', { timeout: 10000 }).catch(() => {});
-      const allTab = await page.$('.homepage-tab[data-tab="all"]');
-      if (allTab) {
-        await allTab.click();
-        await page.waitForSelector('.all-tab__sort, .sort-toggle-text, .empty-state', { timeout: 10000 }).catch(() => {});
-        const hasSortControls = await page.$('.sort-toggle-text');
-        if (hasSortControls) {
-          const isVisible = await page.evaluate(() => {
-            const el = document.querySelector('.sort-toggle-text');
-            const rect = el.getBoundingClientRect();
-            return rect.width > 0 && rect.height > 0;
-          });
-          expect(isVisible).toBe(true);
-        }
+      await page.waitForSelector('.slide-container, .empty-state', { timeout: 10000 }).catch(() => {});
+      const hasSlide = await page.$('.slide-container');
+      if (hasSlide) {
+        const isVisible = await page.evaluate(() => {
+          const el = document.querySelector('.slide-container');
+          const rect = el.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0;
+        });
+        expect(isVisible).toBe(true);
       }
       await page.close();
     }, 25000);

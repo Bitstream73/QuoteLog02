@@ -2,6 +2,7 @@ import { Router } from 'express';
 import jwt from 'jsonwebtoken';
 import { getDb } from '../config/database.js';
 import config from '../config/index.js';
+import { evaluateCard } from '../services/noteworthyEvaluator.js';
 
 const router = Router();
 
@@ -291,6 +292,58 @@ router.get('/noteworthy', (req, res) => {
     res.json({ items });
   } catch (err) {
     res.status(500).json({ error: 'Failed to load noteworthy items' });
+  }
+});
+
+// GET /api/noteworthy/evaluated — public endpoint for evaluated card configs
+router.get('/noteworthy/evaluated', (req, res) => {
+  try {
+    const db = getDb();
+
+    // Fetch enabled card configs
+    const configs = db.prepare(`
+      SELECT ncc.*, nc.name as collection_name
+      FROM noteworthy_card_configs ncc
+      LEFT JOIN noteworthy_collections nc ON nc.id = ncc.collection_id
+      WHERE ncc.enabled = 1
+      ORDER BY ncc.display_order ASC
+    `).all();
+
+    // Fetch enabled collections
+    const collections = db.prepare(
+      'SELECT * FROM noteworthy_collections WHERE enabled = 1 ORDER BY display_order ASC'
+    ).all();
+
+    // Fetch pepper settings
+    const pepperKeys = [
+      'noteworthy_pepper_frequency',
+      'noteworthy_pepper_chance',
+      'noteworthy_pick_mode',
+      'noteworthy_reuse_cards',
+    ];
+    const pepper_settings = {};
+    for (const key of pepperKeys) {
+      const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key);
+      pepper_settings[key] = row ? row.value : null;
+    }
+
+    // Evaluate each config using time-based evaluation engine
+    const cards = configs.map(cfg => {
+      const result = evaluateCard(db, cfg);
+      return {
+        id: cfg.id,
+        card_type: cfg.card_type,
+        custom_title: cfg.custom_title,
+        collection_id: cfg.collection_id,
+        config: cfg.config,
+        data: result ? result.data : null,
+        type: result ? result.type : null,
+      };
+    });
+
+    res.json({ cards, collections, pepper_settings });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to evaluate noteworthy cards' });
   }
 });
 

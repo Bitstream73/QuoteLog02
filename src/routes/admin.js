@@ -466,6 +466,171 @@ router.delete('/noteworthy/:id', requireAdmin, (req, res) => {
   }
 });
 
+// --- Noteworthy Card Configs CRUD ---
+
+// Valid card types
+const VALID_CARD_TYPES = [
+  'quote_of_hour', 'quote_of_day', 'quote_of_week', 'quote_of_month',
+  'author_of_hour', 'author_of_day', 'author_of_week', 'author_of_month',
+  'source_of_hour', 'source_of_day', 'source_of_week', 'source_of_month',
+  'topic_of_hour', 'topic_of_day', 'topic_of_week', 'topic_of_month',
+  'category_of_hour', 'category_of_day', 'category_of_week', 'category_of_month',
+  'search_topic', 'search_quote_text', 'search_source_author', 'search_source',
+  'info_importance', 'info_fact_check', 'info_bug', 'info_donate',
+];
+
+// GET /api/admin/noteworthy-configs — list all card configs
+router.get('/noteworthy-configs', requireAdmin, (req, res) => {
+  try {
+    const db = getDb();
+    const configs = db.prepare(`
+      SELECT ncc.*, nc.name as collection_name
+      FROM noteworthy_card_configs ncc
+      LEFT JOIN noteworthy_collections nc ON nc.id = ncc.collection_id
+      ORDER BY ncc.display_order ASC
+    `).all();
+    const collections = db.prepare('SELECT * FROM noteworthy_collections ORDER BY display_order ASC').all();
+    res.json({ configs, collections });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to list card configs' });
+  }
+});
+
+// POST /api/admin/noteworthy-configs — create card config
+router.post('/noteworthy-configs', requireAdmin, (req, res) => {
+  try {
+    const db = getDb();
+    const { card_type, enabled, display_order, custom_title, config, collection_id } = req.body;
+    if (!card_type || !VALID_CARD_TYPES.includes(card_type)) {
+      return res.status(400).json({ error: 'Invalid card_type' });
+    }
+    const result = db.prepare(
+      `INSERT INTO noteworthy_card_configs (card_type, enabled, display_order, custom_title, config, collection_id)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    ).run(card_type, enabled ? 1 : 0, display_order || 0, custom_title || null, config || '{}', collection_id || null);
+    res.status(201).json({ success: true, id: result.lastInsertRowid });
+  } catch (err) {
+    if (err.message?.includes('UNIQUE constraint')) {
+      return res.status(409).json({ error: 'Card type already exists' });
+    }
+    res.status(500).json({ error: 'Failed to create card config' });
+  }
+});
+
+// PATCH /api/admin/noteworthy-configs/:id — update config
+router.patch('/noteworthy-configs/:id', requireAdmin, (req, res) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id);
+    const existing = db.prepare('SELECT * FROM noteworthy_card_configs WHERE id = ?').get(id);
+    if (!existing) {
+      return res.status(404).json({ error: 'Card config not found' });
+    }
+    const { enabled, display_order, custom_title, config, collection_id } = req.body;
+    if (enabled !== undefined) {
+      db.prepare('UPDATE noteworthy_card_configs SET enabled = ?, updated_at = datetime(\'now\') WHERE id = ?').run(enabled ? 1 : 0, id);
+    }
+    if (display_order !== undefined) {
+      db.prepare('UPDATE noteworthy_card_configs SET display_order = ?, updated_at = datetime(\'now\') WHERE id = ?').run(display_order, id);
+    }
+    if (custom_title !== undefined) {
+      db.prepare('UPDATE noteworthy_card_configs SET custom_title = ?, updated_at = datetime(\'now\') WHERE id = ?').run(custom_title, id);
+    }
+    if (config !== undefined) {
+      db.prepare('UPDATE noteworthy_card_configs SET config = ?, updated_at = datetime(\'now\') WHERE id = ?').run(typeof config === 'string' ? config : JSON.stringify(config), id);
+    }
+    if (collection_id !== undefined) {
+      db.prepare('UPDATE noteworthy_card_configs SET collection_id = ?, updated_at = datetime(\'now\') WHERE id = ?').run(collection_id || null, id);
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update card config' });
+  }
+});
+
+// DELETE /api/admin/noteworthy-configs/:id — delete config
+router.delete('/noteworthy-configs/:id', requireAdmin, (req, res) => {
+  try {
+    const db = getDb();
+    const result = db.prepare('DELETE FROM noteworthy_card_configs WHERE id = ?').run(req.params.id);
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'Card config not found' });
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete card config' });
+  }
+});
+
+// --- Noteworthy Collections CRUD ---
+
+// GET /api/admin/noteworthy-collections
+router.get('/noteworthy-collections', requireAdmin, (req, res) => {
+  try {
+    const db = getDb();
+    const collections = db.prepare('SELECT * FROM noteworthy_collections ORDER BY display_order ASC').all();
+    res.json({ collections });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to list collections' });
+  }
+});
+
+// POST /api/admin/noteworthy-collections
+router.post('/noteworthy-collections', requireAdmin, (req, res) => {
+  try {
+    const db = getDb();
+    const { name, display_order } = req.body;
+    if (!name) {
+      return res.status(400).json({ error: 'Name is required' });
+    }
+    const result = db.prepare(
+      'INSERT INTO noteworthy_collections (name, display_order) VALUES (?, ?)'
+    ).run(name, display_order || 0);
+    res.status(201).json({ success: true, id: result.lastInsertRowid });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to create collection' });
+  }
+});
+
+// PATCH /api/admin/noteworthy-collections/:id
+router.patch('/noteworthy-collections/:id', requireAdmin, (req, res) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id);
+    const existing = db.prepare('SELECT * FROM noteworthy_collections WHERE id = ?').get(id);
+    if (!existing) {
+      return res.status(404).json({ error: 'Collection not found' });
+    }
+    const { name, display_order, enabled } = req.body;
+    if (name !== undefined) {
+      db.prepare('UPDATE noteworthy_collections SET name = ? WHERE id = ?').run(name, id);
+    }
+    if (display_order !== undefined) {
+      db.prepare('UPDATE noteworthy_collections SET display_order = ? WHERE id = ?').run(display_order, id);
+    }
+    if (enabled !== undefined) {
+      db.prepare('UPDATE noteworthy_collections SET enabled = ? WHERE id = ?').run(enabled ? 1 : 0, id);
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update collection' });
+  }
+});
+
+// DELETE /api/admin/noteworthy-collections/:id
+router.delete('/noteworthy-collections/:id', requireAdmin, (req, res) => {
+  try {
+    const db = getDb();
+    const result = db.prepare('DELETE FROM noteworthy_collections WHERE id = ?').run(req.params.id);
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'Collection not found' });
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete collection' });
+  }
+});
+
 // --- Back-propagation routes ---
 
 // POST /api/admin/backprop/trigger — trigger a back-propagation cycle
